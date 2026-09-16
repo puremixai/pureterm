@@ -2,6 +2,8 @@
 
 基于 Cordis、ssh2 和 xterm.js 的 SSH / SFTP 客户端，提供 Electron Desktop 和独立本机 Web 两个入口。SSH 连接始终由用户电脑发起；Web 服务只监听本机回环地址，不提供公开服务、账号或用户隔离。
 
+本项目采用 [MIT License](LICENSE)。
+
 两个入口复用 Host、协议、传输适配和 Cordis Client。Desktop 由 Electron 启动独立 Node Host 子进程；独立 Web 在普通 Node 进程中运行，无需启动 Electron。
 
 ## 开始使用
