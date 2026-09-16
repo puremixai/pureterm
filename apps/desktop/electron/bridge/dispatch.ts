@@ -1,0 +1,141 @@
+import { METHODS, NOTICES, type PickedPrivateKey, type RendererReadyPayload } from '../../shared/protocol.js'
+import type { Host, HostInput, TerminalOpenPayload } from '../../src/host.js'
+import { normalizeReadyPayload } from '../runtime/readiness.js'
+
+/*
+ * 协议 → 公共契约 的唯一映射处。
+ *
+ * 为什么单独一个文件而不是在两个载体里各写一遍：
+ * 通道名已经收进 shared/protocol.ts 了，但「这个名字对应哪个业务调用」同样是
+ * 只能有一份的知识。两个载体各写一份 switch，就等于把「漂移」从通道名搬到了语义上
+ * ——IPC 那边 hosts:save 走 saveHost、WS 那边走成 save（或者参数顺序反了），
+ * 症状依然是「点了没反应」，而且更难查。
+ *
+ * 这个文件**不 import electron**：载体依赖它，它不依赖载体。
+ * 结果是这条路能脱离 Electron 测（tests/smoke-carrier.mjs 就是这么做的）。
+ */
+
+export interface Dispatcher {
+  /** 请求/响应。载体负责把 clientId 认定好再传进来。 */
+  call(method: string, params: unknown[], clientId: string): Promise<unknown>
+  /** 单向通知。没有回值，出错只能在日志里看。 */
+  notify(name: string, params: unknown[], clientId: string): void
+}
+
+export interface DispatcherOptions {
+  host: Host
+  /**
+   * 弹系统文件对话框选私钥。
+   *
+   * 两个载体都在**同一个主进程**里，所以「选文件」永远是本机行为，与客户端是什么无关
+   * ——Web 载体下用户从浏览器点「选择…」，对话框仍然弹在这台机器上，
+   * 因为最终要用的私钥路径也是这台机器上的路径。clientId 只是给实现判断客户端还在不在。
+   */
+  pickPrivateKey(clientId: string): Promise<PickedPrivateKey | undefined>
+  /**
+   * 渲染层上报「我起来了」。
+   *
+   * **故意不放进 Host**：就绪闸门是壳的启动状态机的一部分，宿主（一个 Node 进程 +
+   * 一棵插件树）不该知道「应用启动完成」是什么意思。闸门归壳层，所以这个回调也归壳层传进来。
+   */
+  onReady(payload: RendererReadyPayload, clientId: string): void
+}
+
+/** 参数一律来自边界之外，收窄不了就报出来——绝不猜。 */
+function asObject(value: unknown, where: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${where} 的第一个参数应当是一个对象。`)
+  return value as Record<string, unknown>
+}
+
+function asString(value: unknown, where: string): string {
+  if (typeof value !== 'string') throw new Error(`${where} 期望一个字符串参数，收到 ${typeof value}。`)
+  return value
+}
+
+function asNumber(value: unknown, where: string): number {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric)) throw new Error(`${where} 期望一个数字参数，收到 ${String(value)}。`)
+  return numeric
+}
+
+/**
+ * 字节参数。
+ *
+ * 收窄成 Uint8Array，**不接受字符串**：上传的内容走线时被打了 `{ $bytes }` 标签，
+ * 载体已经解回 Uint8Array 了（IPC 的结构化克隆本来就保持类型数组）。
+ * 如果哪一天这里拿到的是字符串，说明有人绕过了编码那一步——那时把它
+ * 当 UTF-8 收下也许「看起来能跑」，但二进制文件会被静默改坏，所以宁可当场报出来。
+ */
+function asBytes(value: unknown, where: string): Uint8Array {
+  if (value instanceof Uint8Array) return value
+  throw new Error(`${where} 期望一段字节（Uint8Array），收到 ${Object.prototype.toString.call(value)}。`)
+}
+
+export function createDispatcher(options: DispatcherOptions): Dispatcher {
+  const { host } = options
+
+  return {
+    async call(method, params, clientId) {
+      switch (method) {
+        case METHODS.sshOpen: {
+          const payload = asObject(params[0], 'ssh:open')
+          // clientId 由载体认定后**在这里**并入，客户端的自称一律被忽略
+          // （TerminalOpenRequest 里根本没有这个字段，见 shared/protocol.ts）
+          return host.openTerminal({ ...payload, clientId } as unknown as TerminalOpenPayload)
+        }
+        case METHODS.sshPickPrivateKey:
+          return options.pickPrivateKey(clientId)
+        case METHODS.hostsList:
+          return host.listHosts()
+        case METHODS.hostsSave:
+          return host.saveHost(asObject(params[0], 'hosts:save') as unknown as HostInput)
+        case METHODS.hostsRemove:
+          return host.removeHost(asString(params[0], 'hosts:remove'))
+        /*
+         * SFTP 五条。参数一律「先收窄、再往下传」：这里收到的东西来自边界之外，
+         * 猜错一次就是拿一个 undefined 去操作远端文件。
+         */
+        case METHODS.sftpList:
+          return host.sftpList(asString(params[0], 'sftp:list'), asString(params[1], 'sftp:list'))
+        case METHODS.sftpRead:
+          return host.sftpRead(asString(params[0], 'sftp:read'), asString(params[1], 'sftp:read'))
+        case METHODS.sftpWrite:
+          return host.sftpWrite(
+            asString(params[0], 'sftp:write'),
+            asString(params[1], 'sftp:write'),
+            asString(params[2], 'sftp:write'),
+            asBytes(params[3], 'sftp:write'),
+          )
+        case METHODS.sftpMkdir:
+          return host.sftpMkdir(
+            asString(params[0], 'sftp:mkdir'),
+            asString(params[1], 'sftp:mkdir'),
+            asString(params[2], 'sftp:mkdir'),
+          )
+        case METHODS.sftpRemove:
+          return host.sftpRemove(asString(params[0], 'sftp:remove'), asString(params[1], 'sftp:remove'))
+        default:
+          throw new Error(`不认识的请求：${method}`)
+      }
+    },
+
+    notify(name, params, clientId) {
+      switch (name) {
+        case NOTICES.sshInput:
+          host.input(asString(params[0], 'ssh:input'), asString(params[1], 'ssh:input'))
+          return
+        case NOTICES.sshResize:
+          host.resize(asString(params[0], 'ssh:resize'), asNumber(params[1], 'ssh:resize'), asNumber(params[2], 'ssh:resize'))
+          return
+        case NOTICES.sshClose:
+          host.close(asString(params[0], 'ssh:close'))
+          return
+        case NOTICES.appReady:
+          options.onReady(normalizeReadyPayload(params[0]), clientId)
+          return
+        default:
+          throw new Error(`不认识的通知：${name}`)
+      }
+    },
+  }
+}
