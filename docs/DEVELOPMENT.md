@@ -52,6 +52,7 @@ Do not commit `.env` files, passwords, private keys, tokens, certificates, or re
 | `packages/host/` | Cordis Host, SSH/SFTP services, host storage, fingerprints, and credential interfaces |
 | `packages/transport/` | Dispatcher, HTTP/WebSocket carriers, client identity, and readiness validation |
 | `packages/ui/` | Browser Cordis Client, terminal, host list, SFTP panel, and browser key picker |
+| `VERSION.txt` | Source version baseline shared by all workspaces |
 | `scripts/` | Root workspace build, type, boundary, staging, Windows package, and changelog checks |
 | `docs/` | Current architecture/release/development docs and dated historical records |
 | `.github/workflows/` | Cross-platform Desktop build and GitHub Releases draft workflow |
@@ -153,22 +154,39 @@ Staging is disposable and must not be committed. The installer guide documents t
 
 ## Versions and changelog
 
-The root package and every workspace package use the same semantic version. Check alignment with:
+PureTerm is in the `0.x` development cycle. Version format and ordering follow [SemVer 2.0.0](https://semver.org/). The current source version is `0.1.0-alpha.1`, recorded in [VERSION.txt](../VERSION.txt). Features, configuration, and data structures may still change; record compatibility changes in the changelog.
+
+| Version form | Purpose |
+| --- | --- |
+| `0.1.0-alpha.N` | Early testing while the feature set is still being built; `N` starts at `1` for each target version. |
+| `0.1.0-beta.N` | Feature-complete testing focused on compatibility and fixes. |
+| `0.1.0-rc.N` | Release candidate validation before the phase release. |
+| `0.1.0` | Verified phase release that remains part of the `0.x` development cycle. |
+| `0.2.0-alpha.1` → `0.2.0` | The next development and delivery phase, using the same progression. |
+| `1.0.0` | Stable milestone after core behavior, deployment, upgrade/migration, and compatibility commitments are verified. |
+
+Advance one target version through its phases, for example `0.1.0-alpha.1` → `0.1.0-alpha.2` → `0.1.0-beta.1` → `0.1.0-rc.1` → `0.1.0`. The numeric suffix is independent for each phase, and a published version is never reused. Breaking changes during `0.x` must be described explicitly; the version number alone does not promise compatibility.
+
+Source versions omit the `v` prefix, while Git tags use `v<version>`, such as `v0.1.0-alpha.1`. Do not call unfinished work a release candidate before it reaches that validation phase.
+
+`VERSION.txt` is the source-version baseline. Update it, the English [CHANGELOG.md](../CHANGELOG.md), every workspace `package.json`, and `package-lock.json` together. The first line of `CHANGELOG.md` must be `# PureTerm`; keep [CHANGELOG_zh.md](../CHANGELOG_zh.md) as the complete Chinese mirror. Then generate the UI files and commit them with the source changes:
 
 ```powershell
+node scripts/convert-changelog.js
+node scripts/convert-changelog.js --sync-version
 npm run release:check
 ```
 
-Record user-visible changes in the English `[Unreleased]` section of [CHANGELOG.md](../CHANGELOG.md) and mirror them in [CHANGELOG_zh.md](../CHANGELOG_zh.md). Keep categories such as `Added`, `Changed`, `Fixed`, and `Security`. `scripts/changelog.mjs` extracts release notes from the English file; the Chinese file is a translation mirror and is not parsed as a release source.
+The first command generates `packages/ui/src/lib/changelog.ts` from the English changelog. The second generates `packages/ui/src/lib/version.ts` from `VERSION.txt`. Check that both generated files contain the source version and that all workspace versions match before committing.
 
-For a release, set every workspace version to the same value, update the lockfile, move `[Unreleased]` into a dated version section, and run:
+Record user-visible changes under `[Unreleased]` using categories such as `Added`, `Changed`, `Fixed`, and `Security`. Before a release, move those entries into a dated version section and create the matching tag only after `npm run verify`, `npm run verify:electron`, and the Windows package acceptance pass:
 
 ```powershell
-npm run release:check -- --version 0.2.0
-npm run release:notes -- --version 0.2.0 --output release-notes.md
+npm run release:check -- --version 0.1.0-alpha.1
+npm run release:notes -- --version 0.1.0-alpha.1 --output release-notes.md
 ```
 
-Push a matching `v<version>` tag only after `npm run verify`, `npm run verify:electron`, and the Windows package acceptance pass. The release workflow builds Windows NSIS, macOS DMG/ZIP, and Linux AppImage artifacts and creates a draft release; it does not publish the draft automatically. See [Desktop Installers and GitHub Releases](desktop-release.md).
+The release workflow builds Windows NSIS, macOS DMG/ZIP, and Linux AppImage artifacts and creates a GitHub draft release; it does not publish the draft automatically. See [Desktop Installers and GitHub Releases](desktop-release.md).
 
 ## Documentation and contribution flow
 

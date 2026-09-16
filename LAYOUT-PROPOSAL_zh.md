@@ -10,7 +10,7 @@
 
 ```text
 pureterm/
-  package.json / package-lock.json / tsconfig.base.json
+  package.json / package-lock.json / VERSION.txt / tsconfig.base.json
   scripts/                         workspace 构建、类型与边界检查
   apps/
     desktop/
@@ -31,7 +31,7 @@ pureterm/
     host/src/                      Host 公共接口、services、plugins、凭据策略
     protocol/src/                  通道、数据、事件与二进制线格式
     transport/src/                 dispatcher、HTTP/WS、载体与就绪报文校验
-    ui/src/                        页面、xterm、文件面板、客户端传输
+    ui/src/                        页面、xterm、文件面板、客户端传输和生成元数据
   docs/
     architecture.md / DEVELOPMENT.md / desktop-release.md
     superpowers/plans/ / specs/   带日期的历史记录

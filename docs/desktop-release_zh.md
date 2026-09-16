@@ -69,7 +69,19 @@ macOS 的两个架构在同一个 job 生成，保留包含两者的更新元数
 
 ## 版本与 CHANGELOG
 
-版本号统一写在根目录和所有 `apps/*`、`packages/*` 的 `package.json` 中。`npm run release:check` 会检查这些版本完全一致，并要求 `CHANGELOG.md` 包含 `[Unreleased]` 区段；该区段有内容时必须按 `Added`、`Changed`、`Fixed`、`Security` 等类别归类。提交新功能时先在 `[Unreleased]` 下记录用户可见变化，发布后可以暂时留空等待下一轮变更。
+PureTerm 目前处于 `0.x` 开发周期，版本格式遵循 [SemVer 2.0.0](https://semver.org/)。当前源码版本为 `0.1.0-alpha.1`；`0.1.0-alpha.N`、`0.1.0-beta.N`、`0.1.0-rc.N` 和 `0.1.0` 表示连续的测试与交付阶段。每个阶段的数字后缀从 `1` 独立递增，已发布版本号不复用，`0.x` 破坏性变更必须写入变更日志。源码版本不带 `v`，Git tag 使用 `v<version>`。
+
+`VERSION.txt` 是源码版本基准。根目录及所有 `apps/*`、`packages/*` 的 `package.json` 和 `package-lock.json` 必须与它一致。`npm run release:check` 会检查版本完全一致，要求 `CHANGELOG.md` 包含 `[Unreleased]` 区段，并拒绝首行不是 `# PureTerm` 或未按 `Added`、`Changed`、`Fixed`、`Security` 等类别归类的非空条目。
+
+更新源码版本、包版本和英文变更日志后，重新生成界面元数据，并将生成文件一起提交：
+
+```powershell
+node scripts/convert-changelog.js
+node scripts/convert-changelog.js --sync-version
+npm run release:check
+```
+
+命令会写入 `packages/ui/src/lib/changelog.ts` 和 `packages/ui/src/lib/version.ts`。中文变更日志继续作为同步的翻译镜像维护。
 
 准备发布时，把 `[Unreleased]` 内容移到带日期的 `## [x.y.z] - YYYY-MM-DD` 区段，更新底部比较链接，再运行：
 

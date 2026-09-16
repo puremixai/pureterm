@@ -52,6 +52,7 @@ npm run start:desktop
 | `packages/host/` | Cordis Host、SSH/SFTP 服务、主机存储、指纹和凭据接口 |
 | `packages/transport/` | dispatcher、HTTP/WebSocket 载体、客户端身份和就绪校验 |
 | `packages/ui/` | 浏览器 Cordis Client、终端、主机列表、SFTP 面板和浏览器选钥 |
+| `VERSION.txt` | 所有 workspace 共用的源码版本基准 |
 | `scripts/` | 根 workspace 构建、类型、边界、staging、Windows 安装包和 changelog 检查 |
 | `docs/` | 当前架构/发布/开发文档及带日期的历史记录 |
 | `.github/workflows/` | Desktop 跨平台构建和 GitHub Releases draft 流程 |
@@ -153,22 +154,39 @@ staging 可以删除并重新生成，不得提交。安装包说明记录自包
 
 ## 版本与变更日志
 
-根包和所有 workspace 包使用同一个语义化版本。使用以下命令检查一致性：
+PureTerm 目前处于 `0.x` 开发周期。版本格式和排序遵循 [SemVer 2.0.0](https://semver.org/)。当前源码版本为 `0.1.0-alpha.1`，记录在 [VERSION.txt](../VERSION.txt)。功能、配置和数据结构仍可能调整，兼容性变化必须记录在变更日志中。
+
+| 版本形式 | 用途 |
+| --- | --- |
+| `0.1.0-alpha.N` | 早期测试，功能仍在开发；每个目标版本的 `N` 从 `1` 开始。 |
+| `0.1.0-beta.N` | 功能基本完整，集中进行兼容性测试和问题修复。 |
+| `0.1.0-rc.N` | 阶段版本发布前的候选版本验证。 |
+| `0.1.0` | 功能与验证完成后的阶段版本，仍属于 `0.x` 开发周期。 |
+| `0.2.0-alpha.1` → `0.2.0` | 下一阶段的开发与交付，沿用相同的推进方式。 |
+| `1.0.0` | 完成核心行为、部署、升级迁移和兼容性约定验证后的稳定里程碑。 |
+
+同一目标版本按阶段推进，例如 `0.1.0-alpha.1` → `0.1.0-alpha.2` → `0.1.0-beta.1` → `0.1.0-rc.1` → `0.1.0`。每个测试阶段的数字后缀独立递增，已发布版本号不复用。`0.x` 阶段的破坏性变更必须明确说明，不能仅从版本号推断兼容性。
+
+源码版本不带 `v` 前缀，Git tag 使用 `v<version>`，例如 `v0.1.0-alpha.1`。功能尚未进入候选验证阶段时，不要提前标为 release candidate。
+
+`VERSION.txt` 是源码版本基准。更新它、英文 [CHANGELOG.md](../CHANGELOG.md)、所有 workspace 的 `package.json` 及 `package-lock.json` 时必须保持一致。`CHANGELOG.md` 首行必须为 `# PureTerm`；[CHANGELOG_zh.md](../CHANGELOG_zh.md) 保留完整中文镜像。然后生成界面文件，并与源码变更一起提交：
 
 ```powershell
+node scripts/convert-changelog.js
+node scripts/convert-changelog.js --sync-version
 npm run release:check
 ```
 
-用户可见变化先记录在英文 [CHANGELOG.md](../CHANGELOG.md) 的 `[Unreleased]` 区段，并同步到 [CHANGELOG_zh.md](../CHANGELOG_zh.md)。使用 `Added`、`Changed`、`Fixed` 和 `Security` 等分类。`scripts/changelog.mjs` 只从英文文件提取发布说明，中文文件是翻译镜像，不作为发布源。
+第一条命令从英文变更日志生成 `packages/ui/src/lib/changelog.ts`，第二条从 `VERSION.txt` 生成 `packages/ui/src/lib/version.ts`。提交前检查两个生成文件中的源码版本，并确认所有 workspace 版本一致。
 
-发布时，将所有 workspace 版本设为相同值，更新锁文件，把 `[Unreleased]` 移到带日期的版本区段，然后运行：
+用户可见变化先在 `[Unreleased]` 下记录，使用 `Added`、`Changed`、`Fixed`、`Security` 等分类。发布前将条目移到带日期的版本区段；只有 `npm run verify`、`npm run verify:electron` 和 Windows 安装包验收通过后，才创建对应 tag：
 
 ```powershell
-npm run release:check -- --version 0.2.0
-npm run release:notes -- --version 0.2.0 --output release-notes.md
+npm run release:check -- --version 0.1.0-alpha.1
+npm run release:notes -- --version 0.1.0-alpha.1 --output release-notes.md
 ```
 
-只有 `npm run verify`、`npm run verify:electron` 和 Windows 安装包验收通过后，才推送对应的 `v<version>` tag。发布 workflow 构建 Windows NSIS、macOS DMG/ZIP 和 Linux AppImage，并创建 draft；不会自动公开。详见[Desktop 安装包与 GitHub Releases](desktop-release_zh.md)。
+发布 workflow 构建 Windows NSIS、macOS DMG/ZIP 和 Linux AppImage，并创建 GitHub draft release；不会自动公开。详见[Desktop 安装包与 GitHub Releases](desktop-release_zh.md)。
 
 ## 文档与协作流程
 

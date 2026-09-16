@@ -6,6 +6,8 @@
 
 本项目采用 [MIT License](LICENSE)。
 
+当前源码版本为 `0.1.0-alpha.1`，基准文件是 [VERSION.txt](VERSION.txt)，版本维护规则见[开发说明](docs/DEVELOPMENT_zh.md)。
+
 两个入口复用 Host、协议、传输适配和 Cordis Client。Desktop 由 Electron 启动独立 Node Host 子进程；独立 Web 在普通 Node 进程中运行，无需启动 Electron。
 
 ## 开始使用
@@ -48,6 +50,7 @@ npm run verify:electron
 | `packages/protocol/` | 通信协议与公共数据结构 |
 | `packages/transport/` | 请求分派、HTTP/WebSocket 与载体组合 |
 | `packages/ui/` | 两个入口共用的终端、文件面板和浏览器传输 |
+| [VERSION.txt](VERSION.txt) | 所有 workspace 和发布 tag 使用的源码版本基准 |
 | [docs/architecture_zh.md](docs/architecture_zh.md) | 当前架构、生命周期与数据边界 |
 | [docs/DEVELOPMENT_zh.md](docs/DEVELOPMENT_zh.md) | 本机开发、验证和协作流程 |
 | [LAYOUT-PROPOSAL_zh.md](LAYOUT-PROPOSAL_zh.md) | 现行目录与共享模块决策 |

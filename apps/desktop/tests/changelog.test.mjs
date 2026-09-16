@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseChangelog, releaseNotes, validateProject } from '../../../scripts/changelog.mjs'
+import { parseChangelog, readSourceVersion, releaseNotes, validateProject } from '../../../scripts/changelog.mjs'
 
 test('the repository keeps workspace versions and a dated release section in sync', () => {
   const result = validateProject()
-  assert.equal(result.version, '0.1.0')
+  assert.equal(result.version, '0.1.0-alpha.1')
+  assert.equal(readSourceVersion(), '0.1.0-alpha.1')
   assert.equal(result.versions.length, 7)
   assert.equal(result.entry.version, 'Unreleased')
   assert.match(result.entry.body, /Keep this section updated/)
-  assert.equal(result.changelog.entries.find(entry => entry.version === '0.1.0')?.date, '2026-09-16')
+  assert.equal(result.changelog.entries.find(entry => entry.version === '0.1.0-alpha.1')?.date, '2026-09-16')
 })
 
 test('release notes are extracted from the matching changelog section', () => {
-  const notes = releaseNotes(undefined, '0.1.0')
-  assert.match(notes, /^# PureTerm 0\.1\.0/m)
+  const notes = releaseNotes(undefined, '0.1.0-alpha.1')
+  assert.match(notes, /^# PureTerm 0\.1\.0-alpha\.1/m)
   assert.match(notes, /Desktop installers and update metadata/)
   assert.doesNotMatch(notes, /Keep this section updated/)
   assert.doesNotMatch(notes, /中文版本/)

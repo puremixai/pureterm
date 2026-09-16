@@ -15,7 +15,7 @@ English is the default reading language for every maintained Markdown document. 
 - Current entry points are `apps/desktop/` and `apps/web/`; shared capabilities are in `packages/host/`, `packages/protocol/`, `packages/transport/`, and `packages/ui/`.
 - Electron starts an independent Node Host child process for Desktop; standalone Web assembles Host in its own ordinary Node process.
 - The root `package-lock.json` is the only lockfile. Run all install, build, and verification commands from the repository root.
-- Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `docs/architecture.md`, `docs/DEVELOPMENT.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`.
+- Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `VERSION.txt`, `docs/architecture.md`, `docs/DEVELOPMENT.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`.
 - Dated files under `docs/superpowers/` are historical implementation records and specifications. They may preserve durable criteria, correct advice, and explicitly rejected options, but do not treat them as current commands, paths, branches, or test results. Removed archive, review, and screenshot research material is not a current source.
 - Screenshot and mouse/keyboard drivers are not product runtime code or verification entry points. Do not reintroduce the deleted `tools/gui/` directory or related research into build, test, or release flows.
 
@@ -28,6 +28,7 @@ packages/host/      Cordis Host, SSH/SFTP, host storage, and credential interfac
 packages/protocol/  environment-neutral requests, events, capabilities, and binary protocol
 packages/transport/ dispatcher, HTTP/WebSocket, carriers, and readiness validation
 packages/ui/        Cordis Client, terminal, host list, SFTP, and browser adapters
+VERSION.txt         source version baseline shared by all workspaces
 scripts/            root workspace build, type, boundary, staging, and release checks
 docs/               current architecture/release docs and dated historical records
 .github/workflows/  three-platform Desktop build and GitHub Releases draft workflow
@@ -77,6 +78,8 @@ npm run dist:desktop -- --win --x64
 npm run verify:package:windows
 npm run release:check
 npm run release:notes -- --version <version> --output release-notes.md
+npm run version:generate
+npm run version:sync
 ```
 
 `verify` covers build, types, dependency boundaries, Host/protocol/credential, UI, standalone Web, and local SSH/SFTP/HTTP/WS tests. `verify:electron` covers Desktop boot, IPC, attached Web, renderer-crash cleanup, update downloads, standalone Node Web, and Client lifecycle. Linux Electron checks run under `xvfb-run` in CI. `verify:package:windows` is limited to an isolated Windows install/uninstall flow.
@@ -100,7 +103,9 @@ npm run release:notes -- --version <version> --output release-notes.md
 ## Documentation, versions, and releases
 
 - Update affected READMEs, architecture documentation, public API comments, and test notes with code changes. Keep current facts in one authoritative location; do not rewrite historical reviews as current status.
+- `VERSION.txt` is the source-version baseline. The root and every workspace `package.json` plus `package-lock.json` must match it. Source versions omit `v`; release tags use `v<version>`. The current development version is `0.1.0-alpha.1`; never reuse a published version, and record `0.x` breaking changes explicitly.
 - Record user-visible changes under `[Unreleased]` in `CHANGELOG.md`, categorized as `Added`, `Changed`, `Fixed`, or `Security`.
+- `CHANGELOG.md` must start with `# PureTerm`. After updating the source version and changelog, run `node scripts/convert-changelog.js` and `node scripts/convert-changelog.js --sync-version`; commit the generated `packages/ui/src/lib/changelog.ts` and `packages/ui/src/lib/version.ts`.
 - The root and every workspace version must match. Before a release run `npm run release:check -- --version <version>`, `npm run verify`, and `npm run verify:electron`.
 - GitHub Releases drafts are created only by CI for a `v<version>` tag. Ordinary branches and local commands do not publish, upload tokens, or modify a public release.
 - Build installers from independent staging; do not depend on workspace symlinks or the launch cwd. Treat signing, notarization, and cross-platform runtime results as results from the corresponding CI or target machine.

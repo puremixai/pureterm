@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { readdirSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+export const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const VERSION_HEADING = /^## \[([^\]]+)\](?: - (\d{4}-\d{2}-\d{2}))?\s*$/
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -30,6 +30,30 @@ export function readProjectVersions(projectRoot = root) {
     const manifest = readJson(path)
     return { path, name: manifest.name, version: manifest.version }
   })
+}
+
+function readLockfileVersions(projectRoot, versions) {
+  const path = join(projectRoot, 'package-lock.json')
+  if (!existsSync(path)) fail(`Missing lockfile: ${path}`)
+  const lockfile = readJson(path)
+  for (const item of versions) {
+    const packagePath = relative(projectRoot, item.path)
+    const lockKey = packagePath === 'package.json'
+      ? ''
+      : packagePath.slice(0, -'package.json'.length).replace(/[\\/]+$/, '').split(sep).join('/')
+    const lockVersion = lockfile.packages?.[lockKey]?.version
+    if (lockVersion !== item.version) {
+      fail(`package-lock.json ${lockKey || '(root)'} version ${lockVersion ?? '(missing)'} must match ${item.version}.`)
+    }
+  }
+}
+
+export function readSourceVersion(projectRoot = root) {
+  const path = join(projectRoot, 'VERSION.txt')
+  if (!existsSync(path)) fail(`Missing version file: ${path}`)
+  const version = readFileSync(path, 'utf8').replace(/^\uFEFF/, '').trim()
+  if (!VERSION_PATTERN.test(version)) fail(`Invalid VERSION.txt value: ${version}`)
+  return version
 }
 
 export function parseChangelog(text) {
@@ -73,14 +97,50 @@ export function validateProject(projectRoot = root, releaseVersion) {
   if (uniqueVersions.size !== 1) {
     fail(`Workspace package versions must match: ${versions.map(item => `${item.name}=${item.version}`).join(', ')}`)
   }
+  readLockfileVersions(projectRoot, versions)
   const projectVersion = versions[0]?.version
+  const sourceVersion = readSourceVersion(projectRoot)
+  if (sourceVersion !== projectVersion) {
+    fail(`VERSION.txt (${sourceVersion}) must match workspace version ${projectVersion}.`)
+  }
   const changelog = readChangelog(projectRoot)
+  const changelogText = changelog.text.replace(/^\uFEFF/, '')
+  if (!/^# PureTerm(?:\r?\n|$)/.test(changelogText)) {
+    fail('CHANGELOG.md must start with # PureTerm.')
+  }
   const unreleased = changelog.entries.find(entry => entry.version === 'Unreleased')
   if (!unreleased) {
     fail('CHANGELOG.md must contain an [Unreleased] section.')
   }
   if (unreleased.body && !/^###\s+/m.test(unreleased.body)) {
     fail('CHANGELOG.md [Unreleased] content must be grouped under a category heading.')
+  }
+  const generatedVersionPath = join(projectRoot, 'packages', 'ui', 'src', 'lib', 'version.ts')
+  if (!existsSync(generatedVersionPath)) {
+    fail(`Missing generated version file: ${generatedVersionPath}`)
+  }
+  const generatedVersion = readFileSync(generatedVersionPath, 'utf8').match(/export const VERSION = ["']([^"']+)["'] as const/)?.[1]
+  if (generatedVersion !== projectVersion) {
+    fail(`Generated UI version ${generatedVersion ?? '(missing)'} must match workspace version ${projectVersion}.`)
+  }
+  const generatedChangelogPath = join(projectRoot, 'packages', 'ui', 'src', 'lib', 'changelog.ts')
+  if (!existsSync(generatedChangelogPath)) {
+    fail(`Missing generated changelog file: ${generatedChangelogPath}`)
+  }
+  const generatedChangelog = readFileSync(generatedChangelogPath, 'utf8')
+  const generatedChangelogJson = generatedChangelog.match(/^export const CHANGELOG = ([\s\S]*?) as const\s*$/m)?.[1]
+  if (!generatedChangelogJson) {
+    fail('Generated UI changelog has an invalid format.')
+  }
+  let generatedEntries
+  try {
+    generatedEntries = JSON.parse(generatedChangelogJson)
+  } catch {
+    fail('Generated UI changelog is not valid JSON data.')
+  }
+  const sourceEntries = changelog.entries.map(({ version, date, body }) => ({ version, date, body }))
+  if (JSON.stringify(generatedEntries) !== JSON.stringify(sourceEntries)) {
+    fail('Generated UI changelog is out of date; run node scripts/convert-changelog.js.')
   }
   if (releaseVersion !== undefined) {
     if (!VERSION_PATTERN.test(releaseVersion)) fail(`Invalid release version: ${releaseVersion}`)

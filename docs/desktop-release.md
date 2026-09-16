@@ -69,7 +69,19 @@ Ordinary builds save Actions artifacts only. Before upload, the Windows job inst
 
 ## Versions and CHANGELOG
 
-The root and every `apps/*` and `packages/*` `package.json` carry the same version. `npm run release:check` verifies exact alignment and requires a `[Unreleased]` section in `CHANGELOG.md`; a non-empty section must classify entries under categories such as `Added`, `Changed`, `Fixed`, or `Security`.
+PureTerm is in the `0.x` development cycle and follows [SemVer 2.0.0](https://semver.org/). The current source version is `0.1.0-alpha.1`; `0.1.0-alpha.N`, `0.1.0-beta.N`, `0.1.0-rc.N`, and `0.1.0` describe successive testing and delivery phases. Phase suffixes start at `1` independently, published versions are never reused, and `0.x` breaking changes must be called out in the changelog. Source versions omit `v`; Git tags use `v<version>`.
+
+`VERSION.txt` is the source-version baseline. The root and every `apps/*` and `packages/*` `package.json`, together with `package-lock.json`, must match it. `npm run release:check` verifies exact alignment, requires a `[Unreleased]` section in `CHANGELOG.md`, and rejects a changelog whose first line is not `# PureTerm` or whose non-empty entries are not grouped under categories such as `Added`, `Changed`, `Fixed`, or `Security`.
+
+After updating the source version, packages, and English changelog, regenerate the UI metadata and commit the generated files:
+
+```powershell
+node scripts/convert-changelog.js
+node scripts/convert-changelog.js --sync-version
+npm run release:check
+```
+
+These commands write `packages/ui/src/lib/changelog.ts` and `packages/ui/src/lib/version.ts`. Keep the Chinese changelog in sync as a translation mirror.
 
 Record user-visible changes under `[Unreleased]` before merging a feature. When preparing a release, move those entries to a dated `## [x.y.z] - YYYY-MM-DD` section, update the comparison link at the bottom, and run:
 

@@ -1,4 +1,4 @@
-# Changelog
+# PureTerm
 
 [中文版本](CHANGELOG_zh.md)
 
@@ -12,9 +12,10 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 
 - Make maintained Markdown documentation English-first while retaining complete Chinese translations.
 - Add English-first development guides with paired Chinese translations.
-- Keep this section updated while work is merged after `0.1.0`.
+- Add `VERSION.txt` as the source baseline and generate UI version and changelog metadata.
+- Keep this section updated while work is merged after `0.1.0-alpha.1`.
 
-## [0.1.0] - 2026-09-16
+## [0.1.0-alpha.1] - 2026-09-16
 
 ### Added
 
@@ -29,5 +30,5 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 - Desktop credentials remain protected by the operating system credential store; the Host process accesses them through a private IPC capability.
 - Release builds exclude optional native SSH accelerators and do not contain GitHub credentials.
 
-[Unreleased]: https://github.com/puremixai/pureterm/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/puremixai/pureterm/releases/tag/v0.1.0
+[Unreleased]: https://github.com/puremixai/pureterm/compare/v0.1.0-alpha.1...HEAD
+[0.1.0-alpha.1]: https://github.com/puremixai/pureterm/releases/tag/v0.1.0-alpha.1

@@ -10,7 +10,7 @@ This decision replaces the earlier constraint that everything live in one applic
 
 ```text
 pureterm/
-  package.json / package-lock.json / tsconfig.base.json
+  package.json / package-lock.json / VERSION.txt / tsconfig.base.json
   scripts/                         workspace build, type, and boundary checks
   apps/
     desktop/
@@ -31,7 +31,7 @@ pureterm/
     host/src/                      public Host API, services, plugins, credential policy
     protocol/src/                  channels, data, events, and binary wire format
     transport/src/                 dispatcher, HTTP/WS, carriers, readiness validation
-    ui/src/                        page, xterm, file panel, and client transport
+    ui/src/                        page, xterm, file panel, client transport, generated metadata
   docs/
     architecture.md / DEVELOPMENT.md / desktop-release.md
     superpowers/plans/ / specs/   dated historical records
