@@ -40,6 +40,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Verify changelog and workspace versions
+        run: npm run release:check
       - name: Verify tag and signing prerequisites
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -57,6 +59,9 @@ jobs:
           if ($env:GITHUB_REF_NAME -cne "v$desktopVersion" -or $rootVersion -cne $desktopVersion) {
             throw 'Release tag, root version and Desktop version must match.'
           }
+          $releaseVersion = $env:GITHUB_REF_NAME.Substring(1)
+          node scripts/changelog.mjs --check --version $releaseVersion
+          if ($LASTEXITCODE -ne 0) { throw 'CHANGELOG.md has no valid entry for the release tag.' }
           $required = @()
           if ($IsWindows) { $required = @('WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD') }
           if ($IsMacOS) { $required = @('CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID') }
@@ -118,11 +123,18 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $draft = gh release view $env:RELEASE_TAG --json isDraft --jq .isDraft 2>$null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseExists = $LASTEXITCODE -eq 0
+          if ($releaseExists) {
             if ($draft -ne 'true') { throw 'Refusing to modify a published release.' }
+          }
+          $notes = Join-Path $env:RUNNER_TEMP 'pureterm-release-notes.md'
+          $releaseVersion = $env:RELEASE_TAG.Substring(1)
+          node scripts/changelog.mjs --notes --version $releaseVersion --output $notes
+          if ($LASTEXITCODE -ne 0) { throw 'Could not extract release notes from CHANGELOG.md.' }
+          if ($releaseExists) {
+            gh release edit $env:RELEASE_TAG --title "PureTerm $env:RELEASE_TAG" --notes-file $notes
+            if ($LASTEXITCODE -ne 0) { throw 'Could not refresh draft release notes.' }
           } else {
-            $notes = Join-Path $env:RUNNER_TEMP 'pureterm-release-notes.md'
-            "Desktop installers and update metadata. Validate the artifacts before publishing this draft." | Set-Content -LiteralPath $notes -Encoding utf8
             gh release create $env:RELEASE_TAG --draft --verify-tag --title "PureTerm $env:RELEASE_TAG" --notes-file $notes
             if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release.' }
           }

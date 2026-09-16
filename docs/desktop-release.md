@@ -12,6 +12,7 @@ npm run verify
 npm run verify:electron
 npm run dist:desktop -- --win --x64
 npm run verify:package:windows
+npm run release:check
 ```
 
 `dist:desktop` 构建 Desktop、准备 `.release/app`，随后调用 `apps/desktop/electron-builder.cjs`。此命令明确使用 `--publish never`，只生成本机文件。Windows 产物位于 `release/`：
@@ -64,12 +65,26 @@ macOS 的两个架构在同一个 job 生成，保留包含两者的更新元数
 
 普通构建仅保存 Actions artifacts。Windows job 在上传前还会隔离安装、运行并卸载 NSIS 包。只有 tag 触发的完整三平台构建成功，后续 job 才创建或更新 **draft release**，并附加安装包、blockmap 和各平台更新元数据。它拒绝修改已经公开的 release，也不会自动公开 draft。
 
+## 版本与 CHANGELOG
+
+版本号统一写在根目录和所有 `apps/*`、`packages/*` 的 `package.json` 中。`npm run release:check` 会检查这些版本完全一致，并要求 `CHANGELOG.md` 包含 `[Unreleased]` 区段；该区段有内容时必须按 `Added`、`Changed`、`Fixed`、`Security` 等类别归类。提交新功能时先在 `[Unreleased]` 下记录用户可见变化，发布后可以暂时留空等待下一轮变更。
+
+准备发布时，把 `[Unreleased]` 内容移到带日期的 `## [x.y.z] - YYYY-MM-DD` 区段，更新底部比较链接，再运行：
+
+```powershell
+npm run release:check -- --version 0.2.0
+npm run release:notes -- --version 0.2.0 --output release-notes.md
+```
+
+脚本会拒绝版本不一致、缺少日期或缺少对应 CHANGELOG 区段的发布。不要手工复制发布说明；tag CI 会从同一个区段提取 GitHub draft Release notes。版本 tag 必须是 `v<version>`，例如 `v0.2.0`。
+
 发布步骤：
 
-1. 将根 `package.json` 和 `apps/desktop/package.json` 的版本设为相同的新版本，更新 lock 并完成验证。
-2. 推送与版本对应的 `v<version>` tag，例如版本 `0.2.0` 对应 `v0.2.0`。CI 会检查三者是否匹配。
-3. 下载 draft 中的安装包，在目标平台验收启动、SSH、SFTP、Host 退出及更新行为。
-4. 确认所有附件和签名后公开 draft。已安装客户端此时才能发现该版本。
+1. 将所有 workspace `package.json` 的版本设为相同的新版本，更新 lock，并把 `[Unreleased]` 移到对应的日期版本区段。
+2. 运行 `npm run release:check -- --version <version>`、`npm run verify` 和 `npm run verify:electron`。
+3. 推送与版本对应的 `v<version>` tag。CI 会重新检查版本和 CHANGELOG，并从对应区段生成 draft notes。
+4. 下载 draft 中的安装包，在目标平台验收启动、SSH、SFTP、Host 退出及更新行为。
+5. 确认所有附件、CHANGELOG 内容和签名后公开 draft。已安装客户端此时才能发现该版本。
 
 发布 job 使用 GitHub 自动提供的 `GITHUB_TOKEN`，仅此 job 获得 `contents:write`。token 不进入应用包。重新运行同一 tag 只覆盖 draft 附件；已发布版本的修复使用更高版本号。
 
