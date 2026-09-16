@@ -33,7 +33,7 @@ pureterm/
     transport/src/                 dispatcher, HTTP/WS, carriers, readiness validation
     ui/src/                        page, xterm, file panel, and client transport
   docs/
-    architecture.md / desktop-release.md
+    architecture.md / DEVELOPMENT.md / desktop-release.md
     superpowers/plans/ / specs/   dated historical records
 ```
 

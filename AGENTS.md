@@ -15,7 +15,7 @@ English is the default reading language for every maintained Markdown document. 
 - Current entry points are `apps/desktop/` and `apps/web/`; shared capabilities are in `packages/host/`, `packages/protocol/`, `packages/transport/`, and `packages/ui/`.
 - Electron starts an independent Node Host child process for Desktop; standalone Web assembles Host in its own ordinary Node process.
 - The root `package-lock.json` is the only lockfile. Run all install, build, and verification commands from the repository root.
-- Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `docs/architecture.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`.
+- Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `docs/architecture.md`, `docs/DEVELOPMENT.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`.
 - Dated files under `docs/superpowers/` are historical implementation records and specifications. They may preserve durable criteria, correct advice, and explicitly rejected options, but do not treat them as current commands, paths, branches, or test results. Removed archive, review, and screenshot research material is not a current source.
 - Screenshot and mouse/keyboard drivers are not product runtime code or verification entry points. Do not reintroduce the deleted `tools/gui/` directory or related research into build, test, or release flows.
 

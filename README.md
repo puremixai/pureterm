@@ -49,6 +49,7 @@ Tests use the repository’s local SSH/SFTP fixtures and temporary data director
 | `packages/transport/` | Request dispatch, HTTP/WebSocket, and carrier composition |
 | `packages/ui/` | Shared terminal, file panel, and browser transport for both entry points |
 | [docs/architecture.md](docs/architecture.md) | Current architecture, lifecycle, and data boundaries |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development, verification, and contribution workflow |
 | [LAYOUT-PROPOSAL.md](LAYOUT-PROPOSAL.md) | Current directory and shared-module decisions |
 
 The repository uses npm workspaces. Shared packages are referenced through public exports, and the root `package-lock.json` is the only installation lockfile. Versions and user-visible changes are recorded in [CHANGELOG.md](CHANGELOG.md); `npm run release:check` validates version alignment and release entries in CI. `npm run dist:desktop -- --win --x64` creates a Windows installer; CI also builds macOS/Linux artifacts. Packaged builds check GitHub Releases for updates and install them only after the user confirms a restart. Signing, publishing, and local acceptance are documented in the [release guide](docs/desktop-release.md).

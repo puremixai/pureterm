@@ -15,7 +15,7 @@ PureTerm 是基于 Cordis、ssh2 和 xterm.js 的开源 SSH/SFTP 客户端，提
 - 当前入口是 `apps/desktop/` 和 `apps/web/`；共享能力位于 `packages/host/`、`packages/protocol/`、`packages/transport/` 和 `packages/ui/`。
 - Desktop 由 Electron 主进程启动独立 Node Host 子进程；独立 Web 在自己的普通 Node 进程内装配 Host。
 - 根 `package-lock.json` 是唯一锁文件。所有安装、构建和验证命令从仓库根运行。
-- 当前状态以根 `README.md`、`LAYOUT-PROPOSAL.md`、`docs/architecture.md`、`docs/desktop-release.md`、应用 README 和 `CHANGELOG.md` 为准。
+- 当前状态以根 `README_zh.md`、`LAYOUT-PROPOSAL_zh.md`、`docs/architecture_zh.md`、`docs/DEVELOPMENT_zh.md`、`docs/desktop-release_zh.md`、应用 README 和 `CHANGELOG_zh.md` 为准。
 - `docs/superpowers/` 中带日期的文件是历史实施记录和规格。它们可以保留判据、正确建议和明确不采纳的方案，但不得当作当前命令、路径、分支或测试结果；已移除的旧归档、评审和截图研究资料不作为当前文档来源。
 - 截图和鼠标键盘驱动不属于产品运行时代码或验证入口；已删除的 `tools/gui/` 与相关研究资料不要重新加入构建、测试或发布流程。
 

@@ -33,7 +33,7 @@ pureterm/
     transport/src/                 dispatcher、HTTP/WS、载体与就绪报文校验
     ui/src/                        页面、xterm、文件面板、客户端传输
   docs/
-    architecture.md / desktop-release.md
+    architecture.md / DEVELOPMENT.md / desktop-release.md
     superpowers/plans/ / specs/   带日期的历史记录
 ```
 

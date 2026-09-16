@@ -11,6 +11,7 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 ### Changed
 
 - Make maintained Markdown documentation English-first while retaining complete Chinese translations.
+- Add English-first development guides with paired Chinese translations.
 - Keep this section updated while work is merged after `0.1.0`.
 
 ## [0.1.0] - 2026-09-16

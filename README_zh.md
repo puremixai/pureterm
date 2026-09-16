@@ -49,6 +49,7 @@ npm run verify:electron
 | `packages/transport/` | 请求分派、HTTP/WebSocket 与载体组合 |
 | `packages/ui/` | 两个入口共用的终端、文件面板和浏览器传输 |
 | [docs/architecture_zh.md](docs/architecture_zh.md) | 当前架构、生命周期与数据边界 |
+| [docs/DEVELOPMENT_zh.md](docs/DEVELOPMENT_zh.md) | 本机开发、验证和协作流程 |
 | [LAYOUT-PROPOSAL_zh.md](LAYOUT-PROPOSAL_zh.md) | 现行目录与共享模块决策 |
 
 项目使用 npm workspaces，共享包通过公开导出引用，根 `package-lock.json` 是唯一安装锁文件。版本和用户可见变化记录在 [CHANGELOG_zh.md](CHANGELOG_zh.md)，`npm run release:check` 会在 CI 中校验版本一致性和发布条目。`npm run dist:desktop -- --win --x64` 生成 Windows 安装包；CI 另提供 macOS/Linux 构建。打包版通过 GitHub Releases 检查更新，下载后由用户确认重启安装。签名、发布及本机验收见[发布说明](docs/desktop-release_zh.md)。
