@@ -1,5 +1,120 @@
 # AGENTS.md
 
+PureTerm is an open-source SSH/SFTP client built with Cordis, ssh2, and xterm.js. It has two local entry points: Electron Desktop and standalone local Web. SSH is always initiated by the user’s computer; local Web binds only to loopback and provides no public service, user accounts, tenant isolation, or remote-control tunnel.
+
+These instructions apply to the whole repository. Before changing `packages/`, `apps/`, or root scripts, read the [architecture](docs/architecture.md) and [layout decision](LAYOUT-PROPOSAL.md). Before changing release behavior, read the [Desktop release guide](docs/desktop-release.md). The [deepseek-harness AGENTS.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/AGENTS.md) is a reference for upstream collaboration practices; this file defines PureTerm’s actual boundaries.
+
+## Documentation language
+
+English is the default reading language for every maintained Markdown document. Keep a complete Chinese translation in the same file, below the English content (normally inside a collapsible `中文版本` section). Update both language sections when behavior, commands, paths, or limits change. Code blocks, identifiers, links, and version numbers must remain equivalent. The standard MIT `LICENSE` text remains the canonical legal text in English.
+
+## Current facts and historical material
+
+- Current entry points are `apps/desktop/` and `apps/web/`; shared capabilities are in `packages/host/`, `packages/protocol/`, `packages/transport/`, and `packages/ui/`.
+- Electron starts an independent Node Host child process for Desktop; standalone Web assembles Host in its own ordinary Node process.
+- The root `package-lock.json` is the only lockfile. Run all install, build, and verification commands from the repository root.
+- Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `docs/architecture.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`.
+- Dated files under `docs/superpowers/` are historical implementation records and specifications. They may preserve durable criteria, correct advice, and explicitly rejected options, but do not treat them as current commands, paths, branches, or test results. Removed archive, review, and screenshot research material is not a current source.
+- Screenshot and mouse/keyboard drivers are not product runtime code or verification entry points. Do not reintroduce the deleted `tools/gui/` directory or related research into build, test, or release flows.
+
+## Repository layout
+
+```text
+apps/desktop/       Electron shell, runtime, Host child entry, carriers, and Desktop tests
+apps/web/           standalone local Web Node entry, server, and tests
+packages/host/      Cordis Host, SSH/SFTP, host storage, and credential interfaces
+packages/protocol/  environment-neutral requests, events, capabilities, and binary protocol
+packages/transport/ dispatcher, HTTP/WebSocket, carriers, and readiness validation
+packages/ui/        Cordis Client, terminal, host list, SFTP, and browser adapters
+scripts/            root workspace build, type, boundary, staging, and release checks
+docs/               current architecture/release docs and dated historical records
+.github/workflows/  three-platform Desktop build and GitHub Releases draft workflow
+```
+
+Organize directories by entry point and capability. Do not copy deepseek-harness’s scale by adding nested package groups, Agents, dynamic npm plugins, or a multi-tenant model. A new package must have an independent responsibility, consumers, and a verification boundary.
+
+## Dependencies and boundaries
+
+- `@pureterm/protocol` has no dependency on local packages, Electron, Node, or the UI.
+- `@pureterm/host` does not depend on Electron, the UI, or application entry points; its public API is exported from the package entry.
+- `@pureterm/ui` targets browsers only and cannot import Node, Electron, or Host; the page uses a static Cordis Client plugin composition.
+- `@pureterm/transport` dispatches through the public Host API and cannot read `Host.internals`.
+- Electron APIs may enter only Desktop `electron/app/`, `electron/carriers/`, preload, and diagnostic adapters; `electron/runtime/` and `electron/host/` have no Electron import.
+- Cross-workspace references use public package exports; relative source imports are for modules inside one package.
+- Keep source checks separate from artifact checks. Tests that require `dist/` must build first so stale artifacts cannot hide source errors.
+- A protocol or public-type change in a shared package updates every consumer, test, document, and `CHANGELOG.md`; changing only the provider is incomplete.
+
+## Runtime invariants
+
+- The Desktop Host child process performs a versioned private RPC handshake. On startup failure, window close, renderer crash, update, or exit, the parent waits for Host cleanup and terminates only after the timeout.
+- Parent/child IPC uses serialization that preserves `Uint8Array`; terminal and SFTP bytes must not be converted to strings in the transport layer.
+- Client, carriers, and Host expose explicit `dispose` paths. Page remounts, WebSocket disconnects, and unexpected Host exits must not leave sessions, listeners, or timers behind.
+- Standalone Web binds only to `127.0.0.1`, uses a startup token and session cookie, and validates Origin/Host; do not add a public listening option.
+- Desktop credentials use an operating-system encryption provider. Web stores host metadata and trusted fingerprints only, never passwords, passphrases, private-key content, or private-key paths, and uses a data directory separate from Desktop.
+
+## Commands
+
+The environment requires Node.js 24 or newer and npm. Use PowerShell on Windows; documents and new text are UTF-8.
+
+```powershell
+npm ci
+npm run start:web
+npm run start:desktop
+
+npm run build
+npm run build:web
+npm run build:desktop
+npm run typecheck
+npm run check:boundaries
+npm run test:unit
+npm run verify
+npm run verify:electron
+
+npm run stage:desktop
+npm run dist:desktop -- --win --x64
+npm run verify:package:windows
+npm run release:check
+npm run release:notes -- --version <version> --output release-notes.md
+```
+
+`verify` covers build, types, dependency boundaries, Host/protocol/credential, UI, standalone Web, and local SSH/SFTP/HTTP/WS tests. `verify:electron` covers Desktop boot, IPC, attached Web, renderer-crash cleanup, update downloads, standalone Node Web, and Client lifecycle. Linux Electron checks run under `xvfb-run` in CI. `verify:package:windows` is limited to an isolated Windows install/uninstall flow.
+
+## Test and change verification
+
+- Run the smallest sufficient checks for the change: focused Node tests for protocol/Host/UI logic; `npm run verify:electron` for Electron carriers, processes, updates, or resource paths; and `npm run verify:package:windows` for packaging or staging changes.
+- Before merging code, dependency-boundary, or build-script changes, run `npm run verify`. Documentation-only changes must at least run `npm run release:check`, the Markdown link check, and `git diff --check`.
+- Report the commands and results that actually ran. A recognized environment limitation with exit code 2 is not a passing test; process existence, old `dist/`, and historical pass counts are not success signals.
+- Tests use repository fixtures, random loopback ports, and temporary data directories. They must not connect to a user’s remote host or overwrite user SSH data.
+- Tests describe behavior and failure conditions. When old behavior changes, update the relevant tests and explain compatibility impact in the PR.
+- Do not repeat the full suite by default. CI owns the platform matrix; expand local verification for cross-repository changes, diagnostic CI changes, or an explicit user request.
+
+## Secrets and local data
+
+- Never commit passwords, private keys, tokens, certificates, `.env` files, or real host records. Release signing reads only GitHub Actions secrets or temporary local environment variables.
+- `SSH_CORDIS_DATA_DIR`, `SSH_CORDIS_WEB_DATA_DIR`, and test temporary directories must not point to existing production data. Desktop and standalone Web must never write the same JSON store concurrently.
+- Web file selection sends only private-key content read by the current page; never treat a browser-provided filename as a local absolute path.
+- Failure paths must clean up connections, listeners, temporary directories, and child processes. Do not weaken loopback or token checks to make a test pass.
+
+## Documentation, versions, and releases
+
+- Update affected READMEs, architecture documentation, public API comments, and test notes with code changes. Keep current facts in one authoritative location; do not rewrite historical reviews as current status.
+- Record user-visible changes under `[Unreleased]` in `CHANGELOG.md`, categorized as `Added`, `Changed`, `Fixed`, or `Security`.
+- The root and every workspace version must match. Before a release run `npm run release:check -- --version <version>`, `npm run verify`, and `npm run verify:electron`.
+- GitHub Releases drafts are created only by CI for a `v<version>` tag. Ordinary branches and local commands do not publish, upload tokens, or modify a public release.
+- Build installers from independent staging; do not depend on workspace symlinks or the launch cwd. Treat signing, notarization, and cross-platform runtime results as results from the corresponding CI or target machine.
+
+## Git and collaboration
+
+- Create focused branches from `main`; keep one reviewable concern per commit where practical. Never commit `dist/`, `.release/`, `release/`, temporary data, or local screenshots.
+- Before committing, run `git diff --check` and the verification commands appropriate to the change. PR descriptions state the problem, behavior change, verification, and known limits.
+- Do not rewrite branches used by others and do not use bare `--force`; if history must be rewritten, use `--force-with-lease` after checking the remote.
+- Before merging, confirm the worktree has no unexplained changes, versions and CHANGELOG are synchronized, and all required CI checks have passed.
+
+<details>
+<summary>中文版本</summary>
+
+# AGENTS.md
+
 PureTerm 是基于 Cordis、ssh2 和 xterm.js 的开源 SSH/SFTP 客户端，提供 Electron Desktop 和独立本机 Web 两个入口。SSH 始终由用户电脑发起；本机 Web 只监听回环地址，不提供公网服务、用户账号、租户隔离或远程控制。
 
 本文件适用于整个仓库。修改 `packages/`、`apps/` 或根目录脚本前，先阅读 [架构说明](docs/architecture.md) 和 [目录决策](LAYOUT-PROPOSAL.md)。修改发布流程前，阅读 [Desktop 发布说明](docs/desktop-release.md)。上游协作规则参考 [deepseek-harness 的 AGENTS.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/AGENTS.md)，但本文件以 PureTerm 的实际边界为准。
@@ -105,3 +220,5 @@ npm run release:notes -- --version <version> --output release-notes.md
 - 提交前检查 `git diff --check` 和与改动面匹配的验证命令。PR 描述说明问题、行为变化、验证结果和已知限制。
 - 不改写其他人正在使用的分支，不使用裸 `--force`；确需重写时使用 `--force-with-lease` 并先确认远端没有新提交。
 - 合并前确认工作区没有未说明的修改，版本和 CHANGELOG 已同步，CI 所需的检查全部通过。
+
+</details>

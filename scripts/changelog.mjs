@@ -33,7 +33,8 @@ export function readProjectVersions(projectRoot = root) {
 }
 
 export function parseChangelog(text) {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/)
+  const withoutCollapsedTranslations = text.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '')
+  const lines = withoutCollapsedTranslations.replace(/^\uFEFF/, '').split(/\r?\n/)
   const entries = []
   let current
   for (const line of lines) {
