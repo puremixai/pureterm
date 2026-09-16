@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Termius 界面与产品设计分析</title>
+<style>
+  :root{
+    --bg:#14161f; --bg2:#1a1d29; --card:#222638; --card2:#272c40;
+    --line:#31374d; --text:#e9ecf3; --dim:#9aa3bb; --dim2:#6f7896;
+    --accent:#2091f6; --accent2:#4ade80; --warn:#fbbf24;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:980px; margin:0 auto; padding:56px 28px 120px}
+  header.top{border-bottom:1px solid var(--line); padding-bottom:28px; margin-bottom:44px}
+  .kicker{color:var(--accent); font-size:12.5px; letter-spacing:.14em; text-transform:uppercase; font-weight:600}
+  h1{font-size:34px; line-height:1.3; margin:14px 0 10px; letter-spacing:-.01em}
+  .sub{color:var(--dim); font-size:15.5px; max-width:760px}
+  .meta{margin-top:22px; display:flex; flex-wrap:wrap; gap:8px}
+  .chip{background:var(--card); border:1px solid var(--line); border-radius:999px; padding:4px 12px; font-size:12.5px; color:var(--dim)}
+  .chip b{color:var(--text); font-weight:600}
+
+  h2{font-size:23px; margin:56px 0 6px; letter-spacing:-.01em; display:flex; align-items:baseline; gap:12px}
+  h2 .n{color:var(--accent); font:600 15px/1 var(--mono); padding-top:4px}
+  h3{font-size:16.5px; margin:32px 0 8px}
+  h4{font-size:14.5px; margin:22px 0 6px; color:var(--text)}
+  p{margin:11px 0; color:#d5dae7}
+  .lead{font-size:16.5px; color:var(--text)}
+  ul,ol{margin:11px 0; padding-left:22px}
+  li{margin:6px 0; color:#d5dae7}
+  code{font-family:var(--mono); font-size:13px; background:#2b3145; border:1px solid var(--line);
+       border-radius:5px; padding:1px 5px; color:#cfd7ea; white-space:nowrap}
+  a{color:var(--accent); text-decoration:none; border-bottom:1px solid #2091f655}
+
+  .tag{display:inline-block; font:600 10.5px/1 var(--mono); letter-spacing:.06em;
+        padding:3px 7px; border-radius:4px; vertical-align:2px; margin-right:6px; white-space:nowrap}
+  .t-real{background:#0d3b2a; color:#4ade80; border:1px solid #1c6b4c}
+  .t-guess{background:#3d2f0b; color:#fbbf24; border:1px solid #7a5f10}
+
+  figure{margin:26px 0 30px}
+  figure img{width:100%; display:block; border-radius:10px; border:1px solid var(--line); background:#0e1017}
+  figcaption{color:var(--dim2); font-size:13px; margin-top:9px; line-height:1.6}
+  .fig-b{background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:14px}
+
+  table{width:100%; border-collapse:collapse; margin:18px 0; font-size:13.5px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{color:var(--dim); font-weight:600; font-size:12.5px; letter-spacing:.03em; background:#1c2030}
+  tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+  .kbd{font-family:var(--mono); font-size:11.5px; background:#2e3348; border:1px solid var(--line);
+       border-bottom-width:2px; border-radius:5px; padding:2px 6px; color:#cdd6ea; margin-right:3px}
+
+  .box{border-radius:12px; padding:18px 20px; margin:22px 0; border:1px solid var(--line); background:var(--card)}
+  .box.good{border-left:3px solid var(--accent2)}
+  .box.bad{border-left:3px solid #f87171}
+  .box.note{border-left:3px solid var(--accent)}
+  .box h4{margin-top:0}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media (max-width:760px){.grid2{grid-template-columns:1fr}}
+  hr{border:none; border-top:1px solid var(--line); margin:44px 0}
+  .small{font-size:13px; color:var(--dim)}
+  .num{font-family:var(--mono); color:var(--accent2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">产品设计分析 · 实测</div>
+  <h1>Termius：把 SSH 客户端做成「服务器资产与凭据管理系统」</h1>
+  <p class="sub">本文基于对本机正在运行的 Termius 的**直接操作**（逐屏点击、逐屏截图）与对其 Electron 安装包的**解包读取**写成。所有结论标注了证据强度：【实测】= 在界面上看到或在二进制里读到；【推断】= 由间接证据得出的判断。</p>
+  <div class="meta">
+    <span class="chip">版本 <b>9.43.1</b></span>
+    <span class="chip">安装位置 <b>%LOCALAPPDATA%\Programs\Termius</b></span>
+    <span class="chip">app.asar <b>155 MB</b> / 6570 个条目</span>
+    <span class="chip">运行时 <b>8 个进程</b></span>
+    <span class="chip">分析日期 <b>2026-09-16</b></span>
+  </div>
+</header>
+
+<h2><span class="n">01</span>一句话结论</h2>
+<p class="lead">Termius 的界面本质是一个<strong>双态应用</strong>：<strong>管理态</strong>是「列表 + 右侧检查器」的主从结构，管的是<strong>主机、凭据、转发规则、代码片段</strong>这些<em>资产</em>；<strong>会话态</strong>则整个窗口让位给终端，导航栏收起。它真正卖的不是「一个能连 SSH 的终端」，而是<strong>一套团队共享的服务器资产库</strong>——凭据不内联在主机里、而是引用钥匙串条目，Vault 分为 Personal / Team 两级作用域，配合同步、共享、角色权限。这是它和 PuTTY（配置文件散在注册表）、iTerm2（本地偏好）、Tabby（本机配置）的根本分界。</p>
+
+<figure>
+  <img src="{{IMG:01_shell.png}}" alt="Termius 界面外壳">
+  <figcaption><b>图 1</b>　界面外壳（已裁去主机数据）。三层结构一眼可见：<b>标题栏工作区</b>（汉堡菜单 / Vault 药丸 / 同步状态 / 标签页 / 应用内窗口按钮），<b>左侧图标导航</b>，<b>内容区</b>（搜索条 + 工具行 + 列表）。注意工具行右侧的三个视图切换：网格、标签、列表。</figcaption>
+</figure>
+
+<h2><span class="n">02</span>界面结构：三层，各管一件事</h2>
+
+<h3>2.1 一级导航只有六项【实测】</h3>
+<p>左侧导航栏是一列「图标 + 名称」的条目，六项：<b>Hosts</b>（主机）、<b>Keychain</b>（钥匙串）、<b>Port Forwarding</b>（端口转发）、<b>Snippets</b>（代码片段）、<b>Known Hosts</b>（已知主机指纹）、<b>Logs</b>（日志）。</p>
+<p>这六项不是随便凑的，它对应了 SSH 客户端真正需要长期保存的六类东西：<em>连哪儿</em>、<em>用什么身份连</em>、<em>连上之后把什么端口打通</em>、<em>连上之后要敲什么</em>、<em>怎么确认对面没被换掉</em>、<em>连过之后留下什么</em>。把「Known Hosts」提为一等公民而不是埋在设置里，是一个安全取向的选择——TOFU 指纹在多数客户端里是弹一次就忘的。</p>
+
+<div class="grid2">
+  <figure style="margin:0">
+    <div class="fig-b"><img src="{{IMG:02_rail.png}}" alt="左侧导航"></div>
+    <figcaption><b>图 2</b>　一级导航。选中项是圆角药丸高亮。</figcaption>
+  </figure>
+  <figure style="margin:0">
+    <div class="fig-b"><img src="{{IMG:09_vault_menu.png}}" alt="Vault 切换器"></div>
+    <figcaption><b>图 3</b>　左上角的 Vault 切换器只有两级：Personal / Team。Personal 旁的云图标带斜线，表示这个 Vault 未同步。</figcaption>
+  </figure>
+</div>
+
+<h3>2.2 标题栏是「工作区」而非装饰【实测】</h3>
+<p>窗口是自绘标题栏（frameless），里面塞了三组东西：</p>
+<ul>
+  <li><b>作用域切换</b>：Vault 药丸（体+箭头分开点，箭头才展开列表）+ 同步状态图标；</li>
+  <li><b>标签页</b>：<code>+</code> 新建；SFTP 也是一个标签，和终端会话平级；</li>
+  <li><b>窗口按钮</b>：最小化/最大化/关闭由应用自己画（右侧），另有 Update 按钮、通知铃铛、帮助。</li>
+</ul>
+<p>把「标签页」放在标题栏而不是内容区顶部，说明它的定位是<strong>工作区管理</strong>：一个标签就是一个工作上下文，可以是终端、可以是 SFTP、可以是串口。<span class="tag t-real">实测</span>我误触菜单打开过一次「本地终端」，窗口标题随即从 <code>Termius - Hosts</code> 变成 <code>Termius - Local Terminal</code>——<strong>标题跟随当前标签</strong>，且此时左侧六项导航整个消失，内容区只剩标签栏 + 终端。</p>
+
+<div class="box note">
+  <h4>会话态让位：一个明确的心智切分</h4>
+  <p style="margin-bottom:0">进入会话后导航栏收起，是这份界面里我最欣赏的一个决定。它承认了「管理主机」和「在终端里干活」是两件互斥的事：前者需要导航和列表，后者需要每一像素都留给字符。很多客户端（包括不少 Web 终端）做不到这一点，把一个常驻侧栏一直挂在终端旁边。</p>
+</div>
+
+<h3>2.3 工具行随区块变形【实测】</h3>
+<p>内容区顶部那行不是固定工具栏，而是<strong>按当前区块重建</strong>的：</p>
+<table>
+  <thead><tr><th>区块</th><th>主操作</th><th>次操作</th><th>搜索</th></tr></thead>
+  <tbody>
+    <tr><td>Hosts</td><td><code>+ New host ⌄</code></td><td>Terminal · Serial</td><td>常驻输入长条 + Connect 按钮</td></tr>
+    <tr><td>Keychain</td><td><code>+ New key ⌄</code></td><td>Certificate · Windows Hello · FIDO2</td><td>右侧放大镜图标</td></tr>
+    <tr><td>Snippets</td><td><code>+ New snippet ⌄</code></td><td>Shell History</td><td>右侧放大镜图标</td></tr>
+    <tr><td>Port Forwarding</td><td><code>+ New forwarding ⌄</code></td><td>—</td><td>右侧放大镜图标</td></tr>
+  </tbody>
+</table>
+<p>同一个位置始终承担「这个区块能新建什么」，用户不需要为每个区块重新找按钮。而<strong>搜索框的形态也跟着变</strong>：只有 Hosts 是常驻输入条（因为主机多、找主机是高频动作），其余区块退化成右侧一个图标——这是一个成本极低但很见功力的取舍。</p>
+<figure>
+  <img src="{{IMG:05_keychain_toolbar.png}}" alt="Keychain 工具行">
+  <figcaption><b>图 4</b>　Keychain 的工具行（已裁去条目名）。次级按钮直接暴露了它支持的四种凭据形态：证书、<b>Windows Hello</b>、<b>FIDO2</b>。把平台级生物识别与硬件密钥提到工具栏一级，而不是藏在「高级」里。</figcaption>
+</figure>
+
+<h3>2.4 空状态写「用途」而不是「机制」【实测】</h3>
+<figure>
+  <img src="{{IMG:07_pf_empty.png}}" alt="端口转发空状态">
+  <figcaption><b>图 5</b>　端口转发的空状态。标题 <code>Set up port forwarding</code>，副文 <code>Save port forwarding to access databases, web apps, and other services.</code>——它解释的是<em>为什么你需要这个功能（为了访问数据库和 Web 服务）</em>，而不是<em>它是什么（本地/远程/动态转发）</em>。对一个非网络工程师的用户，前者才是能让他点下去的那句话。</figcaption>
+</figure>
+
+<h2><span class="n">03</span>核心对象模型：主机、凭据、金库、工作区</h2>
+<p>界面背后有几个对象，理解了它们就理解了整个产品的骨架。【实测】靠「选中主机 → 右侧检查器 + Show more + 段落级 ⋯」逐层读出。</p>
+
+<h3>3.1 Host 是一个「机器」，可以挂多种接入方式</h3>
+<p>检查器顺序为：<b>Address</b>（地址，左侧是这台机器的图标）→ <b>General</b>（Label / Parent Group / Tags / Backspace）→ <b>Share this host</b> → <b>SSH on｜端口 <code>22</code></b> → <b>Credentials</b> → <b>Show more</b> → <b><code>+ Add Telnet</code></b> → 底部常驻 <b>Connect</b>。</p>
+<p>最有信息量的是最后那个 <code>+ Add Telnet</code>：它说明<strong>「主机」不是「一条 SSH 连接」，而是「一台机器」，下面挂着一张连接方式的清单</strong>。SSH 和 Telnet 是同级的段落，可以叠加。这比「一个配置 = 一次连接」的模型更贴近现实（同一台交换机你可能既想 SSH 又想走串口）。</p>
+
+<h3>3.2 凭据是<em>引用</em>，不是内联【实测】</h3>
+<p>凭据段落里显示的三行是：用户名、<code>Password</code>（占位符，右侧有眼睛图标可显形）、以及一个<strong>钥匙串里的条目名</strong>（形如 <code>&lt;keyname&gt;.pem</code>）——<strong>最后那个是<em>引用</em>，不是密钥内容</strong>。再往下是 <code>+ SSH ID, Certificate, FIDO2</code>，即给同一台机器追加第二条认证路径。</p>
+<div class="box good">
+  <h4>这一条和你们项目的判断完全一致</h4>
+  <p style="margin-bottom:0">你在 <code>ssh-cordis-client</code> 里做的就是这件事：主机元数据（<code>hosts.json</code>）绝不存放任何密文，只存 <code>privateKeyPath</code> 这个<em>路径</em>，真正的密文单独放在 <code>secrets.json</code>，定位是「可以放心备份/同步」。Termius 走的是同一个结构，只是把「路径」换成了「钥匙串条目名」，并且把钥匙串本身做成了一个可视化的管理界面（Keychain 区块，列出每个密钥的名字与类型）。<strong>这说明「主机元数据可同步、秘密不可同步」是这个领域里正确的切分，不是取舍。</strong></p>
+</div>
+
+<h3>3.3 凭据的形态比想象中多【实测 + 实测】</h3>
+<p>Keychain 区块的工具栏直接列出四种：普通密钥、证书、Windows Hello、FIDO2。而包依赖里还能读到更硬的证据：</p>
+<table>
+  <thead><tr><th>依赖</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>@termius/libtermius</code> + <code>libssh2.dll</code></td><td><span class="tag t-real">实测</span>自研 SSH 原生核心，不是 JS 实现</td></tr>
+    <tr><td><code>@termius/libfido2</code></td><td><span class="tag t-real">实测</span>FIDO2 硬件密钥的原生实现</td></tr>
+    <tr><td><code>@termius/keytar</code></td><td><span class="tag t-real">实测</span>密钥交给<em>操作系统钥匙串</em>保管（Windows 凭据管理器 / macOS Keychain）</td></tr>
+    <tr><td><code>@termius/mosh</code></td><td><span class="tag t-real">实测</span>Mosh 协议支持（图标集里也有 <code>mosh</code>）</td></tr>
+    <tr><td><code>@termius/node-pty</code></td><td><span class="tag t-real">实测</span>本地终端用真 PTY</td></tr>
+    <tr><td><code>@termius/serialport-bindings</code></td><td><span class="tag t-real">实测</span>串口支持（界面上的 Serial 按钮）</td></tr>
+    <tr><td><code>@termius/registry-js</code></td><td><span class="tag t-real">实测</span>读 Windows 注册表</td></tr>
+    <tr><td><code>@azure/arm-compute/network/subscriptions</code></td><td><span class="tag t-real">实测</span>云平台集成（图标集里还有 AWS / DigitalOcean）</td></tr>
+  </tbody>
+</table>
+<p>把 <code>registry-js</code> 和图标集里的 <code>putty</code> / <code>secureCrt</code> / <code>mobaXterm</code> 放在一起看，可以推断：<span class="tag t-guess">推断</span>它提供<strong>从 PuTTY（注册表）、SecureCRT、MobaXterm 一键导入既有主机</strong>的能力。这是一个非常聪明的获客设计——迁移成本是换 SSH 客户端的最大阻力，谁先把迁移做成一键，谁就先把人捞过来。</p>
+
+<h3>3.4 Vault 决定「谁能看到」</h3>
+<p>Vault 是资产与凭据的容器，作用域只有两级：Personal 与 Team。【实测】图标集里有 <code>vault</code> / <code>vault.password</code> / <code>vaultWarning</code> / <code>all_vaults</code> / <code>vaults.many</code> / <code>vaults.single</code> / <code>group_shared</code> / <code>no-keys-sharing-icon</code> / <code>role-gradient</code> / <code>owner</code> / <code>guest</code> 这一整族，说明【推断】Vault 之上还有<em>按条目粒度的共享</em>与<em>角色（owner/guest）</em>，并且能单独控制「哪些密钥不参与共享」。检查器里那个蓝色的 <b>Share this host</b> 就是这个体系的入口。</p>
+
+<h3>3.5 其余两个对象的定位很讲究</h3>
+<ul>
+  <li><b>Snippets</b>：可复用的命令片段。界面上显示的是片段<em>正文</em>（例如一条 <code>cd</code> 命令）而不是给它起的名字——对一个「敲命令的人」来说，命令本身辨识度更高。</li>
+  <li><b>Shell History</b>：和 Snippets 并排的独立按钮。<span class="tag t-guess">推断</span>这把「我自己敲过的命令」也当成一种可检索资产，和「我特意存的片段」并列存放。</li>
+</ul>
+<p>另有 <b>Known Hosts</b>（TOFU 指纹独立成栏）和 <b>Logs</b>（会话日志）。你项目里的 <code>known_hosts.json</code> 正对应前者。</p>
+
+<h2><span class="n">04</span>动作与快捷键：键盘是第一等公民</h2>
+<p>我从包里的动作表<strong>完整读出了 20 个动作及其两套平台默认键</strong>（<code>meta+</code> 走 macOS、<code>ctrl+</code> 走 Windows/Linux），并用「设置 → Shortcuts」界面逐条核对过。</p>
+<table>
+  <thead><tr><th>动作</th><th>Windows / Linux</th><th>macOS</th></tr></thead>
+  <tbody>
+    <tr><td>Open Command Palette（命令面板）</td><td><span class="kbd">Ctrl</span><span class="kbd">K</span></td><td><span class="kbd">⌘</span><span class="kbd">K</span></td></tr>
+    <tr><td>Jump To（快速跳转）</td><td><span class="kbd">Ctrl</span><span class="kbd">J</span></td><td><span class="kbd">⌘</span><span class="kbd">J</span></td></tr>
+    <tr><td>New tab</td><td><span class="kbd">Ctrl</span><span class="kbd">T</span></td><td><span class="kbd">⌘</span><span class="kbd">T</span></td></tr>
+    <tr><td>Open Port Forwarding</td><td><span class="kbd">Ctrl</span><span class="kbd">P</span></td><td><span class="kbd">⌘</span><span class="kbd">P</span></td></tr>
+    <tr><td>Open Local Terminal</td><td><span class="kbd">Ctrl</span><span class="kbd">L</span></td><td><span class="kbd">⌘</span><span class="kbd">L</span></td></tr>
+    <tr><td>Open Snippets</td><td><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">S</span></td><td><span class="kbd">⌘</span><span class="kbd">Shift</span><span class="kbd">S</span></td></tr>
+    <tr><td>Open Serial Connection</td><td><span class="kbd">Ctrl</span><span class="kbd">Alt</span><span class="kbd">S</span></td><td><span class="kbd">⌘</span><span class="kbd">⌥</span><span class="kbd">S</span></td></tr>
+    <tr><td>Open Terminal Search</td><td><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">F</span></td><td><span class="kbd">⌘</span><span class="kbd">F</span></td></tr>
+    <tr><td>Show Terminal Side-panel</td><td><span class="kbd">Ctrl</span><span class="kbd">.</span></td><td><span class="kbd">⌘</span><span class="kbd">.</span></td></tr>
+    <tr><td>Save Workspace Template</td><td><span class="kbd">Ctrl</span><span class="kbd">S</span></td><td><span class="kbd">⌘</span><span class="kbd">S</span></td></tr>
+    <tr><td>Toggle Workspace View Mode</td><td><span class="kbd">Ctrl</span><span class="kbd">Alt</span><span class="kbd">M</span></td><td><span class="kbd">⌘</span><span class="kbd">Shift</span><span class="kbd">M</span></td></tr>
+    <tr><td>Switch the Broadcast Mode</td><td><span class="kbd">Ctrl</span><span class="kbd">Alt</span><span class="kbd">B</span></td><td><span class="kbd">⌘</span><span class="kbd">B</span></td></tr>
+    <tr><td>Close Tab</td><td><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">W</span></td><td><span class="kbd">⌘</span><span class="kbd">W</span></td></tr>
+    <tr><td>Next / Previous Tab</td><td><span class="kbd">Alt</span><span class="kbd">→</span> / <span class="kbd">←</span></td><td><span class="kbd">⌘</span><span class="kbd">Shift</span><span class="kbd">]</span> / <span class="kbd">[</span></td></tr>
+    <tr><td>Copy / Paste from Terminal</td><td><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">C</span> / <span class="kbd">V</span></td><td><span class="kbd">⌘</span><span class="kbd">C</span> / <span class="kbd">V</span></td></tr>
+    <tr><td>Select All in Terminal</td><td><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">A</span></td><td><span class="kbd">⌘</span><span class="kbd">A</span></td></tr>
+    <tr><td>Clear Terminal Buffer</td><td colspan="2">（默认无绑定）</td></tr>
+    <tr><td>Open Hosts Page</td><td colspan="2">（默认无绑定）</td></tr>
+  </tbody>
+</table>
+
+<figure>
+  <img src="{{IMG:08_shortcuts.png}}" alt="快捷键设置页">
+  <figcaption><b>图 6</b>　Shortcuts 设置页。左列是<b>键帽芯片</b>而非文本（<code>CTRL</code> <code>ALT</code> <code>+</code> <code>arrows</code>），右列是动作名。顶部 <code>PC hotkeys ⌄</code> 是<em>方案</em>选择器（配置键为 <code>shortcut_scheme</code> / <code>shortcut_schemes</code>）。表格中段出现了 <b>Disabled</b> 分组：动作仍在列，键帽变灰——<em>每个动作可以单独关掉</em>。</figcaption>
+</figure>
+
+<p>这套快捷键系统里藏着三个我认为很值得抄的判断：</p>
+<ol>
+  <li><b>两个「只能绑修饰键」的特殊项</b>：<code>CTRL + [1…9]</code> 切换指定标签、<code>CTRL ALT + 方向键</code> 在 Workspace 面板间移动焦点。它在代码里带 <code>canBeDisabled: false</code> 与 <code>acceptOnlyModKey: true</code>——<em>不允许禁用，也不允许绑组合键，只让你换那个修饰键</em>。这是对「标签/面板切换必须是肌肉记忆」的坚持。</li>
+  <li><b>改键带冲突检测</b>：动作表里有 <code>getConflictingActionName</code>，重绑时能告诉你撞了谁。</li>
+  <li><b>改默认键要写迁移标记</b>：代码里有 <code>isMigratedHotkeysCommandPalette</code>、<code>isMigratedSidepanelToSaveWorkspace</code> 这类标记。<em>说明他们为了给命令面板腾出键位，动过默认值，并且认真处理了老用户的既有配置。</em> 一个改默认快捷键还敢写迁移的产品，是真的把快捷键当契约。</li>
+</ol>
+
+<h2><span class="n">05</span>做得好的地方（可迁移）</h2>
+
+<div class="box good">
+  <h4>1. 检查器，而不是弹窗或新页面</h4>
+  <p>选中主机后，右侧滑出 <b>Host Details</b>，<strong>列表还在，只是从 3 列自适应重排成 2 列</strong>。这比「点开进入详情页（丢失列表上下文）」「弹模态框（丢失视野）」都好。而且检查器底部<strong>常驻 Connect 按钮</strong>——无论面板滚到哪，主操作永远在同一个位置。</p>
+  <p style="margin-bottom:0" class="small">迁移建议：编辑表单做成并排检查器，让列表保持可见；主操作按钮固定在面板底部而不是跟随内容滚动。</p>
+</div>
+
+<div class="box good">
+  <h4>2. 渐进披露（Progressive disclosure）贯彻得很彻底</h4>
+  <p style="margin-bottom:0">一个主机面板里就能看到三层：<em>默认可见</em>（地址、标签、端口、凭据）→ <b>Show more</b>（展开更多段落）→ <em>段落级 <code>⋯</code></b>（SSH 段落自己还有更多选项）。<strong>新手看到的是 6 个字段，老手能找到 60 个。</strong>你项目里的主机表单只有一个平面，这是最容易改、收益最直接的一处。</p>
+</div>
+
+<div class="box good">
+  <h4>3. 把「危险操作」做成独立区块，而不是埋在字段里</h4>
+  <p style="margin-bottom:0"><b>Share this host</b> 单独一行、用蓝色强调、居中、带人形图标——它既有视觉优先级，又和上下文的表单字段明显分离。共享是<em>权限</em>动作，不是<em>属性</em>编辑，UI 上分开了。</p>
+</div>
+
+<div class="box good">
+  <h4>4. 凭据形态丰富，且「同一台机器多条认证路径」是一等公民</h4>
+  <p style="margin-bottom:0">密码 / 密钥 / 证书 / Windows Hello / FIDO2 / SSH ID 并列可选，还能给一台机器叠加多条。<span class="tag t-guess">推断</span>这对「同一台机器不同环境用不同身份」的真实场景（生产用硬件密钥、测试用密码）是直接支持的。</p>
+</div>
+
+<div class="box good">
+  <h4>5. 空状态、次级按钮、搜索框都按区块裁过</h4>
+  <ul style="margin-bottom:0">
+    <li>空状态写「用途」不写「机制」；</li>
+    <li>次级按钮直接暴露该区块的<em>变体</em>（Keychain 的 Certificate / Windows Hello / FIDO2）；</li>
+    <li>只有高频找东西的区块（Hosts）才给常驻搜索条，其余退化为图标。</li>
+  </ul>
+</div>
+
+<h2><span class="n">06</span>我认为不够好的地方</h2>
+
+<div class="box bad">
+  <h4>1. 汉堡菜单是<em>系统原生菜单</em>，和暗色界面严重割裂</h4>
+  <p>这是我在界面上最不适的一处。<span class="tag t-real">实测</span>点击左上角汉堡后弹出的是一个 Windows 经典样式的浅色原生菜单：<b>Vaults <code>Ctrl+1</code></b>、<b>SFTP <code>Ctrl+2</code></b>、<b>Settings <code>Ctrl+逗号</code></b>，然后 New Local Terminal、New Serial Connection、Edit ▸、View ▸、Window ▸、Help ▸、Exit。</p>
+  <p style="margin-bottom:0">问题有三层：<b>(a)</b> 视觉上是两套设计语言的拼接（macOS 上原生菜单是加分项，Windows 上是减分项，同一个决定在两个平台收益相反）；<b>(b)</b> 它把 <code>Ctrl+1/Ctrl+2</code> 这种「标签切换」写进系统菜单，而快捷键设置页里也有一套标签相关快捷键——<em>同一个能力两处定义</em>；<b>(c)</b> 命令行风格的本应用里，一个 2005 年观感的菜单是明显的外来物。<span class="tag t-guess">推断</span>这可能是 Electron <code>Menu.buildFromTemplate</code> 的默认路径，属于「技术债外溢到 UI」。</p>
+</div>
+
+<div class="box bad">
+  <h4>2. Settings 是一个独立窗口，并且长出了第二套导航</h4>
+  <p style="margin-bottom:0">Settings 开在单独窗口（1655×1025），左侧另有一整套导航：Account、SSH ID、Invite People、Terminal、SFTP、Logs、Shortcuts、Theme，再往下是一串外链（Documentation / Request a Feature / Report a Bug / Termius Beta Program / Changelog）。结果是<strong>应用里存在两套并列的导航语义</strong>：主窗口的六项 vs 设置窗口的十三项。尤其 <b>Logs 在两边都出现</b>（一处是会话日志、一处像是应用日志），用户很难预判点哪个才对。把「请求功能 / 报 Bug / Beta 计划」这类社区外链塞进设置导航，也把设置页变成了半个关于页。</p>
+</div>
+
+<div class="box bad">
+  <h4>3. 命令面板不是全局的——它把最该被命令化的动作留在了菜单里</h4>
+  <p style="margin-bottom:0"><span class="tag t-real">实测</span>在主机管理态按 <code>Ctrl+K</code> <strong>没有任何反应</strong>（同一时刻 <code>Ctrl+,</code> 能正常打开设置，所以不是键盘没送达）。也就是说命令面板只活在会话里。可<em>「打开主机管理」「打开设置」「跳到某台主机」</em>恰恰是最适合命令面板的动作——而它们现在都在那个原生菜单和搜索框里。看到一个键位为命令面板预留（还专门写了迁移标记），却不能全局调用，是挺可惜的落差。</p>
+</div>
+
+<div class="box bad">
+  <h4>4. 信息密度偏低，宽屏浪费明显</h4>
+  <p style="margin-bottom:0">我这台是 2560 宽的屏。三列卡片布局下，每张卡片约 515px 宽，却只装了「一个图标 + 主机名 + 两个标签」。第二行那个标签位实际是<em>标签（tags）</em>，用来显示 <code>ssh</code>、<code>ubuntu</code>、<code>root</code> 这类信息——其中 <code>ssh</code> 对每台机器都一样，属于零信息量的重复。真正有价值的状态（最近连接时间、是否在线、上次连接的延迟）全都没有。一个管几十台机器的人，靠的是搜索而不是扫视。</p>
+</div>
+
+<div class="box bad">
+  <h4>5. 选择态过重，且「选中」与「连接」的视觉区分不够</h4>
+  <p style="margin-bottom:0"><span class="tag t-real">实测</span>被选中的卡片是<strong>整块蓝色填充</strong>（实测像素 <code>rgb(35,102,166)</code>），在暗色界面里非常炸眼。而它表达的只是「选中」，不是「已连接」也不是「正在连接」。在一个以暗色为基调的界面里，把最大面积的强调色给一个临时状态，会持续抢走注意力。</p>
+</div>
+
+<h2><span class="n">07</span>对照你的 <code>ssh-cordis-client</code></h2>
+<p>你手上正好有一个自己写的 SSH 客户端，所以下面这张对照表比抽象建议更有用。</p>
+<table>
+  <thead><tr><th>维度</th><th>Termius 9.43.1</th><th>你的 ssh-cordis-client</th><th>评价</th></tr></thead>
+  <tbody>
+    <tr><td>主机元数据与秘密分离</td><td>元数据在配置，秘密交系统钥匙串（<code>@termius/keytar</code>），凭据以<em>条目名</em>被引用</td><td><code>hosts.json</code> 不含密文；<code>secrets.json</code> 存 safeStorage 密文；主机只记 <code>privateKeyPath</code></td><td><b>结构同构</b>。你的判断是对的，且你的 safeStorage 方案少一个外部依赖</td></tr>
+    <tr><td>TOFU 指纹</td><td>Known Hosts 提为一等公民（独立导航项）</td><td><code>known_hosts.json</code>，独立文件</td><td>数据层一致；你的<em>UI 还没接</em>（<code>forgetHostKey()</code> 未接线），这是可以补的一小块</td></tr>
+    <tr><td>SSH 实现</td><td>自研原生核心 <code>@termius/libtermius</code> + <code>libssh2</code></td><td><code>ssh2</code>（纯 JS）</td><td>各有权衡：原生更快、能支持 FIDO2/算法扩展；纯 JS 免编译、跨平台零构建。<b>你的产品定位下没必要换</b></td></tr>
+    <tr><td>终端</td><td>xterm.js（assets 里有 <code>xterm</code> chunk）+ <strong>内置一整套 Nerd Font</strong>（DroidSansMNerdFont、FiraCode、JetBrainsMono、Meslo…）</td><td>xterm.js</td><td>一致。但「内置 Nerd Font」这一手值得抄——它让用户不必先在系统里装字体才能看到正确的图标提示符</td></tr>
+    <tr><td>远端 shell 集成</td><td><span class="tag t-real">实测</span>往远端注入 <code>bashrc.sh</code> / <code>zdotdir/.zshrc</code> / <code>fish/vendor_conf.d/termius.fish</code>，因此能拿到当前目录、提示符、退出码</td><td>无</td><td><b>差距最大的一块，也是性价比最高的一块。</b>它撑起了 Shell History、Terminal Search、Jump To 三个功能，并让「新标签继承当前目录」成为可能</td></tr>
+    <tr><td>多客户端 / 载体</td><td>桌面四进程（ui / main / background / utilities）+ 独立 FIDO 进程；另有手机端与网页端（图标集有 <code>webDevice</code>）</td><td>IPC 载体 + Web 载体，且<strong>加 Web 载体时 <code>src/</code> 一行没改</strong></td><td><b>你的做法更干净</b>：它是「每个平台各做一份」，你是「一套领域逻辑 + 可插拔载体」</td></tr>
+    <tr><td>跨平台启动适配</td><td>无等价物（直接用 Electron 默认）</td><td><code>launch-profile.json</code> 记住「上次跑通的 Chromium 配置」</td><td>这是你的<em>独有</em>能力，来自你的工程约束，Termius 没有这个问题所以也没做</td></tr>
+    <tr><td>命令面板 / 快速跳转</td><td>有（<code>Ctrl+K</code> / <code>Ctrl+J</code>）</td><td>无</td><td>值得做的第一梯队功能：实现成本低（一个模糊搜索 + 一张动作表），体验收益极高</td></tr>
+    <tr><td>多面板 / 广播输入</td><td>有：Workspace（一格放多个终端）、Broadcast Mode（一次输入发给所有面板）、Workplace Template（存布局）</td><td>无</td><td>运维场景的高价值功能，但属于「后期再加也不迟」的一类</td></tr>
+    <tr><td>端口转发 / SFTP / 串口 / Mosh</td><td>全部有</td><td>无</td><td>按你的实际需求排优先级；注意 Termius 把「转发规则」做成了独立资产（可复用），而不是每次连接时手输</td></tr>
+  </tbody>
+</table>
+
+<div class="box note">
+  <h4>如果只从 Termius 拿三样东西</h4>
+  <ol style="margin-bottom:0">
+    <li><b>远端 shell 集成</b>（注入 <code>bashrc</code>/<code>zshrc</code>/<code>fish</code>，回报 cwd 与退出码）。它能一次点亮「新标签继承目录」「命令历史」「终端内搜索」三件事，而且和你的插件结构天然契合——完全可以做成一个新的 Cordis 插件。</li>
+    <li><b>命令面板（先做成全局的）</b>。把「打开设置 / 新建主机 / 跳到某主机 / 打开某个会话」都收进一个模糊搜索里。你已经有 <code>METHODS</code> 常量表，动作表几乎可以照着它生成。</li>
+    <li><b>渐进披露的编辑表单</b>（默认 6 个字段 + Show more + 段落级更多），配合「主操作固定在面板底部」。</li>
+  </ol>
+</div>
+
+<h2><span class="n">08</span>方法与可信度</h2>
+<div class="grid2">
+  <div>
+    <h4>怎么看的</h4>
+    <ul class="small">
+      <li><b>直接操作</b>：定位窗口 → 聚焦 → 用 Win32 <code>SendInput</code> 点击/输入，配合 Electron 的 <code>desktopCapturer</code> 按窗口真实尺寸 1:1 截图（截图像素坐标 = 窗口内坐标）。逐屏走完了：Hosts / Keychain / Port Forwarding / Snippets / Settings（Account、Shortcuts）/ 本地终端 / Vault 下拉 / 命令面板尝试。</li>
+      <li><b>解包读取</b>：自写了最小 asar 解析器，读出 6570 个条目、动作表与两套默认快捷键、480 个图标的<b>文件名</b>（图标名本身就是功能清单）、<code>package.json</code> 依赖。</li>
+      <li><b>状态复原</b>：误触开出的本地终端标签已关闭，应用已回到 Hosts 视图。</li>
+    </ul>
+  </div>
+  <div>
+    <h4>没有验证的（请不要当成结论）</h4>
+    <ul class="small">
+      <li><b>是否双击卡片即连接</b>——我没有试。你机器上都是真实服务器，双击的风险不该由一次界面调研来承担。</li>
+      <li><b>命令面板长什么样</b>——主机管理态下 <code>Ctrl+K</code> 无响应，而唯一能验证的路径是开一个真会话。local 终端里也没触发。所以「面板是会话内功能」是<em>观察到的现象</em>，不是我对它设计的解读。</li>
+      <li><b>主机图标的判定依据</b>：图标集里确实有一整套发行版（ubuntu / debian / centos / fedora / arch / alpine / rocky / alma / amazon linux / redhat / freebsd / netbsd / openbsd / gentoo / mageia / routeros），所以「图标跟着系统走」合理；但是否<em>自动探测</em>远端发行版，我没验证。</li>
+      <li><b>免费版 / 付费版的边界</b>：只看到 Account 页顶部的 <code>Starter</code> + <code>Upgrade</code>，以及同步开关处于关闭、<code>Sync now</code> 置灰。我没有点进升级页，所以「哪些功能要付费」是空白。</li>
+      <li><b>端口转发的规则编辑界面</b>：你这里没有规则，所以看到的是空状态。</li>
+      <li><b>SFTP 标签页内部</b>：没有进入。</li>
+    </ul>
+  </div>
+</div>
+
+<div class="box note">
+  <h4>关于报告里的截图</h4>
+  <p style="margin-bottom:0">本文所有配图都<strong>不含你的主机名、IP、用户名、邮箱、密钥文件名</strong>。做法不是打码，而是<strong>只截取不含数据的那截界面</strong>——界面外壳、左侧导航、Vault 下拉、工具行、空状态、快捷键表。主机列表、检查器里的字段值、终端里的提示符，一律没有入图。所以这份报告可以随便发出去。原始截图留在分析工作目录 <code>termius-analysis/shots/</code> 里（<em>那些是有数据的</em>，别外发），报告本身自包含、不引用它们。</p>
+</div>
+
+<hr>
+<p class="small" style="text-align:center; color:var(--dim2)">
+  分析基于本机 <b>Termius 9.43.1</b>（<code>%LOCALAPPDATA%\Programs\Termius</code>）· 2026-09-16 · 所有 <span class="tag t-real">实测</span> 结论均可在该安装上复现
+</p>
+
+</div>
+</body>
+</html>

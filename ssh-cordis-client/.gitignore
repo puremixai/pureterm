@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+
+# 测试套件不在这个仓库里（明确排除，不是漏掉）。
+# 后果：package.json 里的 smoke:* 脚本和 README/ARCHITECTURE 的「验证状态」在 clone 后无从复现。
+# 要恢复：删掉下面这一行。
+test/

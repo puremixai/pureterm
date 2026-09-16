@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      这份 HTML 会被两条路加载，所以 CSP 要同时说清两边的事：
+        - Electron 里走 file://，只加载本地文件；
+        - 浏览器里由本机载体（electron/carrier-http.ts）经 HTTP 提供，WebSocket 走同一个源。
+      `connect-src` 里的 ws://127.0.0.1:* 只为后者存在：Web 载体的端口是随机的，
+      而 `'self'` 对 ws: 的支持在各浏览器上并不一致，所以显式写一个通配端口最稳。
+      file:// 下这一条不起作用，也不会造成任何放宽。
+      style-src 需要 'unsafe-inline'：xterm 运行时会创建 <style> 注入主题/视口样式。
+      script-src 保持最严（只有 'self'），这才是 XSS 的真正门槛。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; base-uri 'none'; form-action 'none'"
+    />
+    <title>SSH Cordis Client</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!--
+        左侧是主机列表，右侧是「表单 + 终端」——和 Termius 的管理态/会话态同构：
+        列表回答「我有哪些主机」，表单回答「这一台长什么样」。
+        列表是主入口，所以放左边；终端要宽度，所以占满剩下的地方。
+      -->
+      <aside id="hosts-panel">
+        <header class="panel-head">
+          <span class="panel-title">主机</span>
+          <button type="button" id="host-new" class="ghost small">新建</button>
+        </header>
+        <div id="hosts-body">
+          <ul id="host-list" aria-label="已保存的主机"></ul>
+          <p id="hosts-empty" class="empty">还没有保存的主机。<br />在右边填好地址和用户名，点「保存」。</p>
+        </div>
+      </aside>
+
+      <section id="main">
+      <form id="toolbar" autocomplete="off">
+        <div class="row mode-row">
+          <span id="form-mode" class="mode">新建主机</span>
+          <button type="button" id="host-save" class="ghost">保存</button>
+          <button type="button" id="host-delete" class="ghost" disabled>删除</button>
+          <button type="button" id="sftp-toggle" class="ghost" disabled>文件</button>
+        </div>
+
+        <div class="row">
+          <label class="field grow">
+            <span>主机</span>
+            <input id="host" placeholder="127.0.0.1" spellcheck="false" />
+          </label>
+          <label class="field narrow">
+            <span>端口</span>
+            <input id="port" value="22" inputmode="numeric" spellcheck="false" />
+          </label>
+          <label class="field">
+            <span>用户名</span>
+            <input id="user" placeholder="root" spellcheck="false" />
+          </label>
+          <label class="field narrow">
+            <span>认证</span>
+            <select id="auth">
+              <option value="password">密码</option>
+              <option value="privateKey">私钥</option>
+            </select>
+          </label>
+          <label class="check">
+            <input id="remember" type="checkbox" checked />
+            <span id="remember-label">记住密码</span>
+          </label>
+          <button type="button" id="connect" class="primary">连接</button>
+          <button type="button" id="disconnect" class="ghost" disabled>断开</button>
+        </div>
+
+        <!-- 两种认证方式各占一行，按 #auth 切换显隐（不是删掉再建，免得丢用户填了一半的值） -->
+        <div class="row" id="cred-password">
+          <label class="field grow">
+            <span>密码</span>
+            <input id="pass" type="password" spellcheck="false" />
+          </label>
+        </div>
+
+        <div class="row" id="cred-key" hidden>
+          <label class="field grow">
+            <span>私钥文件</span>
+            <input id="key-path" placeholder="点右边「选择…」挑一个私钥文件" spellcheck="false" readonly />
+          </label>
+          <button type="button" id="key-pick" class="ghost">选择…</button>
+          <label class="field">
+            <span>私钥口令（没有就留空）</span>
+            <input id="key-pass" type="password" spellcheck="false" />
+          </label>
+        </div>
+      </form>
+
+      <div id="status" role="status">就绪</div>
+      <div id="terminal"></div>
+      <!--
+        远端文件面板：底部抽屉，默认收起。
+        做成「按需出现」而不是常驻一栏，是因为终端要的是宽度——它占满整行时是 133 列，
+        常驻一栏就只剩 100 列（第一版把主机列表放在左边时已经吃过一次这个亏）。
+        抽屉里的骨架由 renderer/sftp-panel.ts 自己搭，这里只留一个空壳。
+      -->
+      <section id="sftp" hidden></section>
+      </section>
+    </div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
