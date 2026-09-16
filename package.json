@@ -24,7 +24,9 @@
     "verify:electron": "npm run build && npm run verify:electron:built --workspace=@pureterm/desktop && node apps/web/tests/smoke-browser.mjs && node packages/ui/tests/smoke-client-lifecycle.mjs",
     "stage:desktop": "npm run build:desktop && node scripts/stage-desktop.mjs",
     "dist:desktop": "npm run stage:desktop && electron-builder --config apps/desktop/electron-builder.cjs --publish never",
-    "verify:package:windows": "node scripts/verify-windows-package.mjs"
+    "verify:package:windows": "node scripts/verify-windows-package.mjs",
+    "release:check": "node scripts/changelog.mjs --check",
+    "release:notes": "node scripts/changelog.mjs --notes"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",
