@@ -13,7 +13,8 @@ from drive import find, focus  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 APP = os.path.join(ROOT, 'apps', 'desktop')
-ELECTRON = os.environ.get('PURETERM_ELECTRON', os.path.join(APP, 'node_modules', 'electron', 'dist', 'electron.exe'))
+ELECTRON = os.environ.get('PURETERM_ELECTRON') or subprocess.check_output(
+    ['node', '-p', "require('electron')"], cwd=APP, text=True, encoding='utf-8').strip()
 OUT = os.path.join(HERE, 'shots')
 
 TITLE = os.environ.get('TERMIUS_WINDOW', 'Termius')

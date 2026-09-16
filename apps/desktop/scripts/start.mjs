@@ -32,19 +32,15 @@ const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const nodeExe = process.execPath
 const manifest = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
 const mainScript = join(projectRoot, manifest.main)
-const tsc = join(projectRoot, 'node_modules', 'typescript', 'bin', 'tsc')
 
 const env = { ...process.env }
 // 宿主环境可能预设了这个，会让 electron 二进制退化成普通 Node（没有窗口）
 delete env.ELECTRON_RUN_AS_NODE
 
-/** 构建三步走。不 shell 出去调 npm：那正是我们要绕开的东西。 */
+/** 根构建器按共享包依赖顺序构建，不依赖 npm 的 shell shim。 */
 function build() {
   const steps = [
-    { name: 'clean', script: join(projectRoot, 'scripts', 'clean.mjs'), args: [] },
-    { name: 'build:main', script: tsc, args: ['-p', 'tsconfig.main.json'] },
-    { name: 'build:preload', script: join(projectRoot, 'scripts', 'build-preload.mjs'), args: [] },
-    { name: 'build:renderer', script: join(projectRoot, 'scripts', 'build-renderer.mjs'), args: [] },
+    { name: 'build:desktop', script: join(projectRoot, '..', '..', 'scripts', 'build.mjs'), args: ['--desktop'] },
   ]
 
   for (const step of steps) {

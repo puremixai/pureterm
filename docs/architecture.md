@@ -1,96 +1,98 @@
-# Desktop 架构
+# PureTerm 架构
 
-PureTerm 是一个 npm 包内的 Electron 应用。Electron 主进程创建并持有 Cordis Host，业务通过 `Host` 公共接口提供；renderer 运行在 Chromium 渲染进程，通过 IPC 或 HTTP/WebSocket 访问相同协议。默认同时启用桌面 IPC 和监听回环地址的 Web carrier。
+PureTerm 有 Electron Desktop 和独立本机 Web 两个运行入口，复用四个 npm workspace 包：Host、协议、传输和界面。SSH/SFTP 始终由用户电脑发起，HTTP 服务只监听 `127.0.0.1`。无需用户账号、租户隔离或远程控制隧道。
 
-以下路径均相对 `apps/desktop/`。目录决策见[已采纳方案](../LAYOUT-PROPOSAL.md)，启动与测试命令见[应用说明](../apps/desktop/README.md)。
+以下路径相对仓库根。命令见[仓库入口](../README.md)，物理布局见[目录决策](../LAYOUT-PROPOSAL.md)。
 
-## 请求与事件路径
+## 运行方式
+
+| 入口 | Host 所在进程 | 界面与通信 | 默认数据目录 |
+| --- | --- | --- | --- |
+| Desktop | 独立 Node Host 子进程 | Electron 窗口走 IPC；附带本机浏览器入口走 HTTP/WS；主进程通过私有 IPC 转发 | `~/.ssh-cordis/` |
+| 独立 Web | 普通 Node 进程 | 本机浏览器走 HTTP/WS | `~/.ssh-cordis/web/` |
+
+Desktop 的两个载体共享子进程中的同一个 Host。独立 Web 另外创建 Host；两个应用共用实现，但不自动共享活动会话或数据文件。Host 子进程通过 Electron 可执行文件的 Node 模式启动，不加载 Electron API。
+
+## 请求与事件
 
 ```mermaid
 flowchart LR
-  UI[renderer / xterm] --> T[renderer transport]
-  T --> P[preload 白名单]
-  T --> W[HTTP / WebSocket carrier]
-  P --> I[IPC carrier]
-  I --> D[dispatcher]
-  W --> D
-  D --> H[src/host.ts 公共 Host]
+  U[Cordis Client / xterm] --> T[客户端传输]
+  T --> P[Desktop preload / IPC]
+  T --> W[本机 HTTP / WebSocket]
+  P --> R[Desktop 主进程 / 私有 IPC]
+  W --> R
+  R --> D[Node Host 子进程 / dispatcher]
+  W2[独立 Web HTTP/WS] --> D2[同进程 dispatcher]
+  D2 --> H
+  D --> H[Host 公共接口]
   H --> C[Cordis 服务与插件]
   C --> S[ssh2 / SSH / SFTP]
 ```
 
-`shared/protocol.ts` 定义通道名、请求结果、事件和线格式。`electron/bridge/dispatch.ts` 负责协议名到 Host 调用的映射；carrier 负责传输、客户端身份和生命周期。Web 传输将二进制编码后过线，在接收端恢复为字节。
+`packages/protocol/src/protocol.ts` 定义通道、能力声明、请求、结果、事件和二进制线格式。`packages/transport/src/dispatch.ts` 将协议映射到 Host 公共方法；载体确定客户端身份。Web 对二进制编码传输后恢复为字节，终端不把分包内容提前转成字符串。
 
-输出事件经 `RendererBridge` / `RendererHandle` 返回相应客户端。客户端 ID 是不透明字符串，Host 不解释 Electron 的 webContents ID。所需公共类型由 `src/host.ts` 导出，壳无需引用业务内部模块。
+事件通过 `RendererBridge` / `RendererHandle` 返回对应客户端。ID 是载体给出的不透明字符串；Host 无需解释 Electron webContents 或 WebSocket 编号。客户端路由与凭据能力分离：`CredentialProvider` 由入口注入 SessionStore，RendererBridge 不承担加解密。
 
 ## 模块职责
 
 | 位置 | 职责 |
 | --- | --- |
-| `src/host.ts` | 创建 Cordis Context、装配依赖、导出 Host，并卸载整棵插件树 |
-| `src/services/`、`src/plugins/` | SSH、TOFU、主机与凭据存储、终端/SFTP 桥和日志观察 |
-| `shared/` | 两侧共享的协议与数据结构 |
-| `renderer/` | 页面交互、xterm、布局、SFTP 面板和客户端传输适配 |
-| `electron/app/` | 应用启动、窗口代际和平台 API 的实际调用 |
-| `electron/runtime/` | 平台决策、就绪闸门、启动档案、重启及构建资源定位；不导入 Electron |
-| `electron/bridge/` | 请求分派；只调用 Host 公共接口，不导入 Electron |
-| `electron/carriers/` | IPC、HTTP/WS、preload 与多个载体的合成桥 |
-| `electron/diagnostics/` | 在应用进程中运行的启动及冒烟钩子，随应用构建 |
-| `scripts/`、`tests/` | 应用构建/启动工具、依赖约束、测试和夹具 |
+| `packages/host/src/host.ts` | 装配 Cordis Context、导出 Host、管理连接和插件树生命周期 |
+| `packages/host/src/services/`、`plugins/` | SSH、TOFU、主机存储、终端/SFTP 桥与日志 |
+| `packages/host/src/credentials.ts` | 凭据提供器接口与默认本次会话策略 |
+| `packages/protocol/` | 与运行环境无关的协议和公共数据结构 |
+| `packages/transport/` | dispatcher、HTTP/WS、载体组合、就绪报文校验 |
+| `packages/ui/` | Cordis Client、页面、终端、SFTP、客户端传输及浏览器私钥选择 |
+| `apps/desktop/electron/app/` | Electron 启动、窗口、系统加密、原生文件选择和更新适配 |
+| `apps/desktop/electron/host/` | 不导入 Electron 的 Node Host 子进程入口 |
+| `apps/desktop/electron/runtime/` | 平台策略、就绪、档案、子进程/RPC、更新协调与资源定位 |
+| `apps/desktop/electron/carriers/` | IPC 和 CommonJS preload |
+| `apps/desktop/electron/diagnostics/` | 应用进程内的启动与冒烟钩子 |
+| `apps/web/src/` | Node 命令行、数据目录、共享 Host 与 HTTP 服务装配 |
 
-`services/`、`plugins/` 是保留的本项目分类，并不等于“前者都是 Service，后者都是 function plugin”。例如 plugins 中的多个类同样继承 Cordis Service；`src/host.ts` 本身承担装配职责。
+services/plugins 保留原有业务分类，并不等于 Service/function plugin 的严格分组。公共 Host 类型从包入口导出，应用无需访问内部实现。
 
-## 依赖约束
+## 依赖与构建
 
-业务、页面和协议有独立依赖范围：`src/` 不依赖 Electron 壳或 renderer；`renderer/` 不导入 Node、Electron 或 Host 实现；`shared/` 不依赖任一运行侧。Electron 模块只能通过 `src/host.ts` 使用业务公共接口；生产壳不读取 `Host.internals`，内部视图用于测试和诊断。
+根 `package.json` 声明 workspaces，根 `package-lock.json` 是唯一锁文件，安装使用根 `npm ci`。包之间通过公开导出引用；包内才使用相对源码导入。共享 Host 不依赖 Electron 或 UI，UI 不导入 Node 或 Host，协议没有模块依赖。应用和传输层不读取 `Host.internals`；内部视图只用于测试与诊断。
 
-`electron/app/`、IPC、preload 和必要诊断钩子允许使用 Electron API。`electron/runtime/` 与 dispatcher 保持不导入 Electron，可用 Node 测试启动决策与协议映射。不能禁止 app 层使用它负责适配的 API，也不能用导入文件数代替依赖检查。
+`scripts/check-boundaries.mjs` 用 TypeScript AST 检查导入、导出、动态 import、require 和内部访问；规则用临时小工程测试。它是依赖约束，不是运行时安全隔离。各包与应用独立做类型检查，浏览器配置使用 DOM 类型，Node/Electron 配置使用其对应环境。
 
-`scripts/check-boundaries.mjs` 用 TypeScript AST 检查导入、导出、动态 import、require 及受限内部访问，并接入 `typecheck`。规则测试以临时小工程验证接受与拒绝。该检查是源码约束，不是运行时安全隔离。
+根构建脚本先构建共享包，再构建指定入口，清理对应项目的 `dist/`。共享界面只生成一份 `packages/ui/dist/{index.html,app.js,app.css}`。两个入口通过 `@pureterm/ui/index.html` 的包导出定位页面；Desktop 的 `electron/runtime/paths.ts` 另外根据编译模块位置找到 `dist/electron/carriers/preload.cjs`。独立 Web 入口为 `apps/web/dist/main.js`。这些定位不依赖启动时 cwd。
 
-Node/Electron 与浏览器分别做类型检查。`tsconfig.json` 包含主进程侧源码并提供基础配置；`tsconfig.main.json` 在其基础上发射主进程产物；`tsconfig.renderer.json` 独立检查 DOM 环境。当前没有 npm workspace、TypeScript project references 或 solution-only 聚合配置，也没有上游 Host/Client 同名 Cordis Context 合并带来的编译面冲突。
+## 生命周期
 
-## 窗口、Host 与启动生命周期
+Desktop 先应用平台策略，启动 Node Host、完成带版本的握手并装配载体，然后创建 shell generation，避免页面请求早于服务就绪。每代窗口、监听器与看门狗由 shell 幂等释放；使用窗口时读取当前代。页面初始化完成并报告 renderer-ready 后，就绪闸门才允许提交启动档案，HTML 已加载不等于应用已可用。
 
-1. 平台决策在窗口创建前计算；`electron/app/platform.ts` 将菜单、应用及 Chromium 配置施加到 Electron。
-2. `main.ts` 先创建当前 shell generation，再创建 Host，最后安装依赖 Host 的 dispatcher 与载体。传给 Host 的合成桥按需读取载体列表。每一代 shell 拥有自己的窗口、监听器与看门狗，通过幂等 `release()` 释放；使用窗口时读取当前代，避免缓存已销毁对象。
-3. 页面完成初始化后发送 renderer-ready。HTML 加载或进程存在不足以证明应用可用；成功报告打开就绪闸门后才提交启动档案和执行依赖就绪的动作。
-4. 重启模块管理自己创建的子进程，并处理启动失败；退出时由各拥有者关闭窗口、载体与 Host，Cordis 作用域回收连接和监听器。
+私有父子 IPC 使用 advanced serialization 保留 Uint8Array，提供请求/结果、事件、客户端释放及加解密/选钥能力。断线拒绝挂起请求；Host 意外退出会报告错误并结束应用。退出、启动失败、诊断结束与更新均等待子进程关闭；超过关停期限则终止进程。父进程死亡时，子进程收到 disconnect 后取消业务并退出。窗口关闭或已加载的渲染进程崩溃会释放对应客户端。
 
-Host 在 Electron 主进程内运行，没有单独的 Host 可执行文件或进程协议。多个载体共享 Host 和用户档案；Web 入口默认监听 `127.0.0.1`，每次启动生成新 token，并检查访问来源。可用 `SSH_CORDIS_NO_WEB_CARRIER=1` 关闭本次 Web 入口。
+独立 Web 创建默认本次会话策略的 Host，再监听本机端口；监听失败会卸载 Host。Ctrl+C/SIGTERM 关闭载体和全部 SSH 会话。WebSocket 断开会调用 `Host.releaseClient()`，及时关闭该客户端的安静会话，并取消尚未完成的 SSH 握手；其他客户端的会话继续运行。
 
-沙箱、GPU 和启动档案策略保留现有行为。启动失败时应用可能按既有策略尝试无沙箱回退；`SSH_CORDIS_NO_SANDBOX_FALLBACK=1` 禁止自动回退及相应档案回填，`SSH_CORDIS_NO_LAUNCH_PROFILE=1` 禁止读取和写入档案。档案没有独立的运行环境分区，因此测试使用临时 `SSH_CORDIS_DATA_DIR`，避免影响日常配置。
+Host 创建失败会卸载此前装配的服务。关闭 Host 时先取消连接和解密等待、等候已接受的存储修改，再卸载插件树；关闭后拒绝新连接与修改。save/remove 串行执行，加密完成前不会提交新状态。opened 事件无法送到客户端时也会收尾，避免浏览器关闭与握手完成竞态留下连接。
 
-## 构建与资源定位
+共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、hosts、SFTP 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。IPC dispose 取消该客户端会话且保留 bridge 可重新订阅，Web dispose 关闭 socket。
 
-`build` 清理本应用 `dist/` 后构建三个部分：TypeScript 主进程、esbuild 生成的 CommonJS preload、renderer HTML/JS/CSS。产物为：
+Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_SANDBOX_FALLBACK=1` 禁止自动无沙箱回退及对应档案回填；`SSH_CORDIS_NO_LAUNCH_PROFILE=1` 禁止读写档案。档案未按 CI、容器或日常环境分区，测试使用临时目录。
 
-```text
-dist/
-  electron/app/main.js
-  electron/carriers/preload.cjs
-  electron/runtime/...
-  electron/bridge/...
-  electron/diagnostics/...
-  src/...
-  shared/...
-  renderer/index.html
-  renderer/app.js
-  renderer/app.css
-```
+## 数据与入口能力
 
-`electron/runtime/paths.ts` 根据编译模块的位置定位 renderer 目录和 preload 文件；窗口加载与 Web 静态服务使用同一份 renderer 产物。package main/start、各启动器及 preload 的输入输出必须与该布局一致。preload 由独立打包步骤生成 CJS，主进程 tsc 不为它另发射 ESM 文件。
+Desktop 通过 `SSH_CORDIS_DATA_DIR` 覆盖数据目录。`hosts.json` 保存主机元数据及私钥路径；`secrets.json` 保存 safeStorage 生成的密文；`known_hosts.json` 保存 TOFU 指纹；`launch-profile.json` 保存已就绪启动的配置。safeStorage 留在主进程，Host 的异步 CredentialProvider 经私有 IPC 请求加解密；没有可用系统加密后端时不退化为明文持久化。私钥文件在连接时读取，不复制到主机存储。附带的本机浏览器入口使用相同加密能力和原生选钥。
 
-资源测试覆盖非应用 cwd、页面/脚本/样式存在及 CJS preload。启动检查进一步观察真实 renderer-ready，IPC/Web 冒烟通过本机 SSH 夹具验证载体请求和字节流。三类 Electron 验证共用 `scripts/electron-runner.mjs`，在隔离用户目录中运行，检查失败标记、退出状态和超时，并回收测试进程树。验证时禁用自动无沙箱回退，因此这些用例不覆盖两代真实 Electron 的回退流程。
+独立 Web 可通过 `--data-dir` 或 `SSH_CORDIS_WEB_DATA_DIR` 设置目录，命令行优先。它保存 `hosts.json` 和 `known-hosts.json`，不读写 `secrets.json`、不持久化私钥路径，公开记录的 `hasSecret` 恒为 false。即使调用方请求记住密码或口令，也不会保存。若目录已存在凭据文件或旧版内嵌密文，Host 会明确拒绝，原文件不迁移、不覆盖。
 
-## 数据与能力范围
+浏览器通过文件选择器读取私钥内容，不把文件名当成本机绝对路径。密码、私钥及口令保留在当前页面，刷新后重填。UI 根据入口返回的能力选择浏览器/原生选钥，并关闭独立 Web 的凭据记忆选项。默认两个进程使用不同数据文件；自定义目录时也不应让它们同时写入同一份 JSON 存储。
 
-默认数据目录为用户主目录的 `.ssh-cordis/`，由 `SSH_CORDIS_DATA_DIR` 覆盖。`hosts.json` 保存主机元数据与私钥路径，`secrets.json` 保存通过壳提供的系统加密能力生成的密文，`known_hosts.json` 保存 TOFU 指纹，`launch-profile.json` 保存已就绪启动的配置。私钥内容按连接时的路径读取，不复制到主机元数据。
+HTTP 资源和 WebSocket 要求启动 token 或对应会话 cookie，并校验本机 Host 与来源；绑定地址不能扩为公开网卡。token 每次启动重新生成，页面初始化后从地址栏移除。Desktop 可通过 `SSH_CORDIS_NO_WEB_CARRIER=1` 关闭自己的附带 Web 入口，不影响独立 Web 启动器。
 
-SFTP 复用已建立的 SSH 会话，支持目录浏览、单文件上传/下载、新建目录与删除；单文件上限由共享协议的 `MAX_TRANSFER_BYTES` 限定为 4 MiB。当前传输一次加载完整内容，尚未实现流式传输、续传或进度报告。Web 客户端共享同一个后端与凭据域，不是多用户服务。
+SFTP 复用已建立的 SSH 会话，支持目录浏览、单文件上传/下载、新建目录和删除。共享协议的 `MAX_TRANSFER_BYTES` 限定单文件为 4 MiB；当前一次读取完整内容，没有流式传输、续传、进度报告或重命名功能。
 
-## 与上游的关系
+## 验证与上游关系
 
-本项目借鉴 Cordis 服务依赖、作用域卸载、平台决策、窗口代际和载体边界。对照版本与证据见[历史评审](reviews/layout-review-2026-09-16.md)。
+根 `verify` 构建全部项目，执行类型、边界、Host 子进程/凭据、更新协调、打包隔离、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试。根 `verify:electron` 覆盖 Desktop boot、IPC、Desktop Web、渲染崩溃回收、真实更新器的本机下载及校验、独立 Node Web 和 Client 作用域生命周期。独立 Web 流程中 Electron 只充当测试浏览器，Web 服务仍由普通 Node 启动。
 
-该版本 deepseek-harness Desktop 使用独立 Node 子进程承载 Host，拥有进程、升级等产品职责；它的 Web Client 本身是 Cordis 应用，Desktop 复用 client graph。PureTerm 当前采用进程内 Host、默认本机 Web carrier 和普通 renderer 模块。前端插件树、Host 进程拆分、安装更新及多包发布都属于后续独立设计决策。
+Electron 检查使用隔离的用户目录、受控窗口和严格的成功/失败/退出/超时判定，并回收测试进程。验证禁用自动无沙箱回退，因此不覆盖两代真实 Electron 的自动回退。GUI 鼠标键盘验收不在上述命令内，本机 ssh2 夹具也不代表所有真实 sshd 的兼容性覆盖。
+
+本项目参考 deepseek-harness 的 Cordis 依赖与作用域、共享 Host/Client 和入口适配边界；基线见[历史评审](reviews/layout-review-2026-09-16.md)。PureTerm 已实现独立 Node Desktop Host、共享 Cordis Client、安装构建和自动更新协调。这里采用静态插件树与 Node IPC，没有引入上游 Agent 和动态插件管理。
+
+安装包从独立 staging 构建，复制物理生产依赖与共享资源，关闭 asar，避免子进程依赖工作区文件。Windows 使用 NSIS，macOS 使用 dmg+zip，Linux 使用 AppImage。打包版从 GitHub Releases 检查并下载更新，用户确认后先停止 Host，再重启安装。开发版不检查；本地/普通 CI 不发布；版本 tag 的发布 job 汇总为 draft。签名、notarization、平台构建和验收边界见[发布说明](desktop-release.md)。

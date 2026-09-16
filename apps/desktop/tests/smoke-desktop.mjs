@@ -5,8 +5,8 @@ import { once } from 'node:events'
 import { resolvePlatformPlan, collectSwitches } from '../dist/electron/runtime/platform-plan.js'
 import { createReadinessGate, normalizeReadyPayload } from '../dist/electron/runtime/readiness.js'
 import { relaunchSelf } from '../dist/electron/runtime/relaunch.js'
-import { createFrameDecoder, encodeFrame, OPCODES, WsProtocolError } from '../dist/electron/carriers/ws-frame.js'
-import { encodeWire, decodeWire, isWireCall, isWireNotice } from '../dist/shared/protocol.js'
+import { createFrameDecoder, encodeFrame, OPCODES, WsProtocolError } from '@pureterm/transport/ws-frame'
+import { encodeWire, decodeWire, isWireCall, isWireNotice } from '@pureterm/protocol'
 
 test('platform defaults keep sandbox/GPU intact and preserve native window/menu behavior', () => {
   for (const platform of ['win32', 'linux', 'darwin']) {

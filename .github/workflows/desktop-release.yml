@@ -1,0 +1,132 @@
+name: Desktop packages
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-packages-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            args: --win --x64
+          - os: macos-latest
+            platform: macos
+            args: --mac --x64 --arm64
+          - os: ubuntu-latest
+            platform: linux
+            args: --linux --x64
+    runs-on: ${{ matrix.os }}
+    env:
+      PURETERM_RELEASE_BUILD: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify tag and signing prerequisites
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          $rootVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $desktopVersion = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -cne "v$desktopVersion" -or $rootVersion -cne $desktopVersion) {
+            throw 'Release tag, root version and Desktop version must match.'
+          }
+          $required = @()
+          if ($IsWindows) { $required = @('WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD') }
+          if ($IsMacOS) { $required = @('CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID') }
+          foreach ($name in $required) {
+            if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing release signing secret: $name" }
+          }
+      - name: Verify Node behavior and boundaries
+        run: npm run verify
+      - name: Verify Electron on Windows and macOS
+        if: runner.os != 'Linux'
+        run: npm run verify:electron
+      - name: Verify Electron on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run verify:electron
+      - name: Build installer artifacts without publishing
+        run: npm run dist:desktop -- ${{ matrix.args }}
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Verify isolated Windows installation and uninstall
+        if: runner.os == 'Windows'
+        run: npm run verify:package:windows
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-${{ matrix.platform }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.blockmap
+            release/*.yml
+            !release/builder-*.yml
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+      - name: Assemble a draft only after every platform succeeds
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $draft = gh release view $env:RELEASE_TAG --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if ($draft -ne 'true') { throw 'Refusing to modify a published release.' }
+          } else {
+            $notes = Join-Path $env:RUNNER_TEMP 'pureterm-release-notes.md'
+            "Desktop installers and update metadata. Validate the artifacts before publishing this draft." | Set-Content -LiteralPath $notes -Encoding utf8
+            gh release create $env:RELEASE_TAG --draft --verify-tag --title "PureTerm $env:RELEASE_TAG" --notes-file $notes
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release.' }
+          }
+          $assets = @(Get-ChildItem -LiteralPath release-assets -File | ForEach-Object { $_.FullName })
+          if ($assets.Count -eq 0) { throw 'No installer artifacts to attach.' }
+          gh release upload $env:RELEASE_TAG @assets --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload draft release assets.' }

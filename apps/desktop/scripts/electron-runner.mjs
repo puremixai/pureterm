@@ -29,7 +29,7 @@ function cleanEnvironment(dataDir, extraEnv) {
   const env = { ...process.env }
   // Inherited user launch settings must not make the test use a real host/data directory.
   for (const name of Object.keys(env)) {
-    if (name.startsWith('SSH_CORDIS_') || name === 'ELECTRON_RUN_AS_NODE' || name === 'NODE_OPTIONS') delete env[name]
+    if (name.startsWith('SSH_CORDIS_') || name === 'ELECTRON_RUN_AS_NODE' || ['NODE_OPTIONS', 'NODE_PATH'].includes(name.toUpperCase())) delete env[name]
   }
   return { ...env, ...extraEnv, SSH_CORDIS_DATA_DIR: dataDir,
     SSH_CORDIS_TEST_USER_DATA: join(dataDir, 'electron-user-data'),
@@ -49,7 +49,7 @@ async function killTree(child) {
   try { child.kill('SIGKILL') } catch { /* already exited */ }
 }
 
-export async function runElectron({ entry, env = {}, timeoutMs = 45_000,
+export async function runElectron({ entry, executable: suppliedExecutable, env = {}, timeoutMs = 45_000,
   successMarker = '[SMOKE-OK]', requiredMarkers = [], inspect,
   switches = (process.env.SSH_CORDIS_SMOKE_SWITCHES ?? '').split(/\s+/).filter(Boolean) }) {
   const dataDir = mkdtempSync(join(tmpdir(), 'ssh-cordis-electron-test-'))
@@ -63,7 +63,7 @@ export async function runElectron({ entry, env = {}, timeoutMs = 45_000,
   try {
     let executable
     try {
-      executable = (await import('electron')).default
+      executable = suppliedExecutable ?? (await import('electron')).default
     } catch (error) {
       return decideElectronResult({ spawnError: error,
         binaryMissing: /Electron failed to install correctly|Cannot find module 'electron'|Cannot find package 'electron'/.test(error.message) })
@@ -72,7 +72,7 @@ export async function runElectron({ entry, env = {}, timeoutMs = 45_000,
     let output = ''
     let timedOut = false
     let spawnError
-    child = spawn(executable, [entry, ...switches], {
+    child = spawn(executable, [...(entry ? [entry] : []), ...switches], {
       cwd: dataDir, env: cleanEnvironment(dataDir, env), windowsHide: true,
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
     })

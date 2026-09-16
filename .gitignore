@@ -1,13 +1,12 @@
-# WorkBuddy 的会话工作目录（记忆、技能、缓存）——不是项目的一部分
+node_modules/
+.release/
+release/
+dist/
+*.tsbuildinfo
 .workbuddy/
-
-# 界面调研与 E2E 的原始截图。里面有真实桌面、真实主机列表、第三方应用的保险库界面，
-# 所以不进仓库。分析报告本身是脱敏的（内联的 6 张图已打码），但原始截图没有。
 termius-analysis/shots/
 tools/gui/shots/
 docs/research/termius/shots/
-
-# 跑验证留下的日志：中间产物，随时可以重新生成
 termius-analysis/verify.log
 tools/gui/verify.log
 *.log

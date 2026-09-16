@@ -1,14 +1,15 @@
 import { app, dialog, safeStorage, type BrowserWindow } from 'electron'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import type { PickedPrivateKey, RendererReadyPayload } from '../../shared/protocol.js'
-import { createHost, type Host } from '../../src/host.js'
+import type { PickedPrivateKey, RendererReadyPayload } from '@pureterm/protocol'
+import type { CredentialProvider } from '@pureterm/host'
 import { createBootCheck } from '../diagnostics/boot-check.js'
-import { createCompositeBridge, type Carrier, type Credentials } from '../carriers/carrier.js'
-import { createHttpCarrier } from '../carriers/carrier-http.js'
+import { createCompositeBridge, type Carrier } from '@pureterm/transport/carrier'
+import { createHttpCarrier } from '@pureterm/transport/carrier-http'
 import { createIpcCarrier, ipcClientId } from '../carriers/carrier-ipc.js'
-import { createDispatcher } from '../bridge/dispatch.js'
+import { startHostProcess, type DesktopHostProcess } from '../runtime/host-process.js'
+import { createDesktopUpdates } from './updates.js'
 import {
   LAUNCH_PROFILE_VERSION,
   describeLaunchProfile,
@@ -20,38 +21,35 @@ import {
   type LaunchProfile,
 } from '../runtime/launch-profile.js'
 import { collectSwitches } from '../runtime/platform-plan.js'
-import { applyApplicationMenu, platformStrategy, selectPlatformStrategy } from './platform.js'
+import { applyApplicationMenu, selectPlatformStrategy } from './platform.js'
 import { createReadinessGate } from '../runtime/readiness.js'
 import { relaunchSelf } from '../runtime/relaunch.js'
 import { createShellGeneration, LOAD_WATCHDOG_MS, type ElectronShellGeneration } from './shell.js'
 import { resolveDesktopPaths } from '../runtime/paths.js'
 
 /*
- * Electron 壳。职责只有四件：
- *   1. 启动前把配置定下来（平台策略 + 启动档案）
- *   2. 拥有 shell generation（窗口的生命周期）
- *   3. 装配**载体**，把渲染层的往来转给 Cordis 宿主
- *   4. 退出时按顺序收尾
- *
- * 这里**没有**任何 SSH 逻辑，也没有 dsh 那套 agent 平面。
- * 具体实现分别落在 platform*.ts / shell.ts / readiness.ts / launch-profile.ts / relaunch.ts，
- * 那些是「怎么做」，本文件只负责「按什么顺序做」。
- *
- * ── 关于「载体」─────────────────────────────────────────────────
- * 「渲染层」不等于「Electron 的窗口」。渲染层与宿主之间隔着一个协议（shared/protocol.ts），
- * 谁把它搬运过去就是载体（carrier）：
- *   - carrier-ipc.ts：桌面端默认，ipcMain ↔ preload，客户端 id `ipc:<webContentsId>`
- *   - carrier-http.ts：本机 HTTP + WebSocket，浏览器直接打开同一个产物，客户端 id `ws:<id>`
- * 两个同时活着，共用**同一个** dispatcher（electron/bridge/dispatch.ts）和同一棵插件树。
- * 加第二个载体时 `src/` 一行都没改——这是「解耦」是否成真的判据。
+ * Electron 入口拥有窗口、平台能力、载体和更新协调。
+ * Node Host 子进程拥有共享 dispatcher、Cordis Host、SSH/SFTP 与存储。
+ * IPC 窗口与本机 HTTP/WS 载体通过同一个子进程代理调用 Host；
+ * safeStorage 和原生文件选择通过私有反向 RPC 留在 Electron。
+ * 启动、窗口更替、故障、诊断退出和安装更新都走统一生命周期。
  */
 
-const { rendererDir, rendererHtml, preloadScript } = resolveDesktopPaths()
+const { rendererDir, rendererHtml, preloadScript, hostEntry } = resolveDesktopPaths()
 const dataDir = process.env.SSH_CORDIS_DATA_DIR ? resolve(process.env.SSH_CORDIS_DATA_DIR) : join(homedir(), '.ssh-cordis')
 
 const bootCheckEnabled = process.env.SSH_CORDIS_BOOT_CHECK === '1'
 const profileDisabled = launchProfileDisabled(process.env)
 const webCarrierDisabled = process.env.SSH_CORDIS_NO_WEB_CARRIER === '1'
+// Installed-package checks use the same isolated Chromium profile as source checks.
+if ((bootCheckEnabled || process.env.SSH_CORDIS_SMOKE) && process.env.SSH_CORDIS_TEST_USER_DATA) {
+  mkdirSync(process.env.SSH_CORDIS_TEST_USER_DATA, { recursive: true })
+  app.setPath('userData', process.env.SSH_CORDIS_TEST_USER_DATA)
+  if (process.env.SSH_CORDIS_TEST_HIDE_WINDOW === '1') app.on('browser-window-created', (_event, window) => {
+    window.hide()
+    window.on('show', () => window.hide())
+  })
+}
 
 // ─────────────────────────── 启动决策（必须早于任何窗口创建） ───────────────────────────
 
@@ -94,9 +92,12 @@ if (profileSwitches.length) {
 // ─────────────────────────── 状态 ───────────────────────────
 
 let shell: ElectronShellGeneration | null = null
-let host: Host | null = null
+let host: DesktopHostProcess | null = null
+let hostStarting: Promise<DesktopHostProcess> | undefined
 let carriers: Carrier[] = []
 let disposing = false
+let shutdownTask: Promise<void> | undefined
+let updates: ReturnType<typeof createDesktopUpdates> | undefined
 let sandboxFallbackTried = false
 
 /**
@@ -111,7 +112,7 @@ const bootCheck = createBootCheck({
   screenshotPath: process.env.SSH_CORDIS_BOOT_SHOT,
   // 比页面加载看门狗晚一步：先让 generation 去报「页面没加载完」，别两个声音同时响
   timeoutMs: LOAD_WATCHDOG_MS + 5_000,
-  exit: (code) => app.exit(code),
+  exit: (code) => { void exitApplication(code) },
 })
 
 // 绝不静默：任何漏网的异常都要留下痕迹
@@ -189,12 +190,15 @@ function currentWindow(): BrowserWindow | undefined {
  */
 function startGeneration(): ElectronShellGeneration {
   shell?.release()
+  let clientId: string | undefined
   const generation = createShellGeneration({
     htmlPath: rendererHtml,
     preloadPath: preloadScript,
     search: process.env.SSH_CORDIS_SMOKE ? 'smoke=1' : '',
     onLoadFailure: (reason) => fallbackToNoSandbox(reason),
+    onRelease: () => { if (clientId) host?.releaseClient(clientId) },
   })
+  clientId = ipcClientId(generation.window.webContents.id)
   shell = generation
   console.log(`[main] 已创建 shell generation #${generation.id}`)
   return generation
@@ -234,7 +238,7 @@ function fallbackToNoSandbox(reason: string): void {
     switches: ['--no-sandbox'],
     onSuccess: (child) => {
       child.unref()
-      app.exit(0)
+      void exitApplication(0)
     },
     onFailure: (error) => {
       console.error(
@@ -255,16 +259,18 @@ function fallbackToNoSandbox(reason: string): void {
  * 所以它是壳层注入给所有载体的共用实现：拿不到系统密钥就返回 undefined，
  * 由上层决定「不保存」，绝不退化成明文落盘。
  */
-function createCredentials(): Credentials {
+function createCredentials(): CredentialProvider {
   const encryptionAvailable = (): boolean => {
     try {
       return safeStorage.isEncryptionAvailable()
+        && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text')
     } catch {
       return false
     }
   }
 
   return {
+    persistent: true,
     seal: (plain) => (encryptionAvailable() ? safeStorage.encryptString(plain).toString('base64') : undefined),
     unseal: (sealed) => {
       if (!encryptionAvailable()) return undefined
@@ -331,8 +337,8 @@ async function pickPrivateKey(clientId: string): Promise<PickedPrivateKey | unde
  * **桥要先于宿主存在**，而载体要等 dispatcher（它依赖宿主）才能建。
  * 所以桥拿到的是「取载体列表的函数」而不是列表本身（见 createCompositeBridge）。
  */
-async function installCarriers(currentHost: Host): Promise<void> {
-  const dispatcher = createDispatcher({ host: currentHost, pickPrivateKey, onReady: handleReady })
+async function installCarriers(currentHost: DesktopHostProcess): Promise<void> {
+  const dispatcher = currentHost.dispatcher
 
   carriers.push(createIpcCarrier({ dispatcher, getWindow: currentWindow }))
   console.log('[main] 载体已就绪：ipc（桌面窗口）。')
@@ -344,9 +350,11 @@ async function installCarriers(currentHost: Host): Promise<void> {
 
   try {
     const web = await createHttpCarrier({
+      onDisconnect: (clientId) => currentHost.releaseClient(clientId),
       dispatcher,
       staticDir: rendererDir,
     })
+    if (disposing) { await web.dispose(); return }
     carriers.push(web)
     console.log(
       [
@@ -364,16 +372,34 @@ async function installCarriers(currentHost: Host): Promise<void> {
 // ─────────────────────────── 启动 / 退出 ───────────────────────────
 
 async function bootstrap(): Promise<void> {
-  applyApplicationMenu()
-  const generation = startGeneration()
-
-  host = await createHost({
-    bridge: createCompositeBridge(() => carriers, createCredentials()),
-    hostStoreFile: join(dataDir, 'hosts.json'),
-    knownHostsFile: join(dataDir, 'known_hosts.json'),
+  hostStarting = startHostProcess({
+    entry: hostEntry,
+    dataDir,
+    bridge: createCompositeBridge(() => carriers),
+    credentials: createCredentials(),
+    pickPrivateKey,
+    onReady: handleReady,
+    onExit: error => {
+      console.error('[main] Host 子进程意外退出:', error)
+      if (!disposing && !bootCheckEnabled && !process.env.SSH_CORDIS_SMOKE) {
+        dialog.showErrorBox('PureTerm Host 已停止', 'SSH 服务进程意外退出，当前连接已关闭。请重新启动 PureTerm。')
+      }
+      void exitApplication(1)
+    },
   })
+  host = await hostStarting
+  if (disposing) return
   await installCarriers(host)
-  console.log(`[main] 宿主已就绪。数据目录：${dataDir}`)
+  if (disposing) return
+  updates = createDesktopUpdates(() => shutdown(true), async () => {
+    // Some platforms report installation failures asynchronously after quitAndInstall.
+    // Keep the updater alive until then and restart the current version after the error dialog.
+    app.relaunch()
+    await exitApplication(1)
+  })
+  applyApplicationMenu(() => { void updates?.check(true) })
+  const generation = startGeneration()
+  console.log(`[main] Host 子进程已就绪 pid=${host.pid} parent=${process.pid}。数据目录：${dataDir}`)
 
   if (app.commandLine.hasSwitch('no-sandbox')) {
     console.warn('[main] 本次以 --no-sandbox 运行：Chromium 进程沙箱已关闭（渲染层隔离仍在）。')
@@ -383,40 +409,40 @@ async function bootstrap(): Promise<void> {
 
   if (process.env.SSH_CORDIS_SMOKE) {
     const { runSmokeTest } = await import('../diagnostics/smoke.js')
-    await runSmokeTest(generation.window)
+    await runSmokeTest(generation.window, code => { void exitApplication(code) })
   }
 }
 
 app.whenReady().then(bootstrap).catch((error) => {
   console.error('[main] 启动失败:', error)
-  app.exit(1)
+  void exitApplication(1)
 })
 
 app.on('activate', () => {
   // macOS：关掉窗口后再点 Dock 图标 → 起新的一代（旧的那代已经被 release 了）
-  if (!currentWindow()) startGeneration()
+  if (host && !disposing && !currentWindow()) startGeneration()
 })
 
 app.on('window-all-closed', () => {
-  if (platform.quitOnAllWindowsClosed) app.quit()
+  if (!disposing && platform.quitOnAllWindowsClosed) app.quit()
 })
 
 // 退出顺序：释放窗口（摘监听器、停看门狗）→ 卸载体 → 卸插件树（关掉所有 SSH 连接）→ 真退出
 app.on('will-quit', (event) => {
-  shell?.release()
-  shell = null
-  if (!host || disposing) return
-
+  if (disposing && !host) return
   event.preventDefault()
-  disposing = true
-  const pending = host
-  host = null
-  const closing = carriers
-  carriers = []
+  void shutdown().catch(error => console.error('[main] 退出清理失败:', error)).finally(() => app.quit())
+})
 
-  // 先卸载体再卸宿主：载体一停就不会再有新的请求进来，
-  // 这时去关 SSH 连接才是「收尾」而不是「跟还在跑的请求抢资源」。
-  void (async () => {
+function shutdown(preserveUpdater = false): Promise<void> {
+  if (!preserveUpdater) updates?.dispose()
+  if (shutdownTask) return shutdownTask
+  disposing = true
+  shutdownTask = Promise.resolve().then(async () => {
+    shell?.release()
+    shell = null
+    const closing = carriers
+    carriers = []
     for (const carrier of closing) {
       try {
         await carrier.dispose()
@@ -425,11 +451,19 @@ app.on('will-quit', (event) => {
       }
     }
     try {
-      await pending.dispose()
+      const pending = host ?? await hostStarting?.catch(() => undefined)
+      await pending?.dispose()
     } catch (error) {
       console.error('[main] 宿主卸载失败:', error)
+      throw error
     } finally {
-      app.quit()
+      host = null
     }
-  })()
-})
+  })
+  return shutdownTask
+}
+
+async function exitApplication(code: number): Promise<void> {
+  try { await shutdown() }
+  finally { app.exit(code) }
+}

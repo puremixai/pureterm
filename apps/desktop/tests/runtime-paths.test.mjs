@@ -18,9 +18,10 @@ test('runtime asset paths are independent of the launch working directory', () =
     assert.equal(result.status, 0, result.stderr)
     assert.deepEqual(JSON.parse(result.stdout), {
       distDir: join(application, 'dist'),
-      rendererDir: join(application, 'dist', 'renderer'),
-      rendererHtml: join(application, 'dist', 'renderer', 'index.html'),
+      rendererDir: fileURLToPath(new URL('.', import.meta.resolve('@pureterm/ui/index.html'))).replace(/[\\/]$/, ''),
+      rendererHtml: fileURLToPath(import.meta.resolve('@pureterm/ui/index.html')),
       preloadScript: join(application, 'dist', 'electron', 'carriers', 'preload.cjs'),
+      hostEntry: join(application, 'dist', 'electron', 'host', 'entry.js'),
     })
   } finally {
     rmSync(cwd, { recursive: true, force: true })
@@ -31,7 +32,7 @@ test('a clean build supplies the package entry, renderer references and CommonJS
   const { resolveDesktopPaths } = await import(pathsModule.href)
   const paths = resolveDesktopPaths()
   const manifest = JSON.parse(readFileSync(join(application, 'package.json'), 'utf8'))
-  for (const path of [join(application, manifest.main), paths.rendererHtml, paths.preloadScript]) {
+  for (const path of [join(application, manifest.main), paths.rendererHtml, paths.preloadScript, paths.hostEntry]) {
     assert.ok(existsSync(path), `Missing built runtime artifact: ${path}`)
   }
   const html = readFileSync(paths.rendererHtml, 'utf8')

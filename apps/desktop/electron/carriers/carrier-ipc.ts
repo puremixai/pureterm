@@ -1,8 +1,8 @@
 import { ipcMain, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
-import { METHODS, NOTICES } from '../../shared/protocol.js'
-import type { RendererHandle } from '../../src/host.js'
-import type { Carrier } from './carrier.js'
-import type { Dispatcher } from '../bridge/dispatch.js'
+import { METHODS, NOTICES } from '@pureterm/protocol'
+import type { RendererHandle } from '@pureterm/host'
+import type { Carrier } from '@pureterm/transport/carrier'
+import type { Dispatcher } from '@pureterm/transport/dispatch'
 
 /*
  * Electron IPC 载体：把 ipcMain 的往来翻译成协议调用。

@@ -7,13 +7,15 @@ export function resolveDesktopPaths(): {
   rendererDir: string
   rendererHtml: string
   preloadScript: string
+  hostEntry: string
 } {
   const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-  const rendererDir = join(distDir, 'renderer')
+  const rendererDir = dirname(fileURLToPath(import.meta.resolve('@pureterm/ui/index.html')))
   return {
     distDir,
     rendererDir,
     rendererHtml: join(rendererDir, 'index.html'),
     preloadScript: join(distDir, 'electron', 'carriers', 'preload.cjs'),
+    hostEntry: join(distDir, 'electron', 'host', 'entry.js'),
   }
 }
