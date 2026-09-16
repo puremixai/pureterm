@@ -114,6 +114,8 @@ export class SessionStore extends Service {
   private readonly credentials: CredentialProvider
   private hosts: StoredHost[] = []
   private secrets: SealedSecrets = {}
+  private mutations: Promise<void> = Promise.resolve()
+  private stopped = false
 
   constructor(ctx: Context, config: SessionStoreConfig) {
     super(ctx, 'sessionStore')
@@ -121,6 +123,7 @@ export class SessionStore extends Service {
     this.secretsFile = config.secretsFile
     this.credentials = config.credentials
     this.load()
+    ctx.effect(() => () => this.shutdown(), 'sessionStore.drainMutations')
   }
 
   private load(): void {
@@ -155,20 +158,36 @@ export class SessionStore extends Service {
     console.log(`[sessionStore] 已把 ${moved} 条密文从 hosts.json 迁移到 secrets.json。`)
   }
 
-  private persistHosts(): void {
+  private persistHosts(hosts = this.hosts): void {
     mkdirSync(dirname(this.file), { recursive: true })
-    writeFileSync(this.file, JSON.stringify(this.hosts, null, 2), { mode: 0o600 })
+    writeFileSync(this.file, JSON.stringify(hosts, null, 2), { mode: 0o600 })
   }
 
-  private persistSecrets(): void {
+  private persistSecrets(secrets = this.secrets): void {
     if (!this.credentials.persistent) return
     mkdirSync(dirname(this.secretsFile), { recursive: true })
-    writeFileSync(this.secretsFile, JSON.stringify(this.secrets, null, 2), { mode: 0o600 })
+    writeFileSync(this.secretsFile, JSON.stringify(secrets, null, 2), { mode: 0o600 })
   }
 
-  private persist(): void {
-    this.persistHosts()
-    this.persistSecrets()
+  private commit(hosts: StoredHost[], secrets: SealedSecrets): void {
+    this.persistSecrets(secrets)
+    this.persistHosts(hosts)
+    this.hosts = hosts
+    this.secrets = secrets
+  }
+
+  private mutate<T>(operation: () => T | Promise<T>): Promise<T> {
+    if (this.stopped) return Promise.reject(new Error('Host 已关闭，无法修改主机记录。'))
+    const result = this.mutations.then(operation)
+    // One rejected platform operation must not prevent later writes or disposal.
+    this.mutations = result.then(() => undefined, () => undefined)
+    return result
+  }
+
+  /** Stop accepting writes, then finish every mutation already accepted by the Host. */
+  shutdown(): Promise<void> {
+    this.stopped = true
+    return this.mutations
   }
 
   private toRecord(host: StoredHost): HostRecord {
@@ -185,7 +204,12 @@ export class SessionStore extends Service {
     return found ? this.toRecord(found) : undefined
   }
 
-  save(input: HostInput): HostRecord {
+  save(input: HostInput): Promise<HostRecord> {
+    const snapshot = { ...input }
+    return this.mutate(() => this.saveNow(snapshot))
+  }
+
+  private async saveNow(input: HostInput): Promise<HostRecord> {
     const host = input.host?.trim()
     if (!host) throw new Error('主机地址不能为空。')
     const port = input.port ?? 22
@@ -194,12 +218,11 @@ export class SessionStore extends Service {
 
     const id = input.id ?? makeId(host, port, username)
     const now = new Date().toISOString()
-    let record = this.hosts.find((item) => item.id === id)
-
-    if (!record) {
-      record = { id, label: input.label?.trim() || `${username}@${host}`, host, port, username, authMethod: 'password', updatedAt: now }
-      this.hosts.push(record)
+    const previous = this.hosts.find((item) => item.id === id)
+    const record: StoredHost = previous ? { ...previous } : {
+      id, label: input.label?.trim() || `${username}@${host}`, host, port, username, authMethod: 'password', updatedAt: now,
     }
+    const secrets = { ...this.secrets }
     record.label = input.label?.trim() || record.label
     record.host = host
     record.port = port
@@ -210,7 +233,7 @@ export class SessionStore extends Service {
     // 不然换方式之后会拿旧密码去当新方式的口令用，报出来的是「认证失败」这种查不出所以然的话。
     const previousAuth = record.authMethod
     record.authMethod = input.authMethod ?? record.authMethod
-    if (input.authMethod && input.authMethod !== previousAuth) delete this.secrets[id]
+    if (input.authMethod && input.authMethod !== previousAuth) delete secrets[id]
     if (this.credentials.persistent) record.privateKeyPath = input.privateKeyPath ?? record.privateKeyPath
     else delete record.privateKeyPath
 
@@ -218,29 +241,33 @@ export class SessionStore extends Service {
     // 私钥本体永远不进这里——它已经在用户自己的 ~/.ssh 下，再存一份只是多一个泄露面。
     const credential = record.authMethod === 'privateKey' ? input.passphrase : input.password
     if (this.credentials.persistent && input.rememberPassword && credential) {
-      const sealed = this.credentials.seal(credential)
+      const sealed = await this.credentials.seal(credential)
       // 拿不到系统密钥就不落盘，而不是退化成明文
-      if (sealed) this.secrets[id] = sealed
+      if (sealed) secrets[id] = sealed
     } else if (credential === '') {
-      delete this.secrets[id]
+      delete secrets[id]
     }
 
-    this.persist()
+    // Until encryption succeeds, neither the public state nor either file changes.
+    const hosts = previous ? this.hosts.map((item) => item.id === id ? record : item) : [...this.hosts, record]
+    this.commit(hosts, secrets)
     return this.toRecord(record)
   }
 
-  remove(id: string): boolean {
-    const before = this.hosts.length
-    this.hosts = this.hosts.filter((host) => host.id !== id)
-    if (this.hosts.length === before) return false
-    // 主机没了，密文也没理由留着
-    delete this.secrets[id]
-    this.persist()
-    return true
+  remove(id: string): Promise<boolean> {
+    return this.mutate(() => {
+      const hosts = this.hosts.filter((host) => host.id !== id)
+      if (hosts.length === this.hosts.length) return false
+      const secrets = { ...this.secrets }
+      // 主机没了，密文也没理由留着
+      delete secrets[id]
+      this.commit(hosts, secrets)
+      return true
+    })
   }
 
-  /** 仅主进程可用；解密失败返回 undefined 并提示重填 */
-  secret(id: string): string | undefined {
+  /** 仅 Host 可用；平台提供器可经由父子 IPC 异步解密。 */
+  async secret(id: string): Promise<string | undefined> {
     if (!this.credentials.persistent) return undefined
     const sealed = this.secrets[id]
     if (!sealed) return undefined

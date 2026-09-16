@@ -39,6 +39,19 @@ function errorMessage(error: unknown): string {
   return String(error)
 }
 
+/** Cancel the connection promptly even while its platform credential RPC is pending. */
+function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = (): void => reject(new Error('客户端已断开连接或 Host 已关闭。'))
+    if (signal.aborted) abort()
+    else signal.addEventListener('abort', abort, { once: true })
+    operation.then(
+      (value) => { signal.removeEventListener('abort', abort); resolve(value) },
+      (error: unknown) => { signal.removeEventListener('abort', abort); reject(error) },
+    )
+  })
+}
+
 /**
  * TerminalBridge —— ssh2 通道 <-> 渲染层 xterm.js 的字节桥。
  *
@@ -133,7 +146,8 @@ export class TerminalBridge extends Service {
        * 密码认证时它是密码，私钥认证时它是私钥口令。所以这里必须按方式取，
        * 不能「先当密码试、不行再当口令」——那会把一份凭据用在错误的位置上。
        */
-      const saved = payload.hostId ? this.ctx.sessionStore.secret(payload.hostId) : undefined
+      const saved = payload.hostId ? await withAbort(this.ctx.sessionStore.secret(payload.hostId), controller.signal) : undefined
+      assertClientAvailable()
       const password = authMethod === 'password' ? payload.password ?? saved : undefined
       const passphrase = authMethod === 'privateKey' ? payload.passphrase ?? saved : undefined
 

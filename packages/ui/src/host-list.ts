@@ -1,4 +1,5 @@
 import type { HostRecord } from '@pureterm/protocol'
+import { DomListeners } from './client-runtime.js'
 
 /**
  * 主机列表。**只做两件事：把记录画成行、把行上的动作翻译成回调。**
@@ -21,6 +22,7 @@ export interface HostListHandlers {
 }
 
 export interface HostListView {
+  dispose(): void
   /** 重画。`selectedId` 命中的那一行高亮；命中不了就都不高亮。 */
   render(records: HostRecord[], selectedId: string | null): void
   /**
@@ -41,13 +43,13 @@ function span(className: string, text: string): HTMLSpanElement {
   return element
 }
 
-function miniButton(label: string, action: string, danger: boolean, onClick: () => void): HTMLButtonElement {
+function miniButton(label: string, action: string, danger: boolean, onClick: () => void, listeners: DomListeners): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = danger ? 'mini danger' : 'mini'
   button.dataset.act = action
   button.textContent = label
-  button.addEventListener('click', (event) => {
+  listeners.add(button, 'click', (event) => {
     // 行上的动作按钮必须把事件截住：不然「删除」会先冒泡成一次选中，
     // 表单被装进一条马上要删掉的记录，状态就乱了。
     event.stopPropagation()
@@ -56,7 +58,7 @@ function miniButton(label: string, action: string, danger: boolean, onClick: () 
   return button
 }
 
-function buildRow(record: HostRecord, handlers: HostListHandlers): HTMLLIElement {
+function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: DomListeners): HTMLLIElement {
   const item = document.createElement('li')
   item.className = 'host-row'
   item.dataset.id = record.id
@@ -84,19 +86,20 @@ function buildRow(record: HostRecord, handlers: HostListHandlers): HTMLLIElement
   main.append(top)
   main.append(span('host-sub', `${record.username}@${record.host}:${record.port}`))
 
-  main.addEventListener('click', () => handlers.onSelect(record))
-  main.addEventListener('dblclick', () => handlers.onConnect(record))
+  listeners.add(main, 'click', () => handlers.onSelect(record))
+  listeners.add(main, 'dblclick', () => handlers.onConnect(record))
 
   const actions = document.createElement('span')
   actions.className = 'host-actions'
-  actions.append(miniButton('编辑', 'edit', false, () => handlers.onSelect(record)))
-  actions.append(miniButton('删除', 'delete', true, () => handlers.onDelete(record)))
+  actions.append(miniButton('编辑', 'edit', false, () => handlers.onSelect(record), listeners))
+  actions.append(miniButton('删除', 'delete', true, () => handlers.onDelete(record), listeners))
 
   item.append(main, actions)
   return item
 }
 
 export function createHostList(container: HTMLElement, handlers: HostListHandlers): HostListView {
+  const listeners = new DomListeners()
   // 记着「id → 行元素」，移动高亮时就不必再去翻 DOM（选择器写错也不会静默失效）
   const rows = new Map<string, HTMLLIElement>()
 
@@ -105,14 +108,16 @@ export function createHostList(container: HTMLElement, handlers: HostListHandler
   }
 
   return {
+    dispose() { listeners.clear(); rows.clear(); container.replaceChildren() },
     render(records, selectedId) {
       // 整棵重建而不是做 diff：主机数量是「人手维护」的量级（几十条顶天），
       // 重建的代价可以忽略，换来的是「列表永远等于最后一次拿到的数据」这条简单性质。
       // 监听器跟着旧元素一起被丢掉，不需要手动解绑。
       container.textContent = ''
+      listeners.clear()
       rows.clear()
       for (const record of records) {
-        const item = buildRow(record, handlers)
+        const item = buildRow(record, handlers, listeners)
         rows.set(record.id, item)
         container.append(item)
       }

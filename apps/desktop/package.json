@@ -28,17 +28,18 @@
     "boot": "npm run build && node scripts/boot-check.mjs",
     "launch": "npm run build && node scripts/launch.mjs",
     "smoke:node": "node tests/smoke-runner-decision.mjs && node tests/smoke-desktop.mjs && node tests/smoke-launch-profile.mjs && node tests/smoke-host.mjs && node tests/smoke-sftp.mjs && node tests/smoke-carrier.mjs",
-    "smoke": "npm run build && npm run smoke:node && node tests/smoke-electron.mjs && node tests/smoke-electron-web.mjs",
+    "smoke": "npm run build && npm run smoke:node && npm run verify:electron:built",
     "verify": "npm run verify --prefix ../..",
-    "verify:electron": "npm run build && node scripts/boot-check.mjs && node tests/smoke-electron.mjs && node tests/smoke-electron-web.mjs",
+    "verify:electron": "npm run build && npm run verify:electron:built",
     "start:built": "electron .",
-    "verify:electron:built": "node scripts/boot-check.mjs && node tests/smoke-electron.mjs && node tests/smoke-electron-web.mjs"
+    "verify:electron:built": "node scripts/boot-check.mjs && node tests/smoke-electron.mjs && node tests/smoke-electron-web.mjs && node tests/smoke-renderer-crash.mjs && node tests/smoke-updates.mjs"
   },
   "dependencies": {
     "@pureterm/host": "*",
     "@pureterm/protocol": "*",
     "@pureterm/transport": "*",
-    "@pureterm/ui": "*"
+    "@pureterm/ui": "*",
+    "electron-updater": "6.8.9"
   },
   "devDependencies": {
     "electron": "^44.3.0"

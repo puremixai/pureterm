@@ -2,7 +2,7 @@
 
 基于 Cordis、ssh2 和 xterm.js 的 SSH / SFTP 客户端，提供 Electron Desktop 和独立本机 Web 两个入口。SSH 连接始终由用户电脑发起；Web 服务只监听本机回环地址，不提供公开服务、账号或用户隔离。
 
-两个入口复用 Host、协议、传输适配和界面。Desktop 在 Electron 主进程内运行 Host；独立 Web 在普通 Node 进程中运行，无需启动 Electron。
+两个入口复用 Host、协议、传输适配和 Cordis Client。Desktop 由 Electron 启动独立 Node Host 子进程；独立 Web 在普通 Node 进程中运行，无需启动 Electron。
 
 ## 开始使用
 
@@ -49,6 +49,6 @@ npm run verify:electron
 | [tools/gui/](tools/gui/README.md) | 可选 Windows GUI 调研和验收工具 |
 | [Termius 产品设计分析](docs/research/termius/Termius-产品设计分析.html) | 历史研究报告、模板和素材 |
 
-这是使用 npm workspaces 的私有仓库，共享包通过公开导出引用，根 `package-lock.json` 是唯一安装锁文件。当前尚未提供安装包、自动更新或 Desktop Host 子进程。
+项目使用 npm workspaces，共享包通过公开导出引用，根 `package-lock.json` 是唯一安装锁文件。`npm run dist:desktop -- --win --x64` 生成 Windows 安装包；CI 另提供 macOS/Linux 构建。打包版通过 GitHub Releases 检查更新，下载后由用户确认重启安装。签名、发布及本机验收见[发布说明](docs/desktop-release.md)。
 
 [历史评审](docs/reviews/)与[原提案归档](docs/archive/)保留当时的目录及验证描述，不作为当前命令和测试结果。上一轮目录整改记录见[整改方案](docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md)。

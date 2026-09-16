@@ -123,6 +123,9 @@ export function createDispatcher(options: DispatcherOptions): Dispatcher {
 
     notify(name, params, clientId) {
       switch (name) {
+        case NOTICES.appDispose:
+          host.releaseClient(clientId)
+          return
         case NOTICES.sshInput:
           host.input(asString(params[0], 'ssh:input'), asString(params[1], 'ssh:input'))
           return

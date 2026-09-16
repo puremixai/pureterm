@@ -48,7 +48,7 @@ export function platformStrategy(): PlatformPlan {
  * 但 Edit 子菜单**必须留**：Windows/Linux 上终端的 Ctrl+C/Ctrl+V 是靠菜单加速键提供的，
  * 把菜单整个设成 null 会让复制粘贴一起失效（这在终端里是致命的）。
  */
-function menuTemplate(includeAppMenu: boolean): MenuItemConstructorOptions[] {
+function menuTemplate(includeAppMenu: boolean, checkUpdates?: () => void): MenuItemConstructorOptions[] {
   const template: MenuItemConstructorOptions[] = []
   if (includeAppMenu) template.push({ role: 'appMenu' })
   template.push({
@@ -63,10 +63,11 @@ function menuTemplate(includeAppMenu: boolean): MenuItemConstructorOptions[] {
       { role: 'selectAll', label: '全选' },
     ],
   })
+  if (checkUpdates) template.push({ label: '帮助', submenu: [{ label: '检查更新…', click: checkUpdates }] })
   return template
 }
 
-export function applyApplicationMenu(): void {
+export function applyApplicationMenu(checkUpdates?: () => void): void {
   const plan = platformStrategy()
-  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(plan.includeAppMenu)))
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(plan.includeAppMenu, checkUpdates)))
 }

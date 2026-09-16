@@ -14,8 +14,16 @@ import { EVENTS, METHODS, NOTICES, type PickedPrivateKey, type SshApi } from '@p
 
 type ChannelListener<T extends unknown[]> = (...args: T) => void
 
-const subscribe = <T extends unknown[]>(channel: string, listener: ChannelListener<T>): void => {
-  ipcRenderer.on(channel, (_event, ...args) => listener(...(args as T)))
+const subscriptions = new Set<() => void>()
+const subscribe = <T extends unknown[]>(channel: string, listener: ChannelListener<T>): (() => void) => {
+  const handler = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => listener(...(args as T))
+  const dispose = () => {
+    ipcRenderer.removeListener(channel, handler)
+    subscriptions.delete(dispose)
+  }
+  ipcRenderer.on(channel, handler)
+  subscriptions.add(dispose)
+  return dispose
 }
 
 /**
@@ -27,6 +35,10 @@ const subscribe = <T extends unknown[]>(channel: string, listener: ChannelListen
  */
 const sshAPI: SshApi = {
   carrier: 'ipc',
+  dispose: () => {
+    for (const dispose of [...subscriptions]) dispose()
+    ipcRenderer.send(NOTICES.appDispose)
+  },
   getCapabilities: () => ipcRenderer.invoke(METHODS.appCapabilities),
 
   open: (payload) => ipcRenderer.invoke(METHODS.sshOpen, payload),

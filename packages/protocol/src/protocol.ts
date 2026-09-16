@@ -36,6 +36,7 @@ export const NOTICES = {
   sshResize: 'ssh:resize',
   sshClose: 'ssh:close',
   appReady: 'app:renderer-ready',
+  appDispose: 'app:dispose-client',
 } as const
 
 /** 服务端推给客户端的事件。客户端只订阅，不回应。 */
@@ -214,9 +215,11 @@ export interface SshApi {
   resize(sessionId: string, cols: number, rows: number): void
   close(sessionId: string): void
   pickPrivateKey(): Promise<PickedPrivateKey | undefined>
-  onOpened(listener: (sessionId: string, cols: number, rows: number) => void): void
-  onData(listener: (sessionId: string, chunk: Uint8Array) => void): void
-  onClosed(listener: (sessionId: string, reason: string) => void): void
+  onOpened(listener: (sessionId: string, cols: number, rows: number) => void): () => void
+  onData(listener: (sessionId: string, chunk: Uint8Array) => void): () => void
+  onClosed(listener: (sessionId: string, reason: string) => void): () => void
+  /** Release this client's subscriptions and transport resources. */
+  dispose(): void
   hosts: {
     list(): Promise<HostRecord[]>
     save(input: HostSaveRequest): Promise<HostRecord>

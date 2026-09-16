@@ -21,11 +21,15 @@
     "start:desktop": "npm run build:desktop && npm run start:built --workspace=@pureterm/desktop",
     "test:unit": "node --test apps/desktop/tests/*.test.mjs packages/host/tests/*.test.mjs packages/ui/tests/*.test.mjs apps/web/tests/*.test.mjs",
     "verify": "npm run build && npm run typecheck && npm run test:unit && npm run smoke:node --workspace=@pureterm/desktop",
-    "verify:electron": "npm run build && npm run verify:electron:built --workspace=@pureterm/desktop && node apps/web/tests/smoke-browser.mjs"
+    "verify:electron": "npm run build && npm run verify:electron:built --workspace=@pureterm/desktop && node apps/web/tests/smoke-browser.mjs && node packages/ui/tests/smoke-client-lifecycle.mjs",
+    "stage:desktop": "npm run build:desktop && node scripts/stage-desktop.mjs",
+    "dist:desktop": "npm run stage:desktop && electron-builder --config apps/desktop/electron-builder.cjs --publish never",
+    "verify:package:windows": "node scripts/verify-windows-package.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",
     "@types/ssh2": "^1.15.6",
+    "electron-builder": "26.15.3",
     "esbuild": "^0.28.2",
     "typescript": "^5.9.3"
   }

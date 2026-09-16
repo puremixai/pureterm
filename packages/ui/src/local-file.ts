@@ -16,7 +16,7 @@
  * 用 `URL.createObjectURL` 而不是 data: URL：后者要把整份内容再编码一遍塞进 DOM 属性，
  * 4 MiB 的文件会变成 5 MiB 的 Base64 字符串，还要在 DOM 里待着。
  */
-export function saveBytes(bytes: Uint8Array, filename: string): void {
+export function saveBytes(bytes: Uint8Array, filename: string): () => void {
   // 先复制一份再交给 Blob：这块 buffer 是从传输层解出来的，可能还带着视图，
   // 而我们不该让一个下载持有它的引用。
   const blob = new Blob([bytes.slice()], { type: 'application/octet-stream' })
@@ -30,7 +30,8 @@ export function saveBytes(bytes: Uint8Array, filename: string): void {
   link.remove()
   // **不能**点完立刻 revoke：下载是异步开始的，撤得太快会把这一次撤掉。
   // 内容已经在内存里，一秒足够它起步，之后留着这个 URL 只是占内存。
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  const timer = window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return () => { window.clearTimeout(timer); URL.revokeObjectURL(url); link.remove() }
 }
 
 /**

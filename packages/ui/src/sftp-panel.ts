@@ -1,5 +1,6 @@
 import type { SftpDir, SftpEntry } from '@pureterm/protocol'
 import { formatBytes, formatTime } from './format.js'
+import { DomListeners } from './client-runtime.js'
 
 /**
  * 远端文件面板。**只做两件事：把目录画成行、把行上的动作翻译成回调。**
@@ -26,6 +27,7 @@ export interface SftpHandlers {
 }
 
 export interface SftpView {
+  dispose(): void
   /** 画一个目录；传 null = 没有会话（未连接 / 已断开） */
   render(dir: SftpDir | null): void
   /** 面板内的提示/报错。不复用状态栏那条，因为它说的是终端的事 */
@@ -63,6 +65,8 @@ function must<T extends HTMLElement>(root: HTMLElement, id: string): T {
 }
 
 export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): SftpView {
+  const listeners = new DomListeners()
+  const rowListeners = new DomListeners()
   const body = document.createElement('div')
   body.id = 'sftp-body'
 
@@ -186,7 +190,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     primary.className = 'mini'
     primary.dataset.act = entry.isDirectory ? 'open' : 'download'
     primary.textContent = primaryLabel
-    primary.addEventListener('click', (event) => {
+    rowListeners.add(primary, 'click', (event) => {
       event.stopPropagation()
       fire()
     })
@@ -196,7 +200,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     remove.className = 'mini danger'
     remove.dataset.act = 'delete'
     remove.textContent = '删除'
-    remove.addEventListener('click', (event) => {
+    rowListeners.add(remove, 'click', (event) => {
       // 行按钮必须截住事件，不然「删除」会先冒泡成一次双击/单击
       event.stopPropagation()
       handlers.onDelete(entry)
@@ -208,7 +212,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     }
 
     // 双击 = 主动作，和主机列表一致（列表中双击的语义由行自己决定，界面不必学两套）
-    main.addEventListener('dblclick', () => fire())
+    rowListeners.add(main, 'dblclick', () => fire())
 
     actions.append(primary, remove)
     item.append(main, actions)
@@ -217,16 +221,16 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     return item
   }
 
-  upButton.addEventListener('click', () => {
+  listeners.add(upButton, 'click', () => {
     if (current?.parent) handlers.onNavigate(current.parent)
   })
-  refreshButton.addEventListener('click', () => handlers.onRefresh())
-  mkdirButton.addEventListener('click', () => {
+  listeners.add(refreshButton, 'click', () => handlers.onRefresh())
+  listeners.add(mkdirButton, 'click', () => {
     createBar.hidden = false
     createName.focus()
     syncDisabled()
   })
-  createCancel.addEventListener('click', () => {
+  listeners.add(createCancel, 'click', () => {
     closeCreateBar()
     syncDisabled()
   })
@@ -243,8 +247,8 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     syncDisabled()
     handlers.onCreate(name)
   }
-  createOk.addEventListener('click', submitCreate)
-  createName.addEventListener('keydown', (event) => {
+  listeners.add(createOk, 'click', submitCreate)
+  listeners.add(createName, 'keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       submitCreate()
@@ -256,10 +260,10 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
       syncDisabled()
     }
   })
-  uploadButton.addEventListener('click', () => fileInput.click())
-  closeButton.addEventListener('click', () => handlers.onClose())
+  listeners.add(uploadButton, 'click', () => fileInput.click())
+  listeners.add(closeButton, 'click', () => handlers.onClose())
 
-  fileInput.addEventListener('change', () => {
+  listeners.add(fileInput, 'change', () => {
     const file = fileInput.files?.[0]
     // 立刻清空：不清的话，连着上传同一个文件第二次不会触发 change——
     // 用户会以为「上传成功但什么都没发生」
@@ -267,7 +271,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     if (file) handlers.onUpload(file)
   })
 
-  pathInput.addEventListener('keydown', (event) => {
+  listeners.add(pathInput, 'keydown', (event) => {
     if (event.key !== 'Enter') return
     event.preventDefault()
     const target = pathInput.value.trim()
@@ -277,11 +281,13 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   syncDisabled()
 
   return {
+    dispose() { listeners.clear(); rowListeners.clear(); root.replaceChildren() },
     render(dir) {
       current = dir
       pathInput.value = dir?.path ?? ''
       pathInput.title = dir?.path ?? ''
       list.textContent = ''
+      rowListeners.clear()
       rowButtons = []
       // 每次都把提示恢复成中性样式：上一次可能是一句报错（红的），
       // 而这次是一句普通的「目录是空的」，留着红色会让用户以为又出错了
@@ -317,6 +323,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     setEnabled(next) {
       enabled = next
       if (!next) {
+        rowListeners.clear()
         current = null
         closeCreateBar()
         pathInput.value = ''

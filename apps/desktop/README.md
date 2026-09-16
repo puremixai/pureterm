@@ -1,6 +1,6 @@
 # PureTerm Desktop
 
-Electron SSH / SFTP 客户端，支持密码或私钥认证、保存主机、终端交互和基本远端文件操作。Host 在 Electron 主进程内运行；Desktop 默认提供 IPC 窗口和本机浏览器入口，两者共享这份 Host 与凭据。
+Electron SSH / SFTP 客户端，支持密码或私钥认证、保存主机、终端交互和基本远端文件操作。Electron 启动独立 Node Host 子进程；默认提供 IPC 窗口和本机浏览器入口，两者共享子进程中的 Host。系统加密与原生选钥仍由主进程提供。
 
 业务、协议、HTTP/WS 与界面已抽到根 workspace 的共享包。无需启动 Electron 的独立入口见[本机 Web](../web/README.md)。[仓库入口](../../README.md) · [架构](../../docs/architecture.md) · [目录决策](../../LAYOUT-PROPOSAL.md)
 
@@ -67,7 +67,7 @@ npm run verify
 npm run verify:electron
 ```
 
-`verify` 包含全部构建、类型与依赖约束，以及无需窗口的 Host、UI、Web、SSH/SFTP/HTTP/WS 测试。根 `verify:electron` 检查 Desktop boot、IPC、Desktop Web 和独立 Node Web 的真实浏览器流程。
+`verify` 包含全部构建、类型与依赖约束，以及无需窗口的 Host 子进程、更新协调、UI、Web、SSH/SFTP/HTTP/WS 测试。根 `verify:electron` 检查 Desktop boot、IPC、Desktop Web、渲染崩溃、更新下载、独立 Node Web 和共享 Client 生命周期。
 
 Desktop 的定向命令可在根使用 `npm run <命令> --workspace=@pureterm/desktop`：
 
@@ -82,7 +82,7 @@ Desktop 的定向命令可在根使用 `npm run <命令> --workspace=@pureterm/d
 
 单独执行 `smoke:node` 前先运行根 `npm run build:desktop`，以免读取过期产物。完整验证命令包含构建。
 
-测试使用随机回环端口、临时数据目录和本机 SSH 夹具，不连接用户的远端主机。Desktop 三项真实应用检查共用 `scripts/electron-runner.mjs`，同时检查成功信号、必要的就绪证据与正常退出；超时会回收进程树。退出码 0 为通过、1 为失败、2 为已识别的环境限制，环境限制不算成功。
+测试使用随机回环端口、临时数据目录和本机 SSH 夹具，不连接用户的远端主机。真实应用检查共用 `scripts/electron-runner.mjs`，同时检查成功信号、必要证据与正常退出；超时会回收进程树。退出码 0 为通过、1 为失败、2 为已识别的环境限制，环境限制不算成功。
 
 Electron 验证使用受控窗口与临时用户目录，关闭自动无沙箱回退，因此不覆盖两代真实 Electron 的回退。boot 截图尽力获取，只有本次成功生成时才输出路径；截图不能代替 renderer-ready。`smoke:profile` 也不能替代真实双次启动验收，本机 ssh2 夹具不代表所有 sshd 的兼容性。
 
@@ -90,4 +90,4 @@ Electron 验证使用受控窗口与临时用户目录，关闭自动无沙箱�
 
 [tools/gui](../../tools/gui/README.md) 提供 Windows 鼠标键盘、截图和原生文件选择流程，独立运行，不纳入上述验证。原始截图和日志不入库。[Termius 研究报告](../../docs/research/termius/Termius-产品设计分析.html) 保留历史内容，可离线打开。
 
-当前没有 Desktop Host 子进程、安装包、自动更新、端口转发或多标签页。独立本机 Web 已提供，不包含用户账号或多用户隔离。历史整改与测试说明见[上一轮方案](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md)，其中旧路径与通过次数按当时基线理解。
+已提供独立 Desktop Host、共享 Cordis Client、安装包构建与 GitHub Releases 更新。菜单“帮助 → 检查更新”可手动检查；下载完成后确认重启才会关闭 SSH 并安装，开发版不联网检查。安装、签名与发布配置见[发布说明](../../docs/desktop-release.md)。当前没有端口转发、多标签页、用户账号或多用户隔离。历史整改与测试说明见[上一轮方案](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md)，其中旧路径与通过次数按当时基线理解。

@@ -30,6 +30,7 @@ test('accepts Electron adapters and type-only access through the Host facade', (
     'apps/desktop/electron/carriers/carrier-ipc.ts': "import { ipcMain } from 'electron'",
     'apps/desktop/electron/carriers/preload.ts': "import { contextBridge } from 'electron'",
     'apps/desktop/electron/diagnostics/boot-check.ts': "import type { BrowserWindow } from 'electron'",
+    'apps/desktop/electron/host/entry.ts': "import { createHost } from '@pureterm/host'; import '../runtime/process-rpc.js'",
     'packages/transport/src/dispatch.ts': "import type { Host } from '@pureterm/host'",
     'apps/web/src/server.ts': "import { createHost } from '@pureterm/host'; import { createHttpCarrier } from '@pureterm/transport/carrier-http'",
     'packages/host/src/host.ts': "import { Context } from 'cordis'",
@@ -40,6 +41,8 @@ test('accepts Electron adapters and type-only access through the Host facade', (
 })
 
 const violations = [
+  ['apps/desktop/electron/host/entry.ts', "import '../app/platform.js'", 'Node Host entry may only import'],
+  ['apps/desktop/electron/host/entry.ts', "import { app } from 'electron'", 'Electron is restricted'],
   ['apps/web/src/main.ts', "import { app } from 'electron'", 'Electron is restricted'],
   ['apps/web/src/server.ts', "import '../../desktop/electron/app/main.js'", 'Relative source imports'],
   ['packages/host/src/host.ts', "import '@pureterm/transport/carrier-http'", 'allowed public export'],

@@ -73,19 +73,27 @@ export function createTransport(): SshApi {
  * 3. **断开要让上层知道**。socket 一断，所有在途请求立刻 reject，
  *    并且通知当前会话已结束——否则界面会停在「已连接」而远端其实已经没了。
  */
-function createWebSocketTransport(): SshApi {
+export function createWebSocketTransport(): SshApi {
   // Subsequent HTTP requests and the first WebSocket use the HttpOnly session cookie.
   const cleanedUrl = withoutBootstrapToken(window.location.href)
   if (cleanedUrl) window.history.replaceState(window.history.state, '', cleanedUrl)
-  const openedListeners: Array<(sessionId: string, cols: number, rows: number) => void> = []
-  const dataListeners: Array<(sessionId: string, chunk: Uint8Array) => void> = []
-  const closedListeners: Array<(sessionId: string, reason: string) => void> = []
+  const openedListeners = new Set<(sessionId: string, cols: number, rows: number) => void>()
+  const dataListeners = new Set<(sessionId: string, chunk: Uint8Array) => void>()
+  const closedListeners = new Set<(sessionId: string, reason: string) => void>()
 
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
   let nextId = 1
   let socket: WebSocket | null = null
   let connecting: Promise<WebSocket> | null = null
   let currentSession: string | null = null
+  let disposed = false
+  let openingSocket: WebSocket | null = null
+  let rejectOpening: ((error: Error) => void) | null = null
+  let connectionGeneration = 0
+
+  const clearSocketHandlers = (ws: WebSocket): void => {
+    ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null
+  }
 
   const emitClosed = (sessionId: string, reason: string): void => {
     for (const listener of closedListeners) listener(sessionId, reason)
@@ -99,30 +107,50 @@ function createWebSocketTransport(): SshApi {
   const url = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 
   function connect(): Promise<WebSocket> {
+    if (disposed) return Promise.reject(new Error('客户端已卸载。'))
     if (socket && socket.readyState === WebSocket.OPEN) return Promise.resolve(socket)
     if (connecting) return connecting
 
+    const generation = ++connectionGeneration
+    const isCurrent = (): boolean => !disposed && generation === connectionGeneration
     connecting = new Promise<WebSocket>((resolve, reject) => {
       let settled = false
       const ws = new WebSocket(url)
+      openingSocket = ws
+      rejectOpening = reject
       ws.binaryType = 'arraybuffer'
 
       ws.onopen = () => {
+        if (!isCurrent()) { clearSocketHandlers(ws); ws.close(); return }
         settled = true
+        openingSocket = null
+        rejectOpening = null
         socket = ws
         resolve(ws)
       }
 
       ws.onerror = () => {
-        if (settled) return
+        if (!isCurrent() || settled) return
         settled = true
+        connectionGeneration++
         connecting = null
+        openingSocket = null
+        rejectOpening = null
+        // Retire the failed handshake before permitting a retry. Its queued close,
+        // message or open callback must never affect the replacement connection.
+        clearSocketHandlers(ws)
+        ws.close()
         reject(new Error(`连不上本机后端（${url}）。地址或 token 可能已经失效——重启应用后会换新的。`))
       }
 
       ws.onclose = (event) => {
+        if (!isCurrent()) return
+        connectionGeneration++
+        clearSocketHandlers(ws)
         const wasCurrent = socket === ws
         if (wasCurrent) socket = null
+        if (openingSocket === ws) openingSocket = null
+        rejectOpening = null
         connecting = null
         const reason = `与后端的连接已断开（${event.code}${event.reason ? ` ${event.reason}` : ''}）。`
         failAllPending(reason)
@@ -140,6 +168,7 @@ function createWebSocketTransport(): SshApi {
       }
 
       ws.onmessage = (event) => {
+        if (!isCurrent() || socket !== ws) return
         if (typeof event.data !== 'string') return
         let message: unknown
         try {
@@ -200,25 +229,29 @@ function createWebSocketTransport(): SshApi {
 
   const call = async (method: string, params: unknown[]): Promise<unknown> => {
     const ws = await connect()
+    if (disposed) throw new Error('客户端已卸载。')
     const id = nextId++
     // 显式标成 WireCall：线格式就是协议文件里那个类型，不靠「看着像」对齐
     const wire: WireCall = { kind: 'call', id, method, params }
     return new Promise<unknown>((resolve, reject) => {
       // 先登记再发送：反过来的话本机回包可能比登记还快
       pending.set(id, { resolve, reject })
-      ws.send(JSON.stringify(encodeWire(wire)))
+      try { ws.send(JSON.stringify(encodeWire(wire))) }
+      catch (error) { pending.delete(id); reject(error) }
     })
   }
 
   const notify = (name: string, params: unknown[]): void => {
+    if (disposed) return
     const wire: WireNotice = { kind: 'notice', name, params }
     // 一律挂到 connect() 这条链上：同一个 Promise 的 then 按注册顺序执行，
     // 所以「先 input 再 close」这种顺序不会被打乱
     void connect()
       .then((ws) => {
+        if (disposed) return
         ws.send(JSON.stringify(encodeWire(wire)))
       })
-      .catch((error: unknown) => console.error('[transport] 发送通知失败：', error))
+      .catch((error: unknown) => { if (!disposed) console.error('[transport] 发送通知失败：', error) })
   }
 
   return {
@@ -232,13 +265,16 @@ function createWebSocketTransport(): SshApi {
     pickPrivateKey: () => call(METHODS.sshPickPrivateKey, []) as Promise<PickedPrivateKey | undefined>,
 
     onOpened: (listener) => {
-      openedListeners.push(listener)
+      openedListeners.add(listener)
+      return () => { openedListeners.delete(listener) }
     },
     onData: (listener) => {
-      dataListeners.push(listener)
+      dataListeners.add(listener)
+      return () => { dataListeners.delete(listener) }
     },
     onClosed: (listener) => {
-      closedListeners.push(listener)
+      closedListeners.add(listener)
+      return () => { closedListeners.delete(listener) }
     },
 
     hosts: {
@@ -262,5 +298,24 @@ function createWebSocketTransport(): SshApi {
     },
 
     signalReady: (payload) => notify(NOTICES.appReady, [payload]),
+    dispose() {
+      if (disposed) return
+      disposed = true
+      connectionGeneration++
+      failAllPending('客户端已卸载。')
+      rejectOpening?.(new Error('客户端已卸载。'))
+      rejectOpening = null
+      for (const ws of new Set([socket, openingSocket])) {
+        if (!ws) continue
+        clearSocketHandlers(ws)
+        ws.close()
+      }
+      socket = openingSocket = null
+      connecting = null
+      currentSession = null
+      openedListeners.clear()
+      dataListeners.clear()
+      closedListeners.clear()
+    },
   }
 }

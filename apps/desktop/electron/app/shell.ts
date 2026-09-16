@@ -32,6 +32,7 @@ export interface ShellGenerationOptions {
   onLoadFailure(reason: string): void
   /** HTML 解析完成时通知一声。注意这**不等于**应用可用。 */
   onLoaded?(): void
+  onRelease?(): void
 }
 
 export interface ElectronShellGeneration {
@@ -151,6 +152,7 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
   on(window.webContents, 'render-process-gone', (_event: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
     console.error(`[shell#${id}] 渲染进程退出：${details.reason}（exitCode=${details.exitCode}）`)
     if (!loaded) options.onLoadFailure(`渲染进程退出：${details.reason}`)
+    else release()
   })
 
   // 窗口被关掉就自动释放这一代；调用方不需要记得手动清理
@@ -161,6 +163,7 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
   function release(): void {
     if (released) return
     released = true
+    options.onRelease?.()
     clearWatchdog()
     while (disposers.length) {
       try {

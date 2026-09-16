@@ -75,8 +75,8 @@ test('session-only Host ignores remember requests and never persists passwords, 
     unseal: () => { throw new Error('session-only credentials must not be unsealed') },
   } })
   const host = await f.create()
-  const password = host.saveHost({ host: 'example.test', username: 'demo', password: 'sensitive-password', rememberPassword: true })
-  const key = host.saveHost({ host: 'key.test', username: 'demo', authMethod: 'privateKey',
+  const password = await host.saveHost({ host: 'example.test', username: 'demo', password: 'sensitive-password', rememberPassword: true })
+  const key = await host.saveHost({ host: 'key.test', username: 'demo', authMethod: 'privateKey',
     privateKeyPath: '/private/id_ed25519', passphrase: 'sensitive-key-passphrase', rememberPassword: true })
   assert.equal(password.hasSecret, false)
   assert.equal(key.hasSecret, false)
@@ -88,14 +88,14 @@ test('session-only Host ignores remember requests and never persists passwords, 
   const restarted = await f.create()
   assert.equal(restarted.listHosts().length, 2)
   assert.ok(restarted.listHosts().every((entry) => !entry.hasSecret && !entry.privateKeyPath))
-  restarted.removeHost(password.id)
+  await restarted.removeHost(password.id)
   assert.equal(existsSync(f.options.secretsFile), false)
 })
 
 test('omitting the credential provider defaults to session-only storage', async (t) => {
   const f = await fixture(t)
   const host = await f.create()
-  const saved = host.saveHost({ host: 'default.test', username: 'demo', password: 'do-not-save', rememberPassword: true })
+  const saved = await host.saveHost({ host: 'default.test', username: 'demo', password: 'do-not-save', rememberPassword: true })
   assert.equal(saved.hasSecret, false)
   assert.equal(existsSync(f.options.secretsFile), false)
 })
@@ -121,7 +121,7 @@ test('session-only Host refuses inline legacy ciphertext without migration', asy
 test('an explicit persistent provider preserves Desktop credential and key-path storage', async (t) => {
   const f = await fixture(t, { credentials: testCredentials() })
   const host = await f.create()
-  const saved = host.saveHost({ host: 'desktop.test', username: 'demo', authMethod: 'privateKey',
+  const saved = await host.saveHost({ host: 'desktop.test', username: 'demo', authMethod: 'privateKey',
     privateKeyPath: '/users/demo/.ssh/id_ed25519', passphrase: 'desktop-key-secret', rememberPassword: true })
   assert.equal(saved.hasSecret, true)
   assert.equal(saved.privateKeyPath, '/users/demo/.ssh/id_ed25519')
@@ -129,7 +129,7 @@ test('an explicit persistent provider preserves Desktop credential and key-path 
   await host.dispose()
   const restarted = await f.create()
   assert.equal(restarted.listHosts()[0].hasSecret, true)
-  assert.equal(restarted.internals.ctx.sessionStore.secret(saved.id), 'desktop-key-secret')
+  assert.equal(await restarted.internals.ctx.sessionStore.secret(saved.id), 'desktop-key-secret')
 })
 
 test('Host construction failure unloads services that were already installed', async (t) => {

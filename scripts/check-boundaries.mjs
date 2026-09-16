@@ -99,6 +99,10 @@ export function checkBoundaries(root) {
       if (file.startsWith('apps/desktop/electron/runtime/') && !target.startsWith('apps/desktop/electron/runtime/')) {
         fail(node, 'Runtime may only import runtime modules and public packages.')
       }
+      if (file.startsWith('apps/desktop/electron/host/')
+        && !target.startsWith('apps/desktop/electron/host/') && !target.startsWith('apps/desktop/electron/runtime/')) {
+        fail(node, 'Node Host entry may only import Host/runtime modules and public packages.')
+      }
       if (file.startsWith('apps/desktop/electron/carriers/') && (target.startsWith('apps/desktop/electron/app/') || target.startsWith('apps/desktop/electron/diagnostics/'))) {
         fail(node, 'Carriers must not depend on application assembly or diagnostics.')
       }

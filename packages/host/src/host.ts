@@ -53,8 +53,8 @@ export interface Host {
   /** 客户端断开时释放其活动会话与仍在握手的连接。 */
   releaseClient(clientId: string): void
   listHosts(): HostRecord[]
-  saveHost(input: HostInput): HostRecord
-  removeHost(id: string): boolean
+  saveHost(input: HostInput): Promise<HostRecord>
+  removeHost(id: string): Promise<boolean>
   /**
    * 远端文件。全部作用在**已打开的会话**上，所以都要 sessionId。
    *
@@ -131,8 +131,14 @@ export async function createHost(options: HostOptions): Promise<Host> {
       if (!disposed) root.terminal.releaseClient(clientId)
     },
     listHosts: () => root.sessionStore.list(),
-    saveHost: (input) => root.sessionStore.save(input),
-    removeHost: (id) => root.sessionStore.remove(id),
+    saveHost: async (input) => {
+      if (disposed) throw new Error('Host 已关闭，无法修改主机记录。')
+      return root.sessionStore.save(input)
+    },
+    removeHost: async (id) => {
+      if (disposed) throw new Error('Host 已关闭，无法修改主机记录。')
+      return root.sessionStore.remove(id)
+    },
     sftpList: (sessionId, path) => root.sftp.list(sessionId, path),
     sftpRead: (sessionId, path) => root.sftp.read(sessionId, path),
     sftpWrite: (sessionId, dir, name, bytes) => root.sftp.write(sessionId, dir, name, bytes),
@@ -142,8 +148,10 @@ export async function createHost(options: HostOptions): Promise<Host> {
       if (disposing) return disposing
       disposed = true
       root.terminal.shutdown()
+      const mutations = root.sessionStore.shutdown()
       disposing = (async () => {
         await Promise.allSettled([...openings])
+        await mutations
         await root.fiber.dispose()
       })()
       return disposing

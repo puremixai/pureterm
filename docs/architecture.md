@@ -8,20 +8,23 @@ PureTerm 有 Electron Desktop 和独立本机 Web 两个运行入口，复用四
 
 | 入口 | Host 所在进程 | 界面与通信 | 默认数据目录 |
 | --- | --- | --- | --- |
-| Desktop | Electron 主进程 | Electron 窗口走 IPC；附带本机浏览器入口走 HTTP/WS | `~/.ssh-cordis/` |
+| Desktop | 独立 Node Host 子进程 | Electron 窗口走 IPC；附带本机浏览器入口走 HTTP/WS；主进程通过私有 IPC 转发 | `~/.ssh-cordis/` |
 | 独立 Web | 普通 Node 进程 | 本机浏览器走 HTTP/WS | `~/.ssh-cordis/web/` |
 
-Desktop 的两个载体共享同一个 Host。独立 Web 另外创建 Host；两个应用共用实现，但不自动共享活动会话或数据文件。Desktop 没有为了这次抽包增加 Host 子进程。
+Desktop 的两个载体共享子进程中的同一个 Host。独立 Web 另外创建 Host；两个应用共用实现，但不自动共享活动会话或数据文件。Host 子进程通过 Electron 可执行文件的 Node 模式启动，不加载 Electron API。
 
 ## 请求与事件
 
 ```mermaid
 flowchart LR
-  U[共享 UI / xterm] --> T[客户端传输]
+  U[Cordis Client / xterm] --> T[客户端传输]
   T --> P[Desktop preload / IPC]
   T --> W[本机 HTTP / WebSocket]
-  P --> D[共享 dispatcher]
-  W --> D
+  P --> R[Desktop 主进程 / 私有 IPC]
+  W --> R
+  R --> D[Node Host 子进程 / dispatcher]
+  W2[独立 Web HTTP/WS] --> D2[同进程 dispatcher]
+  D2 --> H
   D --> H[Host 公共接口]
   H --> C[Cordis 服务与插件]
   C --> S[ssh2 / SSH / SFTP]
@@ -40,9 +43,10 @@ flowchart LR
 | `packages/host/src/credentials.ts` | 凭据提供器接口与默认本次会话策略 |
 | `packages/protocol/` | 与运行环境无关的协议和公共数据结构 |
 | `packages/transport/` | dispatcher、HTTP/WS、载体组合、就绪报文校验 |
-| `packages/ui/` | 页面、终端、SFTP、客户端传输及浏览器私钥选择 |
-| `apps/desktop/electron/app/` | Electron 启动、窗口、系统加密和原生文件选择 |
-| `apps/desktop/electron/runtime/` | 平台策略、就绪闸门、启动档案、重启和资源定位 |
+| `packages/ui/` | Cordis Client、页面、终端、SFTP、客户端传输及浏览器私钥选择 |
+| `apps/desktop/electron/app/` | Electron 启动、窗口、系统加密、原生文件选择和更新适配 |
+| `apps/desktop/electron/host/` | 不导入 Electron 的 Node Host 子进程入口 |
+| `apps/desktop/electron/runtime/` | 平台策略、就绪、档案、子进程/RPC、更新协调与资源定位 |
 | `apps/desktop/electron/carriers/` | IPC 和 CommonJS preload |
 | `apps/desktop/electron/diagnostics/` | 应用进程内的启动与冒烟钩子 |
 | `apps/web/src/` | Node 命令行、数据目录、共享 Host 与 HTTP 服务装配 |
@@ -59,17 +63,21 @@ services/plugins 保留原有业务分类，并不等于 Service/function plugin
 
 ## 生命周期
 
-Desktop 先应用平台策略、创建当前 shell generation，再装配 Host 和载体。每代窗口、监听器与看门狗由 shell 幂等释放；使用窗口时读取当前代。页面初始化完成并报告 renderer-ready 后，就绪闸门才允许提交启动档案，HTML 已加载不等于应用已可用。
+Desktop 先应用平台策略，启动 Node Host、完成带版本的握手并装配载体，然后创建 shell generation，避免页面请求早于服务就绪。每代窗口、监听器与看门狗由 shell 幂等释放；使用窗口时读取当前代。页面初始化完成并报告 renderer-ready 后，就绪闸门才允许提交启动档案，HTML 已加载不等于应用已可用。
+
+私有父子 IPC 使用 advanced serialization 保留 Uint8Array，提供请求/结果、事件、客户端释放及加解密/选钥能力。断线拒绝挂起请求；Host 意外退出会报告错误并结束应用。退出、启动失败、诊断结束与更新均等待子进程关闭；超过关停期限则终止进程。父进程死亡时，子进程收到 disconnect 后取消业务并退出。窗口关闭或已加载的渲染进程崩溃会释放对应客户端。
 
 独立 Web 创建默认本次会话策略的 Host，再监听本机端口；监听失败会卸载 Host。Ctrl+C/SIGTERM 关闭载体和全部 SSH 会话。WebSocket 断开会调用 `Host.releaseClient()`，及时关闭该客户端的安静会话，并取消尚未完成的 SSH 握手；其他客户端的会话继续运行。
 
-Host 创建失败会卸载此前装配的服务。关闭 Host 时先取消正在进行的连接、等待它们结束，再卸载插件树；关闭后拒绝新的终端连接。opened 事件无法送到客户端时也会收尾，避免浏览器关闭与握手完成竞态留下连接。
+Host 创建失败会卸载此前装配的服务。关闭 Host 时先取消连接和解密等待、等候已接受的存储修改，再卸载插件树；关闭后拒绝新连接与修改。save/remove 串行执行，加密完成前不会提交新状态。opened 事件无法送到客户端时也会收尾，避免浏览器关闭与握手完成竞态留下连接。
+
+共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、hosts、SFTP 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。IPC dispose 取消该客户端会话且保留 bridge 可重新订阅，Web dispose 关闭 socket。
 
 Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_SANDBOX_FALLBACK=1` 禁止自动无沙箱回退及对应档案回填；`SSH_CORDIS_NO_LAUNCH_PROFILE=1` 禁止读写档案。档案未按 CI、容器或日常环境分区，测试使用临时目录。
 
 ## 数据与入口能力
 
-Desktop 通过 `SSH_CORDIS_DATA_DIR` 覆盖数据目录。`hosts.json` 保存主机元数据及私钥路径；`secrets.json` 保存 safeStorage 生成的密文；`known_hosts.json` 保存 TOFU 指纹；`launch-profile.json` 保存已就绪启动的配置。私钥文件在连接时读取，不复制到主机存储。附带的本机浏览器入口使用相同加密能力和原生选钥。
+Desktop 通过 `SSH_CORDIS_DATA_DIR` 覆盖数据目录。`hosts.json` 保存主机元数据及私钥路径；`secrets.json` 保存 safeStorage 生成的密文；`known_hosts.json` 保存 TOFU 指纹；`launch-profile.json` 保存已就绪启动的配置。safeStorage 留在主进程，Host 的异步 CredentialProvider 经私有 IPC 请求加解密；没有可用系统加密后端时不退化为明文持久化。私钥文件在连接时读取，不复制到主机存储。附带的本机浏览器入口使用相同加密能力和原生选钥。
 
 独立 Web 可通过 `--data-dir` 或 `SSH_CORDIS_WEB_DATA_DIR` 设置目录，命令行优先。它保存 `hosts.json` 和 `known-hosts.json`，不读写 `secrets.json`、不持久化私钥路径，公开记录的 `hasSecret` 恒为 false。即使调用方请求记住密码或口令，也不会保存。若目录已存在凭据文件或旧版内嵌密文，Host 会明确拒绝，原文件不迁移、不覆盖。
 
@@ -81,8 +89,10 @@ SFTP 复用已建立的 SSH 会话，支持目录浏览、单文件上传/下载
 
 ## 验证与上游关系
 
-根 `verify` 构建全部项目，执行类型、边界、Host 生命周期/凭据策略、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试。根 `verify:electron` 覆盖 Desktop boot、IPC、Desktop Web 和独立 Node Web 的真实浏览器流程；其中 Electron 只充当最后一项的测试浏览器，Web 服务仍由普通 Node 启动。
+根 `verify` 构建全部项目，执行类型、边界、Host 子进程/凭据、更新协调、打包隔离、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试。根 `verify:electron` 覆盖 Desktop boot、IPC、Desktop Web、渲染崩溃回收、真实更新器的本机下载及校验、独立 Node Web 和 Client 作用域生命周期。独立 Web 流程中 Electron 只充当测试浏览器，Web 服务仍由普通 Node 启动。
 
 Electron 检查使用隔离的用户目录、受控窗口和严格的成功/失败/退出/超时判定，并回收测试进程。验证禁用自动无沙箱回退，因此不覆盖两代真实 Electron 的自动回退。GUI 鼠标键盘验收不在上述命令内，本机 ssh2 夹具也不代表所有真实 sshd 的兼容性覆盖。
 
-本项目参考 deepseek-harness 的 Cordis 依赖与作用域、共享 Host/Client 和入口适配边界；基线见[历史评审](reviews/layout-review-2026-09-16.md)。上游 Desktop 使用独立 Node Host 子进程，Web Client 本身也是 Cordis 应用。PureTerm 当前保留进程内 Desktop Host 和普通 UI 模块；安装包、自动更新、Desktop Host 进程拆分及前端插件树尚未实现。
+本项目参考 deepseek-harness 的 Cordis 依赖与作用域、共享 Host/Client 和入口适配边界；基线见[历史评审](reviews/layout-review-2026-09-16.md)。PureTerm 已实现独立 Node Desktop Host、共享 Cordis Client、安装构建和自动更新协调。这里采用静态插件树与 Node IPC，没有引入上游 Agent 和动态插件管理。
+
+安装包从独立 staging 构建，复制物理生产依赖与共享资源，关闭 asar，避免子进程依赖工作区文件。Windows 使用 NSIS，macOS 使用 dmg+zip，Linux 使用 AppImage。打包版从 GitHub Releases 检查并下载更新，用户确认后先停止 Host，再重启安装。开发版不检查；本地/普通 CI 不发布；版本 tag 的发布 job 汇总为 draft。签名、notarization、平台构建和验收边界见[发布说明](desktop-release.md)。
