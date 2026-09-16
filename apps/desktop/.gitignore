@@ -1,0 +1,5 @@
+node_modules/
+dist/
+*.log
+
+# tests/ 随应用入库；测试数据在系统临时目录，产物在 dist/。

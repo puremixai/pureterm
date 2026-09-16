@@ -1,0 +1,48 @@
+{
+  "name": "ssh-cordis-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron 壳 + Cordis 宿主 + xterm.js 的 SSH 客户端",
+  "type": "module",
+  "main": "dist/electron/app/main.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit && node scripts/check-esm-extensions.mjs && npm run check:boundaries",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "clean": "node scripts/clean.mjs",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:preload": "node scripts/build-preload.mjs",
+    "build:renderer": "node scripts/build-renderer.mjs",
+    "build": "npm run clean && npm run build:main && npm run build:preload && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "test": "npm run verify",
+    "test:unit": "node --test tests/*.test.mjs",
+    "smoke:desktop": "npm run build:main && node tests/smoke-desktop.mjs",
+    "smoke:host": "npm run build:main && node tests/smoke-host.mjs",
+    "smoke:sftp": "npm run build:main && node tests/smoke-sftp.mjs",
+    "smoke:carrier": "npm run build && node tests/smoke-carrier.mjs",
+    "smoke:profile": "npm run build:main && node tests/smoke-launch-profile.mjs",
+    "smoke:runner": "node tests/smoke-runner-decision.mjs",
+    "smoke:electron": "npm run build && node tests/smoke-electron.mjs",
+    "smoke:web": "npm run build && node tests/smoke-electron-web.mjs",
+    "diagnose:electron": "node scripts/diagnose-electron.mjs",
+    "boot": "npm run build && node scripts/boot-check.mjs",
+    "launch": "npm run build && node scripts/launch.mjs",
+    "smoke:node": "node tests/smoke-runner-decision.mjs && node tests/smoke-desktop.mjs && node tests/smoke-launch-profile.mjs && node tests/smoke-host.mjs && node tests/smoke-sftp.mjs && node tests/smoke-carrier.mjs",
+    "smoke": "npm run build && npm run smoke:node && node tests/smoke-electron.mjs && node tests/smoke-electron-web.mjs",
+    "verify": "npm run typecheck && npm run build && npm run test:unit && npm run smoke:node",
+    "verify:electron": "npm run build && node scripts/boot-check.mjs && node tests/smoke-electron.mjs && node tests/smoke-electron-web.mjs"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "cordis": "^4.0.0-rc.10",
+    "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "@types/ssh2": "^1.15.6",
+    "electron": "^44.3.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  }
+}
