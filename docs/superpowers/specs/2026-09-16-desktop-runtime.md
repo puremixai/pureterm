@@ -1,6 +1,8 @@
 # Desktop 运行时与发布
 
-用户授权实现原文档尚未完成的四项：Desktop Host 独立进程、Client Cordis 插件树、安装包、自动更新。渠道已确认采用 GitHub Releases，本机验收 Windows，macOS/Linux 提供 CI。
+> **已落地的历史规格（2026-09-16）**：本文记录 Desktop runtime、安装与更新的实施边界。实现已合并到 `main`；当前架构和发布操作以 [架构说明](../../architecture.md) 与 [发布说明](../../desktop-release.md) 为准。
+
+原授权中当时尚未完成的四项是：Desktop Host 独立进程、Client Cordis 插件树、安装包、自动更新。渠道已确认采用 GitHub Releases，本机验收 Windows，macOS/Linux 提供 CI。
 
 ## 边界
 

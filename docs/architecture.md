@@ -93,6 +93,6 @@ SFTP 复用已建立的 SSH 会话，支持目录浏览、单文件上传/下载
 
 Electron 检查使用隔离的用户目录、受控窗口和严格的成功/失败/退出/超时判定，并回收测试进程。验证禁用自动无沙箱回退，因此不覆盖两代真实 Electron 的自动回退。GUI 鼠标键盘验收不在上述命令内，本机 ssh2 夹具也不代表所有真实 sshd 的兼容性覆盖。
 
-本项目参考 deepseek-harness 的 Cordis 依赖与作用域、共享 Host/Client 和入口适配边界；基线见[历史评审](reviews/layout-review-2026-09-16.md)。PureTerm 已实现独立 Node Desktop Host、共享 Cordis Client、安装构建和自动更新协调。这里采用静态插件树与 Node IPC，没有引入上游 Agent 和动态插件管理。
+本项目参考 deepseek-harness 的 Cordis 依赖与作用域、共享 Host/Client 和入口适配边界。PureTerm 已实现独立 Node Desktop Host、共享 Cordis Client、安装构建和自动更新协调。这里采用静态插件树与 Node IPC，没有引入上游 Agent 和动态插件管理。
 
 安装包从独立 staging 构建，复制物理生产依赖与共享资源，关闭 asar，避免子进程依赖工作区文件。Windows 使用 NSIS，macOS 使用 dmg+zip，Linux 使用 AppImage。打包版从 GitHub Releases 检查并下载更新，用户确认后先停止 Host，再重启安装。开发版不检查；本地/普通 CI 不发布；版本 tag 的发布 job 汇总为 draft。版本和用户可见变化记录在根目录 [CHANGELOG.md](../CHANGELOG.md)，`scripts/changelog.mjs` 校验所有 workspace 版本并提取 draft notes。签名、notarization、平台构建和验收边界见[发布说明](desktop-release.md)。

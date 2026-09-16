@@ -33,7 +33,6 @@ pureterm/
   docs/
     architecture.md
     reviews/ / archive/ / research/termius/ / superpowers/plans/
-  tools/gui/                       可选 GUI 调研与验收脚本
 ```
 
 在仓库根运行 `npm ci`，使用根目录唯一锁文件和 workspace 依赖关系。各应用与共享包保留自己的 manifest 和 TypeScript 配置；不在应用目录维护第二份锁文件或独立安装流程。共享包为私有包，不代表已实现多包发布。
@@ -81,8 +80,8 @@ Desktop 主进程提供 IPC 和原有本机 Web carrier，通过私有父子 IPC
 
 ## 上游参考与范围
 
-上游依据固定为历史评审中的 deepseek-harness 提交 `0d1f50007f9bca3f52b06e1c3074fa14d5fb0720`。PureTerm 已实现独立 Node Host、Client Cordis 插件树与安装更新机制。按本项目范围采用静态插件组合、私有 Node IPC、GitHub Releases 渠道，不引入上游 Agent、动态 npm 插件管理或多租户。具体发布和签名条件见[发布说明](docs/desktop-release.md)。
+上游依据固定为 deepseek-harness 提交 `0d1f50007f9bca3f52b06e1c3074fa14d5fb0720`。PureTerm 已实现独立 Node Host、Client Cordis 插件树与安装更新机制。按本项目范围采用静态插件组合、私有 Node IPC、GitHub Releases 渠道，不引入上游 Agent、动态 npm 插件管理或多租户。具体发布和签名条件见[发布说明](docs/desktop-release.md)。
 
 上游实际按 `packages/<group>/<package>` 组织，SSH 包位于 `packages/ssh/{ssh,fs-ssh,subprocess-ssh,sandbox-ssh}`；不能从 Service 导出形式推导本项目的 services/plugins 目录规则。上游 Web Client 本身是 Cordis 应用，“不另造 IPC 插件系统”不代表前端没有插件树。
 
-原始提案与此前误读保留在[归档](docs/archive/layout-proposal-original.md)和[历史评审](docs/reviews/layout-review-2026-09-16.md)。当前实现说明见[架构](docs/architecture.md)。
+原始提案、历史评审和截图研究资料已从当前仓库移除；当前实现说明见[架构](docs/architecture.md)。

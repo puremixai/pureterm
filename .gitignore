@@ -4,9 +4,4 @@ release/
 dist/
 *.tsbuildinfo
 .workbuddy/
-termius-analysis/shots/
-tools/gui/shots/
-docs/research/termius/shots/
-termius-analysis/verify.log
-tools/gui/verify.log
 *.log

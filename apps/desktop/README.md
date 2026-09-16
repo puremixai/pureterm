@@ -86,8 +86,6 @@ Desktop 的定向命令可在根使用 `npm run <命令> --workspace=@pureterm/d
 
 Electron 验证使用受控窗口与临时用户目录，关闭自动无沙箱回退，因此不覆盖两代真实 Electron 的回退。boot 截图尽力获取，只有本次成功生成时才输出路径；截图不能代替 renderer-ready。`smoke:profile` 也不能替代真实双次启动验收，本机 ssh2 夹具不代表所有 sshd 的兼容性。
 
-## GUI 工具与当前范围
-
-[tools/gui](../../tools/gui/README.md) 提供 Windows 鼠标键盘、截图和原生文件选择流程，独立运行，不纳入上述验证。原始截图和日志不入库。[Termius 研究报告](../../docs/research/termius/Termius-产品设计分析.html) 保留历史内容，可离线打开。
+## 当前范围
 
 已提供独立 Desktop Host、共享 Cordis Client、安装包构建与 GitHub Releases 更新。菜单“帮助 → 检查更新”可手动检查；下载完成后确认重启才会关闭 SSH 并安装，开发版不联网检查。安装、签名与发布配置见[发布说明](../../docs/desktop-release.md)。当前没有端口转发、多标签页、用户账号或多用户隔离。历史整改与测试说明见[上一轮方案](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md)，其中旧路径与通过次数按当时基线理解。

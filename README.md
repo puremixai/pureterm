@@ -32,7 +32,7 @@ npm run verify
 npm run verify:electron
 ```
 
-测试使用随代码提供的本机 SSH/SFTP 夹具和临时数据目录。第二组需要桌面环境；Electron 无法启动等环境限制不算通过。GUI 鼠标键盘驱动工具独立运行，不纳入这两组命令。
+测试使用随代码提供的本机 SSH/SFTP 夹具和临时数据目录。第二组需要桌面环境；Electron 无法启动等环境限制不算通过。
 
 ## 仓库入口
 
@@ -46,9 +46,7 @@ npm run verify:electron
 | `packages/ui/` | 两个入口共用的终端、文件面板和浏览器传输 |
 | [docs/architecture.md](docs/architecture.md) | 当前架构、生命周期与数据边界 |
 | [LAYOUT-PROPOSAL.md](LAYOUT-PROPOSAL.md) | 现行目录与共享模块决策 |
-| [tools/gui/](tools/gui/README.md) | 可选 Windows GUI 调研和验收工具 |
-| [Termius 产品设计分析](docs/research/termius/Termius-产品设计分析.html) | 历史研究报告、模板和素材 |
 
 项目使用 npm workspaces，共享包通过公开导出引用，根 `package-lock.json` 是唯一安装锁文件。版本和用户可见变化记录在 [CHANGELOG.md](CHANGELOG.md)，`npm run release:check` 会在 CI 中校验版本一致性和发布条目。`npm run dist:desktop -- --win --x64` 生成 Windows 安装包；CI 另提供 macOS/Linux 构建。打包版通过 GitHub Releases 检查更新，下载后由用户确认重启安装。签名、发布及本机验收见[发布说明](docs/desktop-release.md)。
 
-[历史评审](docs/reviews/)与[原提案归档](docs/archive/)保留当时的目录及验证描述，不作为当前命令和测试结果。上一轮目录整改记录见[整改方案](docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md)。
+旧历史评审、原始提案和截图研究资料已移除；当前实施记录见[整改方案](docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md)。
