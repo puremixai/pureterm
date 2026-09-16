@@ -13,7 +13,7 @@
  * 而 did-finish-load 只说明 HTML 解析完了，不足以作为提交依据。
  */
 
-import type { RendererReadyPayload } from '../../shared/protocol.js'
+import type { RendererReadyPayload } from '@pureterm/protocol'
 
 export type { RendererReadyPayload }
 
@@ -25,17 +25,7 @@ export type { RendererReadyPayload }
  * 也可能（走 Web 载体时）来自一个我们没写过的客户端。宁可收窄成 0，
  * 也不要让一个 NaN 混进档案里，那会让「窗口是否正常初始化」这条证据失效。
  */
-export function normalizeReadyPayload(payload: unknown): RendererReadyPayload {
-  const raw = (payload ?? {}) as Record<string, unknown>
-  const info: RendererReadyPayload = {
-    ok: raw.ok === true,
-    hosts: Number(raw.hosts) || 0,
-    cols: Number(raw.cols) || 0,
-    rows: Number(raw.rows) || 0,
-  }
-  if (typeof raw.error === 'string' && raw.error) info.error = raw.error
-  return info
-}
+export { normalizeReadyPayload } from '@pureterm/transport/readiness'
 
 export interface ReadinessReport {
   /** 本次上报是否被接受（就绪之后再上报一律忽略） */

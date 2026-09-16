@@ -18,7 +18,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 APP = os.path.join(ROOT, 'apps', 'desktop')
 SHOTS = os.path.join(HERE, 'shots')
-ELECTRON = os.environ.get('PURETERM_ELECTRON', os.path.join(APP, 'node_modules', 'electron', 'dist', 'electron.exe'))
+ELECTRON = os.environ.get('PURETERM_ELECTRON') or subprocess.check_output(
+    ['node', '-p', "require('electron')"], cwd=APP, text=True, encoding='utf-8').strip()
 TITLE = os.environ.get('PURETERM_WINDOW', 'SSH Cordis Client')
 
 # ── 窗口内坐标（device px，DPI = 1.5，由 probe 实测）────────────────

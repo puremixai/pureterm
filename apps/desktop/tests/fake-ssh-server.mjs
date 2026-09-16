@@ -160,7 +160,11 @@ export async function startFakeSshServer(options = {}) {
   const username = options.username ?? 'demo'
   const password = options.password ?? 'test-password'
   const hostKey = options.hostKey ?? generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs1', format: 'pem' })
-  const publicKey = utils.parseKey(hostKey).getPublicSSH()
+  const parsedKey = utils.parseKey(hostKey)
+  const publicKey = parsedKey.getPublicSSH()
+  // Optional test-only authorized key. Reusing this fixture's ephemeral key keeps
+  // public-key tests self-contained and never touches the user's SSH files.
+  const authentications = []
   const files = createFiles(options.files ?? {}, options.symlinks ?? {}, options.home ?? '/home/demo')
   const sftp = { channels: 0, requests: [], writes: [], mkdirs: [], removals: [] }
   const terminal = { ptys: [], windows: [], inputs: [] }
@@ -168,8 +172,17 @@ export async function startFakeSshServer(options = {}) {
   const ssh = new Server({ hostKeys: [hostKey] }, (client) => {
     client.on('error', () => {}) // Rejected authentication/TOFU intentionally aborts the connection.
     client.on('authentication', (ctx) => {
-      if (ctx.method === 'password' && ctx.username === username && ctx.password === password) ctx.accept()
-      else ctx.reject(['password'])
+      if (ctx.username === username && ctx.method === 'password' && ctx.password === password) {
+        authentications.push('password')
+        ctx.accept()
+      } else if (options.keyAuthentication && ctx.username === username && ctx.method === 'publickey'
+        && ctx.key.algo === parsedKey.type && ctx.key.data.equals(publicKey)
+        && (!ctx.signature || parsedKey.verify(ctx.blob, ctx.signature, ctx.hashAlgo) === true)) {
+        // SSH may probe a key before sending a signature. Only count an actual
+        // signed authentication, so the browser test cannot pass on a probe.
+        if (ctx.signature) authentications.push('publickey')
+        ctx.accept()
+      } else ctx.reject(options.keyAuthentication ? ['password', 'publickey'] : ['password'])
     })
     client.on('ready', () => client.on('session', (accept) => {
       const session = accept()
@@ -220,7 +233,7 @@ export async function startFakeSshServer(options = {}) {
   return {
     host: '127.0.0.1', port: listener.address().port, username, password, hostKey,
     fingerprint: `SHA256:${createHash('sha256').update(publicKey).digest('base64').replace(/=+$/, '')}`,
-    files, sftp, terminal,
+    files, sftp, terminal, authentications,
     get connections() { return sockets.size },
     async close() {
       if (closed) return

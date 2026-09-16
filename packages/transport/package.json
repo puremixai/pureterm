@@ -1,0 +1,36 @@
+{
+  "name": "@pureterm/transport",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./carrier": {
+      "types": "./dist/carrier.d.ts",
+      "default": "./dist/carrier.js"
+    },
+    "./carrier-http": {
+      "types": "./dist/carrier-http.d.ts",
+      "default": "./dist/carrier-http.js"
+    },
+    "./dispatch": {
+      "types": "./dist/dispatch.d.ts",
+      "default": "./dist/dispatch.js"
+    },
+    "./ws-frame": {
+      "types": "./dist/ws-frame.d.ts",
+      "default": "./dist/ws-frame.js"
+    },
+    "./ws-server": {
+      "types": "./dist/ws-server.d.ts",
+      "default": "./dist/ws-server.js"
+    },
+    "./readiness": {
+      "types": "./dist/readiness.d.ts",
+      "default": "./dist/readiness.js"
+    }
+  },
+  "dependencies": {
+    "@pureterm/protocol": "*",
+    "@pureterm/host": "*"
+  }
+}

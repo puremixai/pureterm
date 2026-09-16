@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { EVENTS, METHODS, NOTICES, type PickedPrivateKey, type SshApi } from '../../shared/protocol.js'
+import { EVENTS, METHODS, NOTICES, type PickedPrivateKey, type SshApi } from '@pureterm/protocol'
 
 /**
  * 这个文件被编译成 dist/electron/carriers/preload.cjs（CJS）。
@@ -27,6 +27,7 @@ const subscribe = <T extends unknown[]>(channel: string, listener: ChannelListen
  */
 const sshAPI: SshApi = {
   carrier: 'ipc',
+  getCapabilities: () => ipcRenderer.invoke(METHODS.appCapabilities),
 
   open: (payload) => ipcRenderer.invoke(METHODS.sshOpen, payload),
   input: (sessionId, data) => ipcRenderer.send(NOTICES.sshInput, sessionId, data),

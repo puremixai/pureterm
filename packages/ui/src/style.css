@@ -1,0 +1,545 @@
+:root {
+  color-scheme: dark;
+  --bg: #12151b;
+  --panel: #1a1f27;
+  --line: #2b323d;
+  --text: #d7dce5;
+  --muted: #8b95a7;
+  --accent: #4c9aff;
+  --ok: #46c07a;
+  --err: #ff6b6b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* 左列表 / 右表单+终端。列表是管理主入口，给固定宽；终端要宽度，吃掉剩下的。 */
+#app {
+  display: flex;
+  height: 100vh;
+}
+
+#hosts-panel {
+  flex: 0 0 272px;
+  min-width: 272px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+/* 列表与空态共用一个滚动容器：分开放的话，空态会被 flex:1 的列表挤到面板底部去 */
+#hosts-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+#host-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-title {
+  flex: 1 1 auto;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.empty {
+  margin: 0;
+  padding: 10px 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+#credential-hint {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.host-row {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  margin-bottom: 2px;
+}
+
+.host-row:hover {
+  background: #20262f;
+}
+
+/*
+ * 选中态用「左竖条 + 边框 + 底色」三重标记，不只靠底色深浅：
+ * 深色主题下「#1a1f27 和 #22303f 哪个更亮」在普通显示器上几乎分不出来。
+ */
+.host-row.active {
+  background: #22303f;
+  border-color: #33506e;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.host-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 4px 6px 8px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  /* 双击连接会顺手选中标签文字，看着像把名字刮花了；列表里的文字也不是拿来复制的 */
+  user-select: none;
+}
+
+/* button:hover 会加蓝边，行内的主区域不要——高亮由 .host-row.active 负责 */
+.host-main:hover:not(:disabled) {
+  border-color: transparent;
+}
+
+.host-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.host-label {
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.host-sub {
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 11px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid #384250;
+  border-radius: 4px;
+  background: #2b323d;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+/* 「已存凭据」是「密码留空也能连」的唯一依据，得让它显眼 */
+.tag.saved {
+  border-color: #2c5b41;
+  background: #1b2b23;
+  color: var(--ok);
+}
+
+/*
+ * 动作按钮常驻，不做「鼠标移进来才出现」。
+ * 面板宽度是固定的，hover 显示省不下任何空间，只会把「编辑在哪」变成要摸索的事。
+ */
+.host-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 1px;
+  padding-right: 4px;
+}
+
+button.mini {
+  padding: 3px 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+button.mini:hover:not(:disabled) {
+  border-color: #3b4552;
+  background: #2b323d;
+  color: var(--text);
+}
+
+button.mini.danger:hover:not(:disabled) {
+  border-color: #5a2f2f;
+  background: #2a1c1c;
+  color: var(--err);
+}
+
+/* 右侧：表单 / 状态 / 终端，纵向排 */
+#main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#toolbar {
+  padding: 10px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 模式行里全是说明文字和按钮，没有需要跟 label 对齐的输入框，所以居中对齐 */
+.row.mode-row {
+  align-items: center;
+}
+
+/*
+ * 「新建主机」/「编辑「生产」」。必须说清楚现在这一下「保存」是新建还是覆盖——
+ * 表单长得完全一样，不说的话用户没法从界面上分辨，而两种结果的差别是「多一条」和「改掉一条」。
+ */
+.mode {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mode.editing {
+  color: var(--accent);
+}
+
+button.small {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+/*
+ * hidden 属性必须能真的把元素藏起来。
+ * 坑：.row 是 display:flex，属于作者样式，会盖掉浏览器默认的 [hidden]{display:none}，
+ * 于是带 hidden 的整行照样显示。这里显式兜住。
+ */
+[hidden] {
+  display: none !important;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 110px;
+}
+
+.field.grow {
+  flex: 1 1 260px;
+}
+
+.field.narrow {
+  flex: 0 0 76px;
+  min-width: 76px;
+}
+
+/* 私钥路径可能很长，用等宽字方便核对，且允许被截断 */
+#key-path {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+}
+
+.field > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+input,
+select {
+  background: #10141a;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #222833;
+  color: var(--text);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: #1f4d8f;
+  border-color: #2f6fd0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  padding-bottom: 7px;
+  white-space: nowrap;
+}
+
+.check input {
+  margin: 0;
+}
+
+#status {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#status.ok {
+  color: var(--ok);
+}
+
+#status.err {
+  color: var(--err);
+}
+
+#status.pending {
+  color: var(--accent);
+}
+
+#terminal {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 6px 8px 0;
+}
+
+/*
+ * 远端文件抽屉。
+ *
+ * 高度给 40% 而不是固定像素：列表要的是「尽量多几行」，而窗口高度是可变的。
+ * min-height 兜住矮窗口，max-height 防止它在很高的窗口里吃掉终端——
+ * 抽屉是辅助面板，终端才是主界面。
+ */
+#sftp {
+  flex: 0 0 auto;
+  height: 40%;
+  min-height: 148px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+#sftp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 6px;
+}
+
+/* 路径条：占满标题行剩下的宽度，用等宽字方便核对 */
+#sftp-path {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 3px 7px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#sftp-path:disabled {
+  /* 「还没连上」和「连上了但这里是空的」必须看着不一样，否则用户会以为路径是空的 */
+  opacity: 0.6;
+}
+
+/* 起名字的条：展开时插在标题行和列表之间，所以列表会被往下推一点 */
+#sftp-create {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: #20262f;
+  border-bottom: 1px solid var(--line);
+}
+
+#sftp-create-name {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 3px 7px;
+  font-size: 12px;
+}
+
+#sftp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.file-row:hover {
+  background: #20262f;
+}
+
+/*
+ * 一行：名字占满，大小和时间靠右对齐、等宽，动作按钮常驻。
+ * 常量宽度让「大小」和「时间」各自成列——不定宽的话，长名字会把它们挤得参差不齐，
+ * 一屏文件扫下来就找不到对应关系了。
+ */
+.file-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 8px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+  /* 双击下载会顺手选中文字，看着像把名字刮花了 */
+  user-select: none;
+}
+
+.file-main:hover:not(:disabled) {
+  border-color: transparent;
+}
+
+.file-top {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.file-name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-size,
+.file-time {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.file-size {
+  width: 72px;
+  text-align: right;
+}
+
+.file-time {
+  width: 118px;
+  text-align: right;
+}
+
+.tag.link {
+  border-color: #4a4326;
+  background: #2a2718;
+  color: #d6c37a;
+}
+
+.file-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 1px;
+  padding-right: 4px;
+}
+
+/* 面板内的提示：正常是灰的，出错是红的。和 #status 一套语义，颜色也一致 */
+#sftp-hint.ok {
+  color: var(--ok);
+}
+
+#sftp-hint.err {
+  color: var(--err);
+}
+
+#sftp-hint.pending {
+  color: var(--accent);
+}
+
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}

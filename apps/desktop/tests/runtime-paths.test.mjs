@@ -18,8 +18,8 @@ test('runtime asset paths are independent of the launch working directory', () =
     assert.equal(result.status, 0, result.stderr)
     assert.deepEqual(JSON.parse(result.stdout), {
       distDir: join(application, 'dist'),
-      rendererDir: join(application, 'dist', 'renderer'),
-      rendererHtml: join(application, 'dist', 'renderer', 'index.html'),
+      rendererDir: fileURLToPath(new URL('.', import.meta.resolve('@pureterm/ui/index.html'))).replace(/[\\/]$/, ''),
+      rendererHtml: fileURLToPath(import.meta.resolve('@pureterm/ui/index.html')),
       preloadScript: join(application, 'dist', 'electron', 'carriers', 'preload.cjs'),
     })
   } finally {

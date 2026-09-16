@@ -9,7 +9,7 @@ export function resolveDesktopPaths(): {
   preloadScript: string
 } {
   const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-  const rendererDir = join(distDir, 'renderer')
+  const rendererDir = dirname(fileURLToPath(import.meta.resolve('@pureterm/ui/index.html')))
   return {
     distDir,
     rendererDir,

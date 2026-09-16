@@ -1,0 +1,14 @@
+{
+  "name": "@pureterm/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./index.html": "./dist/index.html"
+  },
+  "dependencies": {
+    "@pureterm/protocol": "*",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0"
+  }
+}

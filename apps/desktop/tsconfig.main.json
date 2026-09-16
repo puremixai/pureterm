@@ -6,6 +6,6 @@
     "rootDir": ".",
     "declaration": false
   },
-  "include": ["electron/**/*", "src/**/*", "shared/**/*"],
+  "include": ["electron/**/*"],
   "exclude": ["electron/carriers/preload.ts"]
 }

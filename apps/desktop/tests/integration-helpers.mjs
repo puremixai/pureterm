@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { createHost } from '../dist/src/host.js'
+import { createHost } from '@pureterm/host'
 
 export async function until(predicate, description, timeout = 5000) {
   const deadline = Date.now() + timeout
@@ -54,6 +54,7 @@ export async function hostFixture(t, bridge = rendererFixture().bridge) {
   const hosts = []
   const options = {
     bridge,
+    credentials: { persistent: true, seal: bridge.seal ?? (() => undefined), unseal: bridge.unseal ?? (() => undefined) },
     hostStoreFile: join(directory, 'hosts.json'),
     secretsFile: join(directory, 'secrets.json'),
     knownHostsFile: join(directory, 'known-hosts.json'),

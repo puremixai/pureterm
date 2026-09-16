@@ -1,0 +1,32 @@
+{
+  "name": "pureterm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:shared": "node scripts/build.mjs --shared",
+    "build:web": "node scripts/build.mjs --web",
+    "build:desktop": "node scripts/build.mjs --desktop",
+    "typecheck": "node scripts/typecheck.mjs",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "start:web": "npm run build:web && node apps/web/dist/main.js",
+    "start:desktop": "npm run build:desktop && npm run start:built --workspace=@pureterm/desktop",
+    "test:unit": "node --test apps/desktop/tests/*.test.mjs packages/host/tests/*.test.mjs packages/ui/tests/*.test.mjs apps/web/tests/*.test.mjs",
+    "verify": "npm run build && npm run typecheck && npm run test:unit && npm run smoke:node --workspace=@pureterm/desktop",
+    "verify:electron": "npm run build && npm run verify:electron:built --workspace=@pureterm/desktop && node apps/web/tests/smoke-browser.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "@types/ssh2": "^1.15.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  }
+}

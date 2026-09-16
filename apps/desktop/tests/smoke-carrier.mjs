@@ -3,8 +3,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { join } from 'node:path'
 import test from 'node:test'
-import { createHttpCarrier } from '../dist/electron/carriers/carrier-http.js'
-import { createDispatcher } from '../dist/electron/bridge/dispatch.js'
+import { createHttpCarrier } from '@pureterm/transport/carrier-http'
+import { createDispatcher } from '@pureterm/transport/dispatch'
 import { startFakeSshServer } from './fake-ssh-server.mjs'
 import { connection, hostFixture, until } from './integration-helpers.mjs'
 
@@ -62,6 +62,7 @@ async function carrierFixture(t) {
   const picked = []
   const dispatcher = createDispatcher({
     host: fixture.host,
+    capabilities: { credentialPersistence: 'encrypted', privateKeyPicker: 'native' },
     pickPrivateKey: async (clientId) => { picked.push(clientId); return { path: '/fixture/key', encrypted: false } },
     onReady: (payload, clientId) => ready.push({ payload, clientId }),
   })
@@ -74,6 +75,23 @@ async function carrierFixture(t) {
   t.after(() => carrier.close())
   return { carrier, host: fixture.host, ready, picked }
 }
+
+test('shared HTTP carrier rejects nonloopback listeners before starting a server', async () => {
+  for (const host of ['0.0.0.0', '::', '192.168.1.1', 'localhost']) {
+    await assert.rejects(createHttpCarrier({ dispatcher: {}, staticDir: '.', host }), /127\.0\.0\.1/)
+  }
+})
+
+test('two local entry points keep independent browser cookies on different ports', async (t) => {
+  const first = (await carrierFixture(t)).carrier
+  const second = (await carrierFixture(t)).carrier
+  const a = (await http(first.port, `/?token=${first.token}`)).headers['set-cookie'][0].split(';')[0]
+  const b = (await http(second.port, `/?token=${second.token}`)).headers['set-cookie'][0].split(';')[0]
+  assert.notEqual(a.split('=')[0], b.split('=')[0], 'cookies are scoped to a hostname, not a port')
+  const cookie = `${a}; ${b}`
+  assert.equal((await http(first.port, '/app.js', { Cookie: cookie })).status, 200)
+  assert.equal((await http(second.port, '/app.js', { Cookie: cookie })).status, 200)
+})
 
 test('HTTP protects HTML and assets, sets a session cookie, and denies invalid hosts and traversal', { timeout: 15000 }, async (t) => {
   const { carrier } = await carrierFixture(t)
@@ -109,7 +127,7 @@ test('WebSocket upgrade requires credentials and rejects cross-origin cookies an
   assert.equal((await probe('/ws')).status, 401)
   assert.equal((await probe('/ws?token=wrong')).status, 401)
   assert.equal((await probe(`/ws?token=${carrier.token}`, { Host: 'attacker.invalid' })).status, 401)
-  const cookie = `ssh-cordis-session=${carrier.token}`
+  const cookie = (await http(carrier.port, `/?token=${carrier.token}`)).headers['set-cookie'][0].split(';')[0]
   assert.equal((await probe('/ws', { Cookie: cookie, Origin: 'https://attacker.invalid' })).status, 401)
   assert.equal((await probe('/ws', { Cookie: cookie, Origin: `http://127.0.0.1:${carrier.port}` })).status, 101)
   assert.equal((await probe(`/ws?token=${carrier.token}`)).status, 101)

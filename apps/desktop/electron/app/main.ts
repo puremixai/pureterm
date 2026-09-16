@@ -2,13 +2,13 @@ import { app, dialog, safeStorage, type BrowserWindow } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import type { PickedPrivateKey, RendererReadyPayload } from '../../shared/protocol.js'
-import { createHost, type Host } from '../../src/host.js'
+import type { PickedPrivateKey, RendererReadyPayload } from '@pureterm/protocol'
+import { createHost, type Host, type CredentialProvider } from '@pureterm/host'
 import { createBootCheck } from '../diagnostics/boot-check.js'
-import { createCompositeBridge, type Carrier, type Credentials } from '../carriers/carrier.js'
-import { createHttpCarrier } from '../carriers/carrier-http.js'
+import { createCompositeBridge, type Carrier } from '@pureterm/transport/carrier'
+import { createHttpCarrier } from '@pureterm/transport/carrier-http'
 import { createIpcCarrier, ipcClientId } from '../carriers/carrier-ipc.js'
-import { createDispatcher } from '../bridge/dispatch.js'
+import { createDispatcher } from '@pureterm/transport/dispatch'
 import {
   LAUNCH_PROFILE_VERSION,
   describeLaunchProfile,
@@ -255,7 +255,7 @@ function fallbackToNoSandbox(reason: string): void {
  * 所以它是壳层注入给所有载体的共用实现：拿不到系统密钥就返回 undefined，
  * 由上层决定「不保存」，绝不退化成明文落盘。
  */
-function createCredentials(): Credentials {
+function createCredentials(): CredentialProvider {
   const encryptionAvailable = (): boolean => {
     try {
       return safeStorage.isEncryptionAvailable()
@@ -265,6 +265,7 @@ function createCredentials(): Credentials {
   }
 
   return {
+    persistent: true,
     seal: (plain) => (encryptionAvailable() ? safeStorage.encryptString(plain).toString('base64') : undefined),
     unseal: (sealed) => {
       if (!encryptionAvailable()) return undefined
@@ -332,7 +333,8 @@ async function pickPrivateKey(clientId: string): Promise<PickedPrivateKey | unde
  * 所以桥拿到的是「取载体列表的函数」而不是列表本身（见 createCompositeBridge）。
  */
 async function installCarriers(currentHost: Host): Promise<void> {
-  const dispatcher = createDispatcher({ host: currentHost, pickPrivateKey, onReady: handleReady })
+  const dispatcher = createDispatcher({ host: currentHost, pickPrivateKey, onReady: handleReady,
+    capabilities: { credentialPersistence: 'encrypted', privateKeyPicker: 'native' } })
 
   carriers.push(createIpcCarrier({ dispatcher, getWindow: currentWindow }))
   console.log('[main] 载体已就绪：ipc（桌面窗口）。')
@@ -344,6 +346,7 @@ async function installCarriers(currentHost: Host): Promise<void> {
 
   try {
     const web = await createHttpCarrier({
+      onDisconnect: (clientId) => currentHost.releaseClient(clientId),
       dispatcher,
       staticDir: rendererDir,
     })
@@ -368,7 +371,8 @@ async function bootstrap(): Promise<void> {
   const generation = startGeneration()
 
   host = await createHost({
-    bridge: createCompositeBridge(() => carriers, createCredentials()),
+    bridge: createCompositeBridge(() => carriers),
+    credentials: createCredentials(),
     hostStoreFile: join(dataDir, 'hosts.json'),
     knownHostsFile: join(dataDir, 'known_hosts.json'),
   })

@@ -1,0 +1,17 @@
+{
+  "name": "@pureterm/host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/host.d.ts",
+      "default": "./dist/host.js"
+    }
+  },
+  "dependencies": {
+    "@pureterm/protocol": "*",
+    "cordis": "^4.0.0-rc.10",
+    "ssh2": "^1.17.0"
+  }
+}
