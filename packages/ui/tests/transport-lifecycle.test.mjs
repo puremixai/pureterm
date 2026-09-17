@@ -26,6 +26,23 @@ function environment(t) {
   return instances
 }
 
+test('WebSocket loss closes every live terminal tab once', async t => {
+  const instances = environment(t)
+  const api = createWebSocketTransport()
+  t.after(() => api.dispose())
+  const closed = []
+  api.onClosed(id => closed.push(id))
+  const initial = api.getCapabilities()
+  instances[0].open()
+  await Promise.resolve()
+  instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: {} })
+  await initial
+  for (const id of ['one', 'two', 'three']) instances[0].message({ kind: 'event', name: 'terminal:opened', params: [id, 80, 24] })
+  instances[0].message({ kind: 'event', name: 'terminal:closed', params: ['two', 'user closed'] })
+  instances[0].close()
+  assert.deepEqual(closed, ['two', 'one', 'three'])
+})
+
 test('Web transport subscriptions unsubscribe and disposal rejects requests without reopening a socket', async t => {
   const instances = environment(t)
   const api = createWebSocketTransport()

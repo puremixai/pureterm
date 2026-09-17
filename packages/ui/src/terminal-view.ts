@@ -19,7 +19,14 @@ export const createTerminalView: TerminalFactory = (container) => {
   const terminal = new Terminal({
     cursorBlink: true, fontSize: 14, lineHeight: 1.2, scrollback: 5000,
     fontFamily: 'Cascadia Mono, Consolas, "Sarasa Mono SC", "Microsoft YaHei Mono", monospace',
-    theme: { background: '#12151b', foreground: '#d7dce5', cursor: '#7fe3ff', selectionBackground: '#2f3b4d' },
+    theme: {
+      background: '#121426', foreground: '#d6dee8', cursor: '#69c8f4', cursorAccent: '#121426',
+      selectionBackground: '#24445a', black: '#0b0e12', brightBlack: '#667382',
+      white: '#d6dee8', brightWhite: '#eef3f8', blue: '#69c8f4', brightBlue: '#9bdeff',
+      green: '#68d5a1', brightGreen: '#8ee8bc', yellow: '#e5bd75', brightYellow: '#f0cf8d',
+      red: '#ff8e8e', brightRed: '#ffb2b2', magenta: '#c6a8ff', brightMagenta: '#dfcbff',
+      cyan: '#69c8f4', brightCyan: '#a5e6ff',
+    },
   })
   const fit = new FitAddon()
   terminal.loadAddon(fit)

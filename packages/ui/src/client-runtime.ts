@@ -15,10 +15,10 @@ export class ClientScope {
 
   onDispose(cleanup: () => void): void { this.ctx.effect(() => cleanup, 'client.resource') }
 
-  listen(target: EventTarget, event: string, listener: (event: Event) => void): void {
+  listen(target: EventTarget, event: string, listener: (event: Event) => void, capture = false): void {
     this.ctx.effect(() => {
-      target.addEventListener(event, listener)
-      return () => target.removeEventListener(event, listener)
+      target.addEventListener(event, listener, capture)
+      return () => target.removeEventListener(event, listener, capture)
     }, `client.listener:${event}`)
   }
 

@@ -45,6 +45,7 @@ function fixture() {
 
 function fill() { input('host').value = 'localhost'; input('user').value = 'demo'; input('pass').value = 'password' }
 function hostAction(id: string, action = '.host-main') { document.querySelector<HTMLButtonElement>(`.host-row[data-id="${id}"] ${action}`)!.click() }
+function editHost(id: string) { hostAction(id, '[data-act="edit"]') }
 function change(id: string, value: string) { input(id).value = value; input(id).dispatchEvent(new Event('input', { bubbles: true })) }
 
 async function runChecks() {
@@ -60,6 +61,117 @@ async function runChecks() {
   let releasePageDisposal: (() => void) | undefined
   const checks: string[] = []
   try {
+    const gestures = fixture()
+    gestures.hosts[0]!.hasSecret = true
+    gestures.api.getCapabilities = async () => ({ credentialPersistence: 'encrypted', privateKeyPicker: 'native' })
+    client = createClient({ api: gestures.api, terminalFactory: gestures.terminalFactory })
+    assert((await client.ready).ok, 'host-gesture client failed readiness')
+    const host = document.querySelector<HTMLButtonElement>('.host-main')!
+    host.click()
+    assert(input('connection-workspace').hidden, 'single-clicking a host must only select its card, not open the editor')
+    assert(document.querySelector('.host-row')?.classList.contains('active'), 'single-clicking a host must visibly select its card')
+    assert(gestures.stats.opens === 0, 'single-clicking a host must not open an SSH session')
+    editHost('fixture')
+    assert(!input('connection-workspace').hidden && input('host').value === 'localhost', 'the explicit Edit action must open the matching host editor')
+    click('connection-close')
+    const sameHost = document.querySelector<HTMLButtonElement>('.host-main')!
+    sameHost.click()
+    sameHost.click()
+    sameHost.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    await tick()
+    assert(gestures.stats.opens === 1 && document.querySelectorAll('[role="tab"]').length === 2,
+      'double-clicking a host must open a new terminal tab')
+    await client.dispose()
+    checks.push('single-click selects, Edit opens the editor, and double-click connects in a new tab')
+
+    const multiple = fixture()
+    client = createClient({ api: multiple.api, terminalFactory: multiple.terminalFactory })
+    assert((await client.ready).ok, 'tab client failed readiness')
+    click('host-view-toggle')
+    assert(input('host-list').classList.contains('list-view') && input('host-view-toggle').getAttribute('aria-pressed') === 'true', 'view toggle must change the actual host layout')
+    click('host-view-toggle')
+    click('shortcuts-open')
+    assert((input('shortcuts-dialog') as unknown as HTMLDialogElement).open, 'shortcuts action must open its help dialog')
+    click('shortcuts-close')
+    assert(!(input('shortcuts-dialog') as unknown as HTMLDialogElement).open, 'shortcuts dialog must close')
+    fill(); click('connect'); await tick()
+    assert(document.querySelectorAll('[role="tab"]').length === 2, 'connecting a host must create a separate tab next to Hosts')
+    click('hosts-tab'); click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+    assert(multiple.stats.opens === 2 && document.querySelectorAll('[role="tab"]').length === 3, 'second host must open independently')
+    multiple.emit('data', 'test-1', new Uint8Array([65]))
+    multiple.emit('data', 'test-2', new Uint8Array([66]))
+    assert(multiple.terminals[0]!.writes.some(value => value instanceof Uint8Array && value[0] === 65), 'background tab lost its output')
+    assert(!multiple.terminals[0]!.writes.some(value => value instanceof Uint8Array && value[0] === 66), 'second session wrote to first terminal')
+    assert(multiple.terminals[1]!.writes.some(value => value instanceof Uint8Array && value[0] === 66), 'second tab lost its output')
+    const tabButtons = [...document.querySelectorAll<HTMLButtonElement>('.session-tab [role="tab"]')]
+    const fileRequests: string[] = []
+    const pendingDirectory = deferred<{ path: string; parent: string; entries: [] }>()
+    multiple.api.sftp.list = async (id, path) => {
+      fileRequests.push(id + ':' + path)
+      if (id === 'test-1') return pendingDirectory.promise
+      return { path: '/second', parent: '/', entries: [] }
+    }
+    tabButtons[0]!.click(); click('sftp-toggle'); await tick()
+    tabButtons[1]!.click(); click('sftp-toggle'); await tick()
+    pendingDirectory.resolve({ path: '/first', parent: '/', entries: [] }); await tick()
+    assert(input('sftp-path').value === '/second', 'background directory result leaked into another tab')
+    tabButtons[0]!.click()
+    assert(!input('sftp').hidden && input('sftp-path').value === '/first', 'switching tabs must restore each file panel directory')
+    assert(fileRequests.join(',') === 'test-1:.,test-2:.', 'file panel requests used the wrong SSH session')
+    document.querySelector<HTMLButtonElement>('[data-tab-close]')!.click(); await tick()
+    assert(multiple.stats.closes === 1 && multiple.terminals[0]!.disposed === 1 && multiple.terminals[1]!.disposed === 0, 'closing one tab must only release its session')
+    click('hosts-tab')
+    assert(!input('hosts-panel').hidden && input('session-workspace').hidden, 'Hosts must remain a separate usable page')
+    await client.dispose()
+    assert(multiple.stats.closes === 2 && multiple.terminals[1]!.disposed === 1, 'client disposal must release every remaining tab')
+    checks.push('each connection opens a distinct tab with independent output, navigation and disposal')
+
+    const concurrent = fixture()
+    const pendingOpens: Array<{ request: TerminalOpenRequest; result: ReturnType<typeof deferred<TerminalOpenResult>> }> = []
+    const released: string[] = []
+    concurrent.api.open = request => { const result = deferred<TerminalOpenResult>(); pendingOpens.push({ request, result }); return result.promise }
+    concurrent.api.close = id => { released.push(id); concurrent.emit('closed', id, 'closed') }
+    client = createClient({ api: concurrent.api, terminalFactory: concurrent.terminalFactory })
+    assert((await client.ready).ok, 'concurrent client failed readiness')
+    fill(); click('connect'); await tick()
+    click('tab-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+    assert(pendingOpens.length === 2, 'opening one host must not block another handshake')
+    concurrent.emit('opened', 'later-request', 80, 24)
+    concurrent.emit('data', 'later-request', new Uint8Array([66]))
+    pendingOpens[1]!.result.resolve({ sessionId: 'later-request', host: 'second.example', cols: 80, rows: 24 }); await tick()
+    concurrent.emit('opened', 'earlier-request', 80, 24)
+    concurrent.emit('data', 'earlier-request', new Uint8Array([65]))
+    pendingOpens[0]!.result.resolve({ sessionId: 'earlier-request', host: 'localhost', cols: 80, rows: 24 }); await tick()
+    assert(concurrent.terminals[0]!.writes.some(value => value instanceof Uint8Array && value[0] === 65), 'early output was not bound by the matching RPC reply')
+    assert(concurrent.terminals[1]!.writes.some(value => value instanceof Uint8Array && value[0] === 66), 'out-of-order handshake lost second output')
+    assert(client.context.clientTerminal.sessionId === 'later-request', 'background handshake completion stole the active tab')
+    click('tab-new'); fill(); click('connect'); await tick()
+    const cancelledId = client.context.clientTerminal.active!.id
+    client.context.clientTerminal.closeTab(cancelledId)
+    concurrent.emit('opened', 'cancelled', 80, 24)
+    pendingOpens[2]!.result.resolve({ sessionId: 'cancelled', host: 'localhost', cols: 80, rows: 24 }); await tick()
+    assert(released.includes('cancelled') && client.context.clientTerminal.tabs.length === 2, 'closing a pending tab left a late SSH connection alive')
+    concurrent.emit('closed', 'earlier-request', 'remote ended')
+    assert(client.context.clientTerminal.tabs[0]!.state === 'disconnected' && concurrent.terminals[0]!.disposed === 0, 'remote disconnect must retain scrollback until the tab is closed')
+    await client.dispose()
+    checks.push('concurrent handshakes, early output, cancelled tabs and background disconnects stay isolated')
+
+    const failures = fixture()
+    const attempts: TerminalOpenRequest[] = []
+    failures.api.open = async request => { attempts.push({ ...request }); throw new Error('fixture connection refused') }
+    client = createClient({ api: failures.api, terminalFactory: failures.terminalFactory })
+    assert((await client.ready).ok, 'failure client failed readiness')
+    fill(); click('connect'); await tick()
+    const failedId = client.context.clientTerminal.active!.id
+    assert(!input('connection-failure').hidden, 'connection error did not appear in its tab')
+    click('tab-new'); fill(); input('host').value = 'unrelated.example'
+    client.context.clientTerminal.select(failedId); click('failure-retry'); await tick()
+    assert(attempts.length === 2 && attempts[1]!.host === 'localhost' && client.context.clientTerminal.tabs.length === 1, 'retry must use the failed tab snapshot and reuse its tab')
+    click('failure-edit')
+    assert(input('host').value === 'localhost' && !input('connection-workspace').hidden, 'Edit host used an unrelated form')
+    await client.dispose()
+    checks.push('failed tabs keep their own retry credentials and editing context')
+
     const first = fixture()
     client = createClient({ api: first.api, terminalFactory: first.terminalFactory })
     const initialReady = await client.ready
@@ -93,7 +205,7 @@ async function runChecks() {
     fill(); click('connect'); await tick()
     assert(second.stats.opens === 1 && first.stats.opens === 1, 'remount duplicated connect handlers')
     first.emit('data', 'test-1', new Uint8Array([97]))
-    assert(second.terminals[0]!.writes.length === 1, 'old transport reached the new terminal')
+    assert(!second.terminals[0]!.writes.some(value => value instanceof Uint8Array), 'old transport reached the new terminal')
     checks.push('remount receives one handler per action and ignores old transports')
 
     await client.scopes.transport.dispose()
@@ -145,12 +257,12 @@ async function runChecks() {
       saving.api.hosts.save = async request => { saved.push(request); return { ...saving.hosts[0]!, ...request, id: request.id ?? 'saved-new' } }
       client = createClient({ api: saving.api, terminalFactory: saving.terminalFactory })
       assert((await client.ready).ok, 'save-race client failed readiness')
-      hostAction('fixture')
+      editHost('fixture')
       const refresh = deferred<HostRecord[]>()
       saving.api.hosts.list = () => refresh.promise
       click('host-save'); await tick()
       assert(saved.length === 1, 'first host save did not start')
-      if (nextForm === 'new') { click('host-new'); fill() } else hostAction('other')
+      if (nextForm === 'new') { click('host-new'); fill() } else editHost('other')
       saving.api.hosts.list = async () => saving.hosts
       refresh.resolve(saving.hosts); await tick()
       click('host-save'); await tick()
@@ -167,12 +279,12 @@ async function runChecks() {
     removing.api.hosts.save = async request => { afterDelete.push(request); return { ...removing.hosts[0]!, ...request, id: request.id! } }
     client = createClient({ api: removing.api, terminalFactory: removing.terminalFactory })
     assert((await client.ready).ok, 'delete-race client failed readiness')
-    hostAction('other')
+    editHost('other')
     const removedList = deferred<HostRecord[]>()
     removing.api.hosts.list = () => removedList.promise
     window.confirm = () => true
     hostAction('fixture', '[data-act="delete"]'); await tick()
-    hostAction('third')
+    editHost('third')
     removing.hosts.shift()
     removing.api.hosts.list = async () => removing.hosts
     removedList.resolve(removing.hosts); await tick()

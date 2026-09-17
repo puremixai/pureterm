@@ -28,6 +28,15 @@ The start commands build the required shared modules and application. Web uses a
 
 Desktop can use the operating system credential store for passwords or private-key passphrases and can open native private-key file dialogs. Standalone Web stores host information only; passwords, passphrases, and private-key content selected in the browser live only in the current page and must be entered or selected again after a refresh. See the [Desktop guide](apps/desktop/README.md) and [local Web guide](apps/web/README.md).
 
+## Working with connections
+
+- Hosts is a permanent management tab. A single click selects a saved host without changing pages; use its Edit action to open the editor. Double-clicking a host opens a new terminal tab. Each connection gets a separate tab, including repeated connections to the same host.
+- Tabs keep independent input, output, scrollback, connection state, and SFTP directories. Switching tabs or returning to Hosts leaves other connections running. The Files panel uses the selected SSH session and reserves space below its terminal.
+- Disconnect retains output for inspection. Reconnect retries in the same tab; failed connections provide logs, retry, and host editing. Closing a tab releases only that session. A tab closed during its handshake releases the connection if the handshake later succeeds.
+- Use `+` or Ctrl/Cmd+T for a new connection, Ctrl+Tab / Ctrl+Shift+Tab to switch, and Ctrl/Cmd+W to close the current terminal tab. Tab buttons also support arrow keys, Home, and End. Browsers may reserve some shortcuts; the visible controls remain available.
+
+Open sessions and retry credentials live only in the current client; they are not restored after a reload. SFTP currently supports directory navigation, upload/download (up to 4 MiB per file), folder creation, and deletion with confirmation. Serial connections, port forwarding, and standalone keychain/snippet management are not implemented and are not shown as working controls.
+
 ## Verification
 
 ```powershell

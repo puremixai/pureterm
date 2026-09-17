@@ -85,7 +85,7 @@ export function createWebSocketTransport(): SshApi {
   let nextId = 1
   let socket: WebSocket | null = null
   let connecting: Promise<WebSocket> | null = null
-  let currentSession: string | null = null
+  const currentSessions = new Set<string>()
   let disposed = false
   let openingSocket: WebSocket | null = null
   let rejectOpening: ((error: Error) => void) | null = null
@@ -160,10 +160,10 @@ export function createWebSocketTransport(): SshApi {
           return
         }
         // 断线要让当前会话跟着结束，否则界面会停在「已连接」
-        if (wasCurrent && currentSession) {
-          const session = currentSession
-          currentSession = null
-          emitClosed(session, reason)
+        if (wasCurrent) {
+          const sessions = [...currentSessions]
+          currentSessions.clear()
+          for (const session of sessions) emitClosed(session, reason)
         }
       }
 
@@ -210,7 +210,7 @@ export function createWebSocketTransport(): SshApi {
 
     const params = (decodeWire(candidate.params) ?? []) as unknown[]
     if (candidate.name === EVENTS.terminalOpened) {
-      currentSession = String(params[0])
+      currentSessions.add(String(params[0]))
       for (const listener of openedListeners) listener(String(params[0]), Number(params[1]), Number(params[2]))
       return
     }
@@ -222,7 +222,7 @@ export function createWebSocketTransport(): SshApi {
     }
     if (candidate.name === EVENTS.terminalClosed) {
       const sessionId = String(params[0] ?? '')
-      if (sessionId && sessionId === currentSession) currentSession = null
+      currentSessions.delete(sessionId)
       for (const listener of closedListeners) listener(sessionId, String(params[1] ?? ''))
     }
   }
@@ -312,7 +312,7 @@ export function createWebSocketTransport(): SshApi {
       }
       socket = openingSocket = null
       connecting = null
-      currentSession = null
+      currentSessions.clear()
       openedListeners.clear()
       dataListeners.clear()
       closedListeners.clear()

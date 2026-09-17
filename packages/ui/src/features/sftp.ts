@@ -7,13 +7,24 @@ import { formatBytes } from '../format.js'
 
 declare module 'cordis' { interface Context { clientSftp: ClientSftp } }
 
-/** SFTP owns its view, navigation state and asynchronous result lifetime. */
+interface FileState {
+  tabId: string
+  sessionId: string
+  directory: SftpDir | null
+  navigation: number
+  open: boolean
+  busy: boolean
+  hint: string
+  kind: 'ok' | 'err' | 'pending' | ''
+}
+
+/** The panel is shared, while every session retains its directory, requests and open state. */
 export class ClientSftp extends Service {
   static inject = ['clientView', 'clientTransport', 'clientTerminal']
   readonly scope: ClientScope
   private readonly panel: SftpView
-  private directory: SftpDir | null = null
-  private navigation = 0
+  private readonly states = new Map<string, FileState>()
+  private renderedSession: string | null = null
 
   constructor(ctx: Context) {
     super(ctx, 'clientSftp')
@@ -22,8 +33,8 @@ export class ClientSftp extends Service {
     const element = view.element('sftp')
     const toggle = view.element<HTMLButtonElement>('sftp-toggle')
     this.panel = createSftpPanel(element, {
-      onNavigate: path => void this.load(path),
-      onRefresh: () => void this.load(this.directory?.path ?? '.'),
+      onNavigate: path => { const state = this.current(); if (state) void this.load(state, path) },
+      onRefresh: () => { const state = this.current(); if (state) void this.load(state, state.directory?.path ?? '.') },
       onDownload: entry => void this.download(entry),
       onDelete: entry => void this.remove(entry),
       onUpload: file => void this.upload(file),
@@ -31,123 +42,166 @@ export class ClientSftp extends Service {
       onClose: () => this.setOpen(false),
     })
     this.scope.onDispose(() => {
-      this.navigation++
-      this.directory = null
+      this.states.clear()
       this.panel.dispose()
       element.hidden = true
       toggle.disabled = true
-      toggle.textContent = '文件'
+      view.element('session-workspace').classList.remove('files-open')
     })
     this.scope.listen(toggle, 'click', () => { if (ctx.clientTerminal.sessionId) this.setOpen(element.hidden) })
-    ctx.on('client/session-change', sessionId => {
-      this.navigation++
-      this.directory = null
-      this.panel.setEnabled(!!sessionId)
-      toggle.disabled = !sessionId
-      if (!sessionId) this.setOpen(false)
-      else this.panel.setHint('点「文件」可以浏览远端目录。')
+    ctx.on('client/session-change', () => this.sync())
+    ctx.on('client/connection-change', () => this.sync())
+    ctx.on('client/tab-closed', tabId => {
+      for (const [id, state] of this.states) if (state.tabId === tabId) this.states.delete(id)
+      this.sync()
     })
-    this.panel.setEnabled(!!ctx.clientTerminal.sessionId)
-    toggle.disabled = !ctx.clientTerminal.sessionId
+    this.sync()
   }
 
-  private live(session: string): boolean { return this.scope.alive && this.ctx.clientTerminal.sessionId === session }
-  private currentSession(): string | null {
-    if (!this.scope.alive) return null
-    const session = this.ctx.clientTerminal.sessionId
-    if (!session) this.panel.setHint('还没有连接，先连上一台主机。', 'err')
-    return session
+  private current(): FileState | null {
+    const tab = this.ctx.clientTerminal.active
+    if (!this.scope.alive || !tab?.sessionId) return null
+    let state = this.states.get(tab.sessionId)
+    if (!state) {
+      state = { tabId: tab.id, sessionId: tab.sessionId, directory: null, navigation: 0,
+        open: false, busy: false, hint: '打开文件面板以浏览远端目录。', kind: '' }
+      this.states.set(tab.sessionId, state)
+    }
+    return state
+  }
+
+  private live(state: FileState): boolean {
+    return this.scope.alive && this.states.get(state.sessionId) === state &&
+      this.ctx.clientTerminal.tabs.some(tab => tab.id === state.tabId && tab.sessionId === state.sessionId)
+  }
+
+  private sync(): void {
+    if (!this.scope.alive) return
+    for (const [id, state] of this.states) if (!this.live(state)) this.states.delete(id)
+    const state = this.current()
+    const view = this.ctx.clientView
+    if (this.renderedSession !== (state?.sessionId ?? null)) {
+      this.panel.setEnabled(false)
+      this.panel.setBusy(false)
+      this.panel.render(null)
+      this.renderedSession = state?.sessionId ?? null
+    }
+    this.panel.setEnabled(!!state)
+    const open = !!state?.open
+    view.element('sftp').hidden = !open
+    view.element('session-workspace').classList.toggle('files-open', open)
+    const toggle = view.element<HTMLButtonElement>('sftp-toggle')
+    toggle.disabled = !state
+    toggle.textContent = open ? '收起文件' : '文件'
+    toggle.setAttribute('aria-expanded', String(open))
+    toggle.setAttribute('aria-controls', 'sftp')
+    if (state) {
+      this.panel.setBusy(state.busy)
+      this.panel.render(state.directory)
+      if (state.hint) this.panel.setHint(state.hint, state.kind)
+    }
+    this.ctx.clientTerminal.fit()
+  }
+
+  private show(state: FileState): void {
+    if (this.current() === state) this.sync()
   }
 
   private setOpen(open: boolean): void {
-    if (!this.scope.alive) return
-    const view = this.ctx.clientView
-    view.element('sftp').hidden = !open
-    view.element('sftp-toggle').textContent = open ? '收起文件' : '文件'
-    this.ctx.clientTerminal.fit()
-    if (open && this.ctx.clientTerminal.sessionId) void this.load(this.directory?.path ?? '.')
+    const state = this.current()
+    if (!state) return
+    state.open = open
+    this.sync()
+    if (open && !state.directory && !state.busy) void this.load(state, '.')
   }
 
-  private async load(path: string): Promise<boolean> {
-    const session = this.currentSession()
-    if (!session) return false
-    const navigation = ++this.navigation
-    this.panel.setBusy(true)
-    this.panel.render(null)
-    this.panel.setHint(`正在读取 ${path} …`, 'pending')
+  private async load(state: FileState, path: string): Promise<boolean> {
+    if (!this.live(state)) return false
+    const revision = ++state.navigation
+    state.busy = true
+    state.hint = `正在读取 ${path} …`
+    state.kind = 'pending'
+    this.show(state)
     try {
-      const directory = await this.ctx.clientTransport.api.sftp.list(session, path)
-      if (!this.live(session) || navigation !== this.navigation) return false
-      this.directory = directory
-      this.panel.render(directory)
+      const directory = await this.ctx.clientTransport.api.sftp.list(state.sessionId, path)
+      if (!this.live(state) || state.navigation !== revision) return false
+      state.directory = directory
+      state.hint = ''
       return true
     } catch (error) {
-      if (this.live(session) && navigation === this.navigation) { this.panel.render(this.directory); this.panel.setHint(cleanError(error), 'err') }
+      if (this.live(state) && state.navigation === revision) { state.hint = cleanError(error); state.kind = 'err' }
       return false
     } finally {
-      if (this.live(session) && navigation === this.navigation) this.panel.setBusy(false)
+      if (this.live(state) && state.navigation === revision) { state.busy = false; this.show(state) }
     }
   }
 
-  private async download(entry: SftpEntry): Promise<void> {
-    const session = this.currentSession()
-    if (!session) return
-    if (entry.size > MAX_TRANSFER_BYTES) { this.panel.setHint(`「${entry.name}」有 ${formatBytes(entry.size)}，超过单次传输上限 ${formatBytes(MAX_TRANSFER_BYTES)}。大文件先用终端里的 scp / rsync 取。`, 'err'); return }
-    this.panel.setBusy(true)
-    this.panel.setHint(`正在下载 ${entry.name} …`, 'pending')
+  private async action(state: FileState, hint: string, run: () => Promise<string>): Promise<void> {
+    if (!this.live(state) || state.busy) return
+    const navigation = state.navigation
+    state.busy = true
+    state.hint = hint
+    state.kind = 'pending'
+    this.show(state)
     try {
-      const result = await this.ctx.clientTransport.api.sftp.read(session, entry.path)
-      if (!this.live(session)) return
-      this.ctx.effect(() => saveBytes(result.bytes, entry.name), 'sftp.download')
-      this.panel.setHint(`已下载「${entry.name}」（${formatBytes(result.size)}）。`, 'ok')
-    } catch (error) { if (this.live(session)) this.panel.setHint(cleanError(error), 'err') }
-    finally { if (this.live(session)) this.panel.setBusy(false) }
+      const message = await run()
+      if (this.live(state) && navigation === state.navigation) { state.hint = message; state.kind = 'ok' }
+    } catch (error) {
+      if (this.live(state) && navigation === state.navigation) { state.hint = cleanError(error); state.kind = 'err' }
+    } finally {
+      if (this.live(state) && navigation === state.navigation) { state.busy = false; this.show(state) }
+    }
+  }
+
+  private async refreshAfter(state: FileState, directory: string): Promise<void> {
+    if (!this.live(state)) return
+    state.directory = await this.ctx.clientTransport.api.sftp.list(state.sessionId, directory)
+  }
+
+  private async download(entry: SftpEntry): Promise<void> {
+    const state = this.current()
+    if (!state) return
+    if (entry.size > MAX_TRANSFER_BYTES) { state.hint = `文件超过单次传输上限 ${formatBytes(MAX_TRANSFER_BYTES)}。`; state.kind = 'err'; this.show(state); return }
+    await this.action(state, `正在下载 ${entry.name} …`, async () => {
+      const result = await this.ctx.clientTransport.api.sftp.read(state.sessionId, entry.path)
+      if (this.live(state)) this.ctx.effect(() => saveBytes(result.bytes, entry.name), 'sftp.download')
+      return `已下载「${entry.name}」（${formatBytes(result.size)}）。`
+    })
   }
 
   private async upload(file: File): Promise<void> {
-    const session = this.currentSession()
-    if (!session) return
-    if (file.size > MAX_TRANSFER_BYTES) { this.panel.setHint(`「${file.name}」有 ${formatBytes(file.size)}，超过单次传输上限 ${formatBytes(MAX_TRANSFER_BYTES)}。请换个小一点的文件。`, 'err'); return }
-    const directory = this.directory?.path ?? '.'
-    this.panel.setBusy(true)
-    this.panel.setHint(`正在上传 ${file.name} 到 ${directory} …`, 'pending')
-    try {
+    const state = this.current()
+    if (!state) return
+    if (file.size > MAX_TRANSFER_BYTES) { state.hint = `文件超过单次传输上限 ${formatBytes(MAX_TRANSFER_BYTES)}。`; state.kind = 'err'; this.show(state); return }
+    const directory = state.directory?.path ?? '.'
+    await this.action(state, `正在上传 ${file.name} 到 ${directory} …`, async () => {
       const bytes = await readFileBytes(file)
-      if (!this.live(session)) return
-      const result = await this.ctx.clientTransport.api.sftp.write(session, directory, file.name, bytes)
-      if (!this.live(session)) return
-      const refreshed = await this.load(directory)
-      if (this.live(session)) this.panel.setHint(refreshed ? `已上传「${file.name}」到 ${directory}（${formatBytes(result.size)}）。` : `「${file.name}」已经传上去了，但列表没刷新成功。`, refreshed ? 'ok' : 'err')
-    } catch (error) { if (this.live(session)) this.panel.setHint(cleanError(error), 'err') }
-    finally { if (this.live(session)) this.panel.setBusy(false) }
+      if (!this.live(state)) return ''
+      const result = await this.ctx.clientTransport.api.sftp.write(state.sessionId, directory, file.name, bytes)
+      await this.refreshAfter(state, directory)
+      return `已上传「${file.name}」（${formatBytes(result.size)}）。`
+    })
   }
 
   private async mkdir(name: string): Promise<void> {
-    const session = this.currentSession()
-    if (!session) return
-    const directory = this.directory?.path ?? '.'
-    this.panel.setBusy(true)
-    this.panel.setHint(`正在新建 ${directory}/${name} …`, 'pending')
-    try {
-      await this.ctx.clientTransport.api.sftp.mkdir(session, directory, name)
-      if (!this.live(session)) return
-      const refreshed = await this.load(directory)
-      if (this.live(session)) this.panel.setHint(refreshed ? `已新建目录「${name}」。` : `目录「${name}」建好了，但列表没刷新成功。`, refreshed ? 'ok' : 'err')
-    } catch (error) { if (this.live(session)) this.panel.setHint(cleanError(error), 'err') }
-    finally { if (this.live(session)) this.panel.setBusy(false) }
+    const state = this.current()
+    if (!state) return
+    const directory = state.directory?.path ?? '.'
+    await this.action(state, `正在新建 ${name} …`, async () => {
+      await this.ctx.clientTransport.api.sftp.mkdir(state.sessionId, directory, name)
+      await this.refreshAfter(state, directory)
+      return `已新建目录「${name}」。`
+    })
   }
 
   private async remove(entry: SftpEntry): Promise<void> {
-    const session = this.currentSession()
-    if (!session || !this.ctx.clientView.window.confirm(`删除远端${entry.isDirectory ? '目录' : '文件'}「${entry.path}」？此操作不可恢复。`)) return
-    this.panel.setBusy(true)
-    this.panel.setHint(`正在删除 ${entry.path} …`, 'pending')
-    try {
-      await this.ctx.clientTransport.api.sftp.remove(session, entry.path)
-      if (!this.live(session)) return
-      const refreshed = await this.load(this.directory?.path ?? '.')
-      if (this.live(session)) this.panel.setHint(refreshed ? `已删除「${entry.name}」。` : `「${entry.name}」删掉了，但列表没刷新成功。`, refreshed ? 'ok' : 'err')
-    } catch (error) { if (this.live(session)) this.panel.setHint(cleanError(error), 'err') }
-    finally { if (this.live(session)) this.panel.setBusy(false) }
+    const state = this.current()
+    if (!state || !this.ctx.clientView.window.confirm(`删除远端${entry.isDirectory ? '目录' : '文件'}「${entry.path}」？此操作不可恢复。`)) return
+    const directory = state.directory?.path ?? '.'
+    await this.action(state, `正在删除 ${entry.path} …`, async () => {
+      await this.ctx.clientTransport.api.sftp.remove(state.sessionId, entry.path)
+      await this.refreshAfter(state, directory)
+      return `已删除「${entry.name}」。`
+    })
   }
 }

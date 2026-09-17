@@ -77,6 +77,14 @@ The shared Client is a Cordis Context created by `createClient()`. It installs v
 
 Desktop retains sandbox, GPU, launch-profile, and restart behavior. `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` disables automatic no-sandbox fallback and profile backfill; `SSH_CORDIS_NO_LAUNCH_PROFILE=1` disables profile reads and writes. Profiles are not separated for CI, containers, and daily use; tests use temporary directories.
 
+### Terminal tab ownership
+
+`ClientTerminal` owns a collection of tab records, each with an xterm instance, immutable connection-request snapshot, status, logs, and an optional Host session ID. Hosts is a separate permanent page. Selection changes visibility and sizing only; background output is routed by session ID. A disconnect retains its tab and scrollback, whereas closing a tab disposes that terminal and closes only its SSH session.
+
+Concurrent handshakes are associated with tabs using their own `open()` RPC replies, not the currently selected tab or `opened` event order. Events preceding the reply are buffered by session ID with a 1 MiB per-session limit. Closing a pending tab removes its view immediately and closes a subsequently returned session; the existing protocol does not provide per-open-request cancellation. Client disposal still releases all sessions and pending handshakes through the transport. WebSocket loss reports closure for every tracked session.
+
+`ClientSftp` shares one rendered panel but retains directory, visibility, busy state, and navigation revision per session. Async results only update their owning state, so a background request cannot overwrite the selected tab's files. Closing/disconnecting a session invalidates its file state. Retry credentials remain in client memory for the tab lifetime and are not serialized as session restoration data. No Host or wire-protocol change is required.
+
 ## Data and entry capabilities
 
 Desktop overrides its data directory with `SSH_CORDIS_DATA_DIR`. `hosts.json` stores host metadata and private-key paths; `secrets.json` stores safeStorage ciphertext; `known_hosts.json` stores TOFU fingerprints; `launch-profile.json` stores the ready launch configuration. safeStorage remains in the main process, and Host’s asynchronous `CredentialProvider` calls it over private IPC. Without a usable system encryption backend, the app does not fall back to plaintext persistence. Private-key files are read at connection time and are never copied into host storage. The attached local browser uses the same encryption and native picker capabilities.

@@ -10,6 +10,10 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 
 ### Changed
 
+- Make host-card gestures explicit: single-click selects, Edit opens the host drawer, and double-click opens a new terminal tab.
+- Open every SSH connection in its own persistent terminal tab beside Hosts, with isolated output, independent disconnect/close/retry, and session-scoped SFTP state. Handle concurrent handshakes, late results from closed tabs, and closure of every session on WebSocket loss.
+- Add editable host labels, working card/list switching and shortcut help; remove unimplemented placeholder actions. Keep the file panel below the terminal without covering its prompt.
+- Rework the shared PureTerm workspace around a mature dark Hosts dashboard, Termius-inspired navigation rail and toolbar, searchable host cards, and a focused connection workspace while preserving responsive host/SFTP surfaces and keyboard focus states.
 - Make maintained Markdown documentation English-first while retaining complete Chinese translations.
 - Add English-first development guides with paired Chinese translations.
 - Add `VERSION.txt` as the source baseline and generate UI version and changelog metadata.

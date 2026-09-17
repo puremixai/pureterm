@@ -46,11 +46,12 @@ export class ClientApplication extends Service {
     const report: SmokeReport = { preload: typeof this.ctx.clientView.window.sshAPI, sessionId: null, openedSize: null,
       text: '', replacementChars: 0, closedReason: null, error: null }
     const api = this.ctx.clientTransport.api
-    const terminal = this.ctx.clientTerminal.terminal
     let unsubscribe: (() => void) | undefined
     let unregister: (() => void) | undefined
     try {
-      const result = await api.open({ ...config, cols: 100, rows: 30, term: 'xterm-256color' })
+      const result = await this.ctx.clientTerminal.open({ ...config, cols: 100, rows: 30, term: 'xterm-256color' })
+      if (!result) throw new Error('终端连接失败')
+      const terminal = this.ctx.clientTerminal.active!.terminal
       report.sessionId = result.sessionId
       report.openedSize = { cols: result.cols, rows: result.rows }
       if (!await this.scope.delay(800)) throw new Error('客户端已卸载。')

@@ -73,6 +73,39 @@ async function main() {
     assert.ok(report.sessionId && report.closedReason)
     console.log('[WEB-SMOKE] standalone Node SSH roundtrip succeeded')
 
+    for (const label of ['Alpha terminal', 'Beta terminal']) {
+      await evaluate(`(() => {
+        document.getElementById('tab-new').click();
+        document.getElementById('host').value = ${JSON.stringify(config.host)};
+        document.getElementById('port').value = ${JSON.stringify(String(config.port))};
+        document.getElementById('user').value = ${JSON.stringify(config.username)};
+        document.getElementById('pass').value = ${JSON.stringify(config.password)};
+        document.getElementById('host-label').value = ${JSON.stringify(label)};
+        document.getElementById('connect').click();
+      })()`)
+      await until(() => evaluate('document.getElementById("session-state").className === "connected"'), 'independent SSH tab connection')
+    }
+    assert.equal(await evaluate('document.querySelectorAll(".session-tab[data-state=connected]").length'), 2)
+    const paste = async text => evaluate(`(() => {
+      const data = new DataTransfer(); data.setData('text/plain', ${JSON.stringify(text + '\r')});
+      document.querySelector('.terminal-pane:not([hidden]) .xterm-helper-textarea').dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+    })()`)
+    const visibleText = 'document.querySelector(".terminal-pane:not([hidden]) .xterm-rows").textContent'
+    await paste('beta-only')
+    await until(() => evaluate(`${visibleText}.includes('echo:beta-only')`), 'Beta output')
+    await evaluate('document.getElementById("hosts-tab").click()')
+    assert.equal(await evaluate('document.getElementById("session-workspace").hidden && !document.getElementById("hosts-panel").hidden'), true)
+    await evaluate('[...document.querySelectorAll(".session-tab [role=tab]")].find(tab => tab.textContent === "Alpha terminal").click()')
+    await paste('alpha-only')
+    await until(() => evaluate(`${visibleText}.includes('echo:alpha-only')`), 'Alpha output')
+    assert.equal(await evaluate(`${visibleText}.includes('beta-only')`), false)
+    await evaluate('document.querySelector(".session-tab.is-active [data-tab-close]").click()')
+    assert.equal(await evaluate('document.querySelectorAll(".session-tab[data-state=connected]").length'), 1)
+    await paste('beta-still-alive')
+    await until(() => evaluate(`${visibleText}.includes('echo:beta-still-alive')`), 'remaining session after closing Alpha')
+    await evaluate('document.querySelector(".session-tab.is-active [data-tab-close]").click()')
+    console.log('[WEB-MULTI-TAB] real SSH sessions keep separate output and closing one preserves the other')
+
     // A real browser file input reads a real fixture file. Clicking the actual UI
     // button also checks that file selection remains in its original user gesture.
     await evaluate(`(() => {
@@ -84,16 +117,21 @@ async function main() {
       auth.dispatchEvent(new Event('change', { bubbles: true }));
     })()`)
     await pickBrowserFile(process.env.PURETERM_TEST_PRIVATE_KEY)
+    await evaluate(`(() => {
+      const label = document.getElementById('host-label'); label.value = 'Browser key host';
+      label.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`)
+    assert.equal(await evaluate('document.getElementById("key-path").value'), basename(process.env.PURETERM_TEST_PRIVATE_KEY), 'renaming a host must not discard its selected private key')
     await evaluate('document.getElementById("connect").click()')
-    await until(() => evaluate('document.getElementById("status").textContent.startsWith("已连接")'), 'SSH authentication using the browser-selected private key')
+    await until(() => evaluate('document.getElementById("session-state").className === "connected"'), 'SSH authentication using the browser-selected private key')
     await evaluate(`(() => {
       const text = new DataTransfer();
       text.setData('text/plain', 'browser-key-check\\r');
-      document.querySelector('.xterm-helper-textarea').dispatchEvent(new ClipboardEvent('paste', {
+      document.querySelector('.terminal-pane:not([hidden]) .xterm-helper-textarea').dispatchEvent(new ClipboardEvent('paste', {
         bubbles: true, cancelable: true, clipboardData: text,
       }));
     })()`)
-    await until(() => evaluate('document.querySelector(".xterm-rows").textContent.includes("echo:browser-key-check")'), 'private-key terminal echo through browser paste')
+    await until(() => evaluate('document.querySelector(".terminal-pane:not([hidden]) .xterm-rows").textContent.includes("echo:browser-key-check")'), 'private-key terminal echo through browser paste')
     await evaluate('document.getElementById("disconnect").click()')
     await until(() => evaluate('document.getElementById("disconnect").disabled'), 'private-key SSH disconnect')
     console.log('[WEB-BROWSER-KEY-AUTH] browser-selected private key authenticated and terminal echo completed')
@@ -105,7 +143,7 @@ async function main() {
     assert.equal(await evaluate('document.querySelectorAll(".tag.saved").length'), 0)
     await window.loadURL(url.href)
     await until(() => evaluate('document.getElementById("status").textContent === "就绪"'), 'page reload readiness')
-    await evaluate('document.querySelector(".host-main").click()')
+    await evaluate('document.querySelector("[data-act=edit]").click()')
     assert.deepEqual(await evaluate(`({ key: document.getElementById('key-path').value,
       passphrase: document.getElementById('key-pass').value, password: document.getElementById('pass').value })`),
     { key: '', passphrase: '', password: '' })

@@ -154,7 +154,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     createName.disabled = !enabled || busy
     // 起名字的条已经展开时，就把「新建文件夹」收起来：同一件事不需要两个入口
     mkdirButton.hidden = !createBar.hidden
-    pathInput.disabled = !enabled
+    pathInput.disabled = !enabled || busy
     // 「收起」任何时候都能按：它不改远端状态，忙碌时也该能把面板收起来
     closeButton.disabled = false
   }
@@ -217,7 +217,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     actions.append(primary, remove)
     item.append(main, actions)
 
-    rowButtons.push(primary, remove)
+    rowButtons.push(main, primary, remove)
     return item
   }
 

@@ -6,15 +6,17 @@ import { DomListeners } from './client-runtime.js'
  *
  * 为什么单独一个文件（和 transport.ts 同一个理由）：`app.ts` 管的是「终端会话的生命周期」，
  * 主机列表管的是「有哪些主机、每一行能干什么」。混在一起之后，改一个行内按钮的样式
- * 得先把连接流程读一遍。这里的对外接口只有「渲染」一个方法，加上三个回调，
+ * 得先把连接流程读一遍。这里的对外接口只有「渲染」一个方法，加上四个回调，
  * 具体做选中还是连接由调用方决定——列表自己不知道有终端这回事。
  *
  * 和协议层的关系：这里只吃 `HostRecord`，不认识 `hosts:list` 这类通道名，
  * 也不认识 `api`。数据从哪来是 app.ts 的事。
  */
 export interface HostListHandlers {
-  /** 选中（单击行，或按「编辑」）：把这条记录装进表单 */
+  /** 单击行：只移动卡片高亮，不打开编辑器 */
   onSelect(record: HostRecord): void
+  /** 按「编辑」：把这条记录装进表单 */
+  onEdit(record: HostRecord): void
   /** 双击行：直接用这条记录连接 */
   onConnect(record: HostRecord): void
   /** 按「删除」 */
@@ -43,6 +45,12 @@ function span(className: string, text: string): HTMLSpanElement {
   return element
 }
 
+function toneFor(record: HostRecord): string {
+  let hash = 0
+  for (const character of `${record.label}:${record.host}`) hash = (hash * 31 + character.charCodeAt(0)) | 0
+  return `tone-${Math.abs(hash) % 4}`
+}
+
 function miniButton(label: string, action: string, danger: boolean, onClick: () => void, listeners: DomListeners): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
@@ -68,8 +76,14 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   const main = document.createElement('button')
   main.type = 'button'
   main.className = 'host-main'
-  main.title = '双击连接'
-  main.setAttribute('aria-label', `${record.label}，${record.username}@${record.host}:${record.port}，双击连接`)
+  main.title = '单击选中，双击连接'
+  main.setAttribute('aria-label', `${record.label}，${record.username}@${record.host}:${record.port}，单击选中，双击连接`)
+
+  const avatar = span(`host-avatar ${toneFor(record)}`, record.authMethod === 'privateKey' ? 'KEY' : 'SSH')
+  avatar.setAttribute('aria-hidden', 'true')
+
+  const content = document.createElement('span')
+  content.className = 'host-content'
 
   const top = document.createElement('span')
   top.className = 'host-top'
@@ -83,15 +97,16 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
     top.append(saved)
   }
 
-  main.append(top)
-  main.append(span('host-sub', `${record.username}@${record.host}:${record.port}`))
+  content.append(top)
+  content.append(span('host-sub', `${record.username}@${record.host}:${record.port}`))
+  main.append(avatar, content)
 
   listeners.add(main, 'click', () => handlers.onSelect(record))
   listeners.add(main, 'dblclick', () => handlers.onConnect(record))
 
   const actions = document.createElement('span')
   actions.className = 'host-actions'
-  actions.append(miniButton('编辑', 'edit', false, () => handlers.onSelect(record), listeners))
+  actions.append(miniButton('编辑', 'edit', false, () => handlers.onEdit(record), listeners))
   actions.append(miniButton('删除', 'delete', true, () => handlers.onDelete(record), listeners))
 
   item.append(main, actions)

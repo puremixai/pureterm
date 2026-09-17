@@ -16,98 +16,185 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; base-uri 'none'; form-action 'none'"
     />
-    <title>SSH Cordis Client</title>
+    <meta name="theme-color" content="#121426" />
+    <title>PureTerm</title>
     <link rel="stylesheet" href="./app.css" />
   </head>
   <body>
-    <div id="app">
-      <!--
-        左侧是主机列表，右侧是「表单 + 终端」——和 Termius 的管理态/会话态同构：
-        列表回答「我有哪些主机」，表单回答「这一台长什么样」。
-        列表是主入口，所以放左边；终端要宽度，所以占满剩下的地方。
-      -->
-      <aside id="hosts-panel">
-        <header class="panel-head">
-          <span class="panel-title">主机</span>
-          <button type="button" id="host-new" class="ghost small">新建</button>
-        </header>
-        <div id="hosts-body">
-          <ul id="host-list" aria-label="已保存的主机"></ul>
-          <p id="hosts-empty" class="empty">还没有保存的主机。<br />在右边填好地址和用户名，点「保存」。</p>
+    <div id="app" class="app-shell">
+      <header class="app-topbar">
+        <div class="topbar-leading">
+          <button type="button" id="nav-toggle" class="icon-button topbar-menu" aria-label="展开或收起主导航" aria-expanded="true"><i class="ti ti-menu-2" aria-hidden="true"></i></button>
+          <button type="button" id="workspace-home" class="workspace-switcher" aria-label="返回主机管理">
+            <span class="workspace-mark" aria-hidden="true">PT</span>
+            <span class="workspace-copy"><strong>PureTerm</strong><small>Vault</small></span>
+          </button>
+          <div id="workspace-tabs" class="workspace-tabs" role="tablist" aria-label="工作区标签">
+            <button type="button" id="hosts-tab" class="app-tab is-active" role="tab" aria-selected="true" aria-controls="hosts-panel"><span class="app-tab-mark" aria-hidden="true"><i class="ti ti-server-2"></i></span><span>Hosts</span></button>
+          </div>
+          <button type="button" id="tab-new" class="icon-button tab-add" aria-label="新建连接标签" title="新建连接 (Ctrl+T)"><i class="ti ti-plus" aria-hidden="true"></i></button>
         </div>
-      </aside>
+      </header>
 
-      <section id="main">
-      <form id="toolbar" autocomplete="off">
-        <div class="row mode-row">
-          <span id="form-mode" class="mode">新建主机</span>
-          <button type="button" id="host-save" class="ghost" disabled>保存</button>
-          <button type="button" id="host-delete" class="ghost" disabled>删除</button>
-          <button type="button" id="sftp-toggle" class="ghost" disabled>文件</button>
-        </div>
+      <div class="app-body">
+        <nav id="primary-nav" class="primary-nav" aria-label="主导航">
+          <button type="button" id="nav-hosts" class="nav-item active" title="主机管理"><span class="nav-icon" aria-hidden="true"><i class="ti ti-server-2"></i></span><span>Hosts</span></button>
+          <button type="button" id="nav-new" class="nav-item" title="新建 SSH 连接"><span class="nav-icon" aria-hidden="true"><i class="ti ti-terminal-2"></i></span><span>新建连接</span></button>
+          <div class="nav-divider" aria-hidden="true"></div>
+          <button type="button" id="nav-shortcuts" class="nav-item" title="快捷键"><span class="nav-icon" aria-hidden="true"><i class="ti ti-keyboard"></i></span><span>快捷键</span></button>
+          <div class="nav-footer"><span class="nav-status-dot"></span><span>Local workspace</span></div>
+        </nav>
 
-        <div class="row">
-          <label class="field grow">
-            <span>主机</span>
-            <input id="host" placeholder="127.0.0.1" spellcheck="false" />
-          </label>
-          <label class="field narrow">
-            <span>端口</span>
-            <input id="port" value="22" inputmode="numeric" spellcheck="false" />
-          </label>
-          <label class="field">
-            <span>用户名</span>
-            <input id="user" placeholder="root" spellcheck="false" />
-          </label>
-          <label class="field narrow">
-            <span>认证</span>
-            <select id="auth">
-              <option value="password">密码</option>
-              <option value="privateKey">私钥</option>
-            </select>
-          </label>
-          <label class="check">
-            <input id="remember" type="checkbox" disabled />
-            <span id="remember-label">记住密码</span>
-          </label>
-          <button type="button" id="connect" class="primary" disabled>连接</button>
-          <button type="button" id="disconnect" class="ghost" disabled>断开</button>
-        </div>
+        <main id="main" class="workspace">
+          <section id="hosts-panel" class="hosts-dashboard" role="tabpanel" aria-labelledby="hosts-tab">
+            <div class="host-search-row">
+              <label class="search-control">
+                <span class="search-icon" aria-hidden="true"><i class="ti ti-search"></i></span>
+                <input id="host-search" placeholder="搜索主机或 ssh user@hostname…" spellcheck="false" />
+              </label>
+              <button type="button" id="quick-connect" class="search-connect" disabled>连接</button>
+            </div>
 
-        <!-- 两种认证方式各占一行，按 #auth 切换显隐（不是删掉再建，免得丢用户填了一半的值） -->
-        <div class="row" id="cred-password">
-          <label class="field grow">
-            <span>密码</span>
-            <input id="pass" type="password" spellcheck="false" />
-          </label>
-        </div>
+            <div class="dashboard-toolbar">
+              <div class="dashboard-actions">
+                <button type="button" id="host-new" class="action-primary"><span aria-hidden="true"><i class="ti ti-plus"></i></span> 新建主机</button>
+                <button type="button" id="terminal-new" class="action-tool"><span aria-hidden="true"><i class="ti ti-terminal-2"></i></span> Terminal</button>
+              </div>
+              <div class="dashboard-tools" aria-label="视图工具">
+                <button type="button" id="host-view-toggle" class="tool-icon" aria-label="列表视图" aria-pressed="false" title="切换卡片 / 列表视图"><i class="ti ti-list" aria-hidden="true"></i></button>
+                <button type="button" id="shortcuts-open" class="tool-icon" aria-label="快捷键" title="快捷键"><i class="ti ti-keyboard" aria-hidden="true"></i></button>
+              </div>
+            </div>
 
-        <div class="row" id="cred-key" hidden>
-          <label class="field grow">
-            <span>私钥文件</span>
-            <input id="key-path" placeholder="点右边「选择…」挑一个私钥文件" spellcheck="false" readonly />
-          </label>
-          <button type="button" id="key-pick" class="ghost" disabled>选择…</button>
-          <input id="private-key-file" type="file" hidden />
-          <label class="field">
-            <span>私钥口令（没有就留空）</span>
-            <input id="key-pass" type="password" spellcheck="false" />
-          </label>
-        </div>
-        <p id="credential-hint" hidden>本机 Web 只保存主机信息；密码、私钥口令和所选私钥仅在当前页面使用，刷新或关闭后需重新填写或选择。</p>
-      </form>
+            <div class="hosts-heading">
+              <div>
+                <h1>Hosts</h1>
+              </div>
+              <span id="host-count" class="host-count">0 hosts</span>
+            </div>
 
-      <div id="status" role="status">正在连接本机后端…</div>
-      <div id="terminal"></div>
-      <!--
-        远端文件面板：底部抽屉，默认收起。
-        做成「按需出现」而不是常驻一栏，是因为终端要的是宽度——它占满整行时是 133 列，
-        常驻一栏就只剩 100 列（第一版把主机列表放在左边时已经吃过一次这个亏）。
-        抽屉里的骨架由 renderer/sftp-panel.ts 自己搭，这里只留一个空壳。
-      -->
-      <section id="sftp" hidden></section>
-      </section>
+            <div id="hosts-body">
+              <ul id="host-list" aria-label="已保存的主机"></ul>
+              <p id="hosts-empty" class="empty">还没有保存的主机。<br />点击「新建主机」开始建立连接。</p>
+            </div>
+          </section>
+
+          <section id="connection-workspace" class="connection-workspace" hidden>
+            <form id="toolbar" class="connection-panel" autocomplete="off">
+              <div class="toolbar-head">
+                <div class="form-context">
+                  <span id="form-mode" class="mode">New Host</span>
+                  <span class="drawer-subtitle">Local workspace</span>
+                </div>
+                <div class="toolbar-actions">
+                  <button type="button" id="connection-close" class="icon-button drawer-action drawer-close" aria-label="返回主机"><i class="ti ti-arrow-bar-right" aria-hidden="true"></i></button>
+                </div>
+              </div>
+
+              <div class="drawer-scroll">
+                <section class="drawer-section address-section">
+                  <h2>Address</h2>
+                  <label class="address-control">
+                    <span class="connection-type" aria-hidden="true"><i class="ti ti-server-2"></i></span>
+                    <input id="host" placeholder="IP or Hostname" spellcheck="false" />
+                  </label>
+                </section>
+
+                <section class="drawer-section general-section">
+                  <h2>General</h2>
+                  <label class="field"><span>Label</span><input id="host-label" placeholder="主机名称（可选）" /></label>
+                </section>
+
+                <section class="drawer-section ssh-section">
+                  <div class="ssh-port-row"><strong>SSH on</strong><label class="port-control"><input id="port" value="22" inputmode="numeric" spellcheck="false" /></label><strong>port</strong></div>
+                </section>
+
+                <section class="drawer-section credentials-section">
+                  <h2>Credentials</h2>
+                  <label class="field"><span>Username</span><input id="user" placeholder="Username" spellcheck="false" /></label>
+                  <label class="field auth-field"><span>Authentication</span><select id="auth"><option value="password">Password</option><option value="privateKey">Private key</option></select></label>
+                  <div class="row credential-row" id="cred-password"><label class="field grow"><span>Password</span><input id="pass" type="password" placeholder="Password" spellcheck="false" /></label></div>
+
+                  <div class="row credential-row key-row" id="cred-key" hidden>
+                    <label class="field grow"><span>Private key</span><input id="key-path" placeholder="Choose a private key file" spellcheck="false" readonly /></label>
+                    <button type="button" id="key-pick" class="ghost" disabled>Choose…</button>
+                    <input id="private-key-file" type="file" hidden />
+                    <label class="field"><span>Passphrase</span><input id="key-pass" type="password" spellcheck="false" /></label>
+                  </div>
+                  <label class="check"><input id="remember" type="checkbox" disabled /><span id="remember-label">Remember password</span></label>
+                  <p id="credential-hint" hidden>Web 模式只在当前页面使用凭据；刷新或关闭后需重新填写。</p>
+                </section>
+              </div>
+
+              <div class="drawer-footer">
+                <div class="drawer-record-actions">
+                  <button type="button" id="host-save" class="ghost" disabled><i class="ti ti-device-floppy" aria-hidden="true"></i> Save host</button>
+                  <button type="button" id="host-delete" class="ghost danger" disabled><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>
+                </div>
+                <button type="button" id="connect" class="primary drawer-connect" disabled>Connect</button>
+                <div id="status" role="status">正在连接本机后端…</div>
+              </div>
+            </form>
+
+          </section>
+
+          <section id="session-workspace" class="session-workspace" hidden aria-label="终端会话">
+            <div class="session-toolbar">
+              <div class="session-context"><span id="session-state" role="status"></span><span id="session-address"></span></div>
+              <div class="session-actions">
+                <button type="button" id="sftp-toggle" class="ghost small" disabled>文件</button>
+                <button type="button" id="session-reconnect" class="ghost small" hidden>重新连接</button>
+                <button type="button" id="disconnect" class="ghost small" disabled>断开连接</button>
+              </div>
+            </div>
+            <div class="session-content">
+              <div id="terminal" class="terminal-surface"></div>
+              <section id="sftp" class="sftp-drawer" hidden></section>
+            </div>
+          <section id="connection-failure" class="connection-failure" hidden aria-labelledby="failure-title">
+            <div class="failure-shell">
+              <div class="failure-head">
+                <div class="failure-host">
+                  <span id="failure-avatar" class="host-avatar tone-0" aria-hidden="true">SSH</span>
+                  <div>
+                    <h1 id="failure-title">Connection failed</h1>
+                    <p id="failure-endpoint">SSH —</p>
+                  </div>
+                </div>
+                <button type="button" id="failure-copy" class="failure-copy"><i class="ti ti-copy" aria-hidden="true"></i> Copy logs</button>
+              </div>
+
+              <div class="failure-route" aria-hidden="true">
+                <span class="failure-route-node"><i class="ti ti-plug-x"></i></span>
+                <span class="failure-route-line"></span>
+                <span class="failure-route-node"><i class="ti ti-terminal-2"></i></span>
+              </div>
+
+              <h2>Connection failed with connection log:</h2>
+              <div id="failure-log" class="failure-log" role="log" aria-live="polite"></div>
+              <div class="failure-actions">
+                <button type="button" id="failure-close" class="failure-secondary">Close</button>
+                <button type="button" id="failure-edit" class="failure-secondary">Edit host</button>
+                <button type="button" id="failure-retry" class="primary">重新连接</button>
+              </div>
+            </div>
+          </section>
+          </section>
+        </main>
+      </div>
     </div>
+    <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
+      <h2 id="shortcuts-title">工作区快捷键</h2>
+      <dl>
+        <div><dt>新建连接</dt><dd>Ctrl / ⌘ + T</dd></div>
+        <div><dt>下一个标签</dt><dd>Ctrl + Tab</dd></div>
+        <div><dt>上一个标签</dt><dd>Ctrl + Shift + Tab</dd></div>
+        <div><dt>关闭当前会话标签</dt><dd>Ctrl / ⌘ + W</dd></div>
+        <div><dt>收起主机编辑面板</dt><dd>Esc</dd></div>
+      </dl>
+      <p>主机卡片：单击选中，点击「编辑」打开编辑面板，双击连接。关闭标签会断开该连接；切换标签不会断开。浏览器可能占用部分快捷键，此时请使用标签栏按钮。</p>
+      <button type="button" id="shortcuts-close" class="primary">知道了</button>
+    </dialog>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

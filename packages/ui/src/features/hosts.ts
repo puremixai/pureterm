@@ -1,5 +1,5 @@
 import { Service, type Context } from 'cordis'
-import type { AuthMethod, HostRecord, HostSaveRequest, RuntimeCapabilities } from '@pureterm/protocol'
+import type { AuthMethod, HostRecord, HostSaveRequest, RuntimeCapabilities, TerminalOpenRequest } from '@pureterm/protocol'
 import { ClientScope, cleanError } from '../client-runtime.js'
 import { createHostList, type HostListView } from '../host-list.js'
 import { BrowserPrivateKeySelection, connectionCredentials, savedCredentials, readBrowserPrivateKey } from '../credentials.js'
@@ -13,21 +13,24 @@ export class ClientHosts extends Service {
   readonly ready: Promise<void>
   private readonly list: HostListView
   private hosts: HostRecord[] = []
+  private selectedId: string | null = null
   private editingId: string | null = null
   private capabilities: RuntimeCapabilities | null = null
   private readonly browserKey = new BrowserPrivateKeySelection()
   private pickerRevision = 0
   private formRevision = 0
   private listRevision = 0
+  private query = ''
+  private readonly pendingForms = new Set<number>()
 
   constructor(ctx: Context) {
     super(ctx, 'clientHosts')
     this.scope = new ClientScope(ctx)
     const view = ctx.clientView
     this.list = createHostList(view.element('host-list'), {
-      onSelect: record => this.applyHost(record),
+      onSelect: record => this.selectHost(record),
+      onEdit: record => this.applyHost(record),
       onConnect: record => {
-        if (ctx.clientTerminal.sessionId || ctx.clientTerminal.connecting) return
         this.applyHost(record)
         void this.connect()
       },
@@ -42,6 +45,35 @@ export class ClientHosts extends Service {
     this.scope.listen(view.element('toolbar'), 'submit', event => { event.preventDefault(); void this.connect() })
     this.scope.listen(view.element('connect'), 'click', () => void this.connect())
     this.scope.listen(view.element('host-new'), 'click', () => this.startNew())
+    this.scope.listen(view.element('quick-connect'), 'click', () => this.startNew(this.input('host-search').value.trim()))
+    this.scope.listen(view.element('connection-close'), 'click', () => this.closeWorkspace())
+    for (const id of ['tab-new', 'terminal-new', 'nav-new']) this.scope.listen(view.element(id), 'click', () => this.startNew())
+    for (const id of ['workspace-home', 'nav-hosts']) this.scope.listen(view.element(id), 'click', () => { ctx.clientTerminal.select(null); this.closeWorkspace() })
+    this.scope.listen(view.element('nav-toggle'), 'click', () => {
+      ctx.clientTerminal.select(null)
+      const collapsed = view.element('app').classList.toggle('nav-collapsed')
+      view.element('nav-toggle').setAttribute('aria-expanded', String(!collapsed))
+    })
+    this.scope.listen(view.element('host-view-toggle'), 'click', () => {
+      const list = view.element('host-list').classList.toggle('list-view')
+      view.element('host-view-toggle').setAttribute('aria-pressed', String(list))
+    })
+    const shortcuts = view.element<HTMLDialogElement>('shortcuts-dialog')
+    for (const id of ['shortcuts-open', 'nav-shortcuts']) this.scope.listen(view.element(id), 'click', () => shortcuts.showModal())
+    this.scope.listen(view.element('shortcuts-close'), 'click', () => shortcuts.close())
+    this.scope.onDispose(() => shortcuts.close())
+    this.scope.listen(view.document, 'keydown', event => {
+      const key = event as KeyboardEvent
+      if (shortcuts.open) return
+      if ((key.ctrlKey || key.metaKey) && key.key.toLowerCase() === 't') { key.preventDefault(); key.stopPropagation(); this.startNew() }
+      if (key.key === 'Escape' && !view.element('connection-workspace').hidden) this.closeWorkspace()
+    }, true)
+    ctx.on('client/edit-connection', (request, title) => this.editConnection(request, title))
+    this.scope.listen(view.element('host-search'), 'input', () => {
+      this.query = this.input('host-search').value.trim().toLocaleLowerCase()
+      this.renderHostList()
+      this.updateButtons()
+    })
     this.scope.listen(view.element('host-save'), 'click', () => {
       void this.save().then(record => {
         if (!this.scope.alive) return
@@ -51,8 +83,8 @@ export class ClientHosts extends Service {
     })
     this.scope.listen(view.element('host-delete'), 'click', () => { if (this.editingId) void this.remove(this.editingId) })
     this.scope.listen(view.element('auth'), 'change', () => { this.formRevision++; this.clearBrowserKey(); this.syncAuth(); this.updateButtons() })
-    for (const id of ['host', 'port', 'user']) this.scope.listen(view.element(id), 'input', () => { this.formRevision++; this.clearBrowserKey() })
-    for (const id of ['pass', 'key-pass', 'remember']) {
+    for (const id of ['host', 'port', 'user']) this.scope.listen(view.element(id), 'input', () => { this.formRevision++; this.clearBrowserKey(); this.updateButtons() })
+    for (const id of ['pass', 'key-pass', 'remember', 'host-label']) {
       this.scope.listen(view.element(id), 'input', () => { this.formRevision++ })
       this.scope.listen(view.element(id), 'change', () => { this.formRevision++ })
     }
@@ -66,7 +98,7 @@ export class ClientHosts extends Service {
   }
 
   get count(): number { return this.hosts.length }
-  private input(id: string): HTMLInputElement { return this.ctx.clientView.element<HTMLInputElement>(id) }
+  private input<T extends HTMLElement = HTMLInputElement>(id: string): T { return this.ctx.clientView.element<T>(id) }
   private auth(): AuthMethod { return this.input('auth').value === 'privateKey' ? 'privateKey' : 'password' }
 
   private async initialize(): Promise<void> {
@@ -97,19 +129,73 @@ export class ClientHosts extends Service {
 
   private updateButtons(): void {
     if (!this.scope.alive) return
-    const terminal = this.ctx.clientTerminal
-    this.input('connect').disabled = !this.capabilities || terminal.connecting || !!terminal.sessionId
-    this.input('host-save').disabled = !this.capabilities || terminal.connecting
-    this.input('key-pick').disabled = !this.capabilities || terminal.connecting
+    const query = this.input('host-search').value.trim()
+    this.input('connect').disabled = !this.capabilities || this.pendingForms.has(this.formRevision)
+    this.input('host-save').disabled = !this.capabilities
+    this.input('key-pick').disabled = !this.capabilities
     this.input('remember').disabled = this.capabilities?.credentialPersistence !== 'encrypted'
-    this.input('disconnect').disabled = !terminal.sessionId
     this.input('host-delete').disabled = !this.editingId
+    this.input<HTMLButtonElement>('quick-connect').disabled = !this.capabilities || !query
+  }
+
+  private openWorkspace(): void {
+    this.ctx.clientTerminal.select(null)
+    const view = this.ctx.clientView
+    view.element('app').classList.add('drawer-open')
+    view.element('connection-workspace').hidden = false
+    view.element('status').hidden = false
+  }
+
+  private closeWorkspace(): void {
+    const view = this.ctx.clientView
+    view.element('app').classList.remove('drawer-open')
+    view.element('connection-workspace').hidden = true
+  }
+
+  private editConnection(request: TerminalOpenRequest, title: string): void {
+    this.startNew()
+    this.editingId = request.hostId ?? null
+    this.selectedId = request.hostId ?? null
+    this.input('host').value = request.host
+    this.input('port').value = String(request.port ?? 22)
+    this.input('user').value = request.username
+    this.input('host-label').value = title
+    this.input('auth').value = request.authMethod ?? 'password'
+    this.input('pass').value = request.password ?? ''
+    this.input('key-pass').value = request.passphrase ?? ''
+    this.input('key-path').value = request.privateKeyPath ?? ''
+    if (request.privateKey && this.capabilities?.privateKeyPicker === 'browser') {
+      this.browserKey.commit(this.browserKey.begin(), { name: '当前会话私钥', content: request.privateKey })
+      this.input('key-path').value = '当前会话私钥'
+    }
+    this.syncAuth()
+    this.list.select(this.selectedId)
+    this.syncMode()
+    this.updateButtons()
+    this.input('host').focus()
+  }
+
+  private visibleHosts(): HostRecord[] {
+    if (!this.query) return this.hosts
+    return this.hosts.filter(record => `${record.label} ${record.host} ${record.username}:${record.port}`.toLocaleLowerCase().includes(this.query))
+  }
+
+  private renderHostList(): void {
+    const visible = this.visibleHosts()
+    const empty = this.ctx.clientView.element('hosts-empty')
+    empty.hidden = visible.length > 0
+    empty.innerHTML = this.hosts.length > 0 && visible.length === 0
+      ? '没有匹配的主机。<br />换个关键词再试试。'
+      : '还没有保存的主机。<br />点击「新建主机」开始建立连接。'
+    const count = this.ctx.clientView.element('host-count')
+    count.textContent = this.query && visible.length !== this.hosts.length ? `${visible.length} / ${this.hosts.length} hosts` : `${this.hosts.length} hosts`
+    this.list.render(visible, this.selectedId)
   }
 
   private syncMode(): void {
     const record = this.hosts.find(host => host.id === this.editingId)
     const mode = this.ctx.clientView.element('form-mode')
-    mode.textContent = record ? `编辑「${record.label}」` : '新建主机'
+    mode.textContent = record ? `Edit ${record.label}` : 'New Host'
     mode.classList.toggle('editing', !!record)
   }
 
@@ -120,20 +206,23 @@ export class ClientHosts extends Service {
     this.hosts = hosts
     // A list reply may arrive after the user has moved to another form.
     if (formRevision === this.formRevision) {
-      if (keepId !== undefined) this.editingId = keepId
+      if (keepId !== undefined) { this.editingId = keepId; this.selectedId = keepId }
       if (this.editingId && !hosts.some(host => host.id === this.editingId)) this.editingId = null
     }
-    this.ctx.clientView.element('hosts-empty').hidden = hosts.length > 0
-    this.list.render(hosts, this.editingId)
+    if (this.selectedId && !hosts.some(host => host.id === this.selectedId)) this.selectedId = null
+    this.renderHostList()
     this.syncMode()
     this.updateButtons()
   }
 
   private applyHost(record: HostRecord): void {
     if (!this.scope.alive) return
+    this.openWorkspace()
     this.formRevision++
     this.browserKey.clear()
     this.editingId = record.id
+    this.selectedId = record.id
+    this.input('host-label').value = record.label
     this.input('host').value = record.host
     this.input('port').value = String(record.port)
     this.input('user').value = record.username
@@ -141,27 +230,43 @@ export class ClientHosts extends Service {
     this.input('key-path').value = this.capabilities?.privateKeyPicker === 'browser' ? '' : record.privateKeyPath ?? ''
     this.input('pass').value = this.input('key-pass').value = ''
     this.syncAuth()
-    this.list.select(this.editingId)
+    this.list.select(this.selectedId)
     this.syncMode()
     this.updateButtons()
     const hint = this.savedSecret() ? record.authMethod === 'privateKey' ? '，口令留空即使用已保存的' : '，密码留空即使用已保存的' : ''
     this.ctx.clientView.status(`已选择「${record.label}」${hint}`)
   }
 
+  private selectHost(record: HostRecord): void {
+    if (!this.scope.alive) return
+    this.selectedId = record.id
+    this.list.select(this.selectedId)
+  }
+
   private clearForm(): void {
     this.formRevision++
     this.browserKey.clear()
-    for (const id of ['host', 'user', 'key-path', 'pass', 'key-pass', 'private-key-file']) this.input(id).value = ''
+    for (const id of ['host', 'host-label', 'user', 'key-path', 'pass', 'key-pass', 'private-key-file']) this.input(id).value = ''
     this.input('port').value = '22'
     this.input('auth').value = 'password'
     this.syncAuth()
   }
 
-  private startNew(): void {
+  private startNew(hostHint = ''): void {
+    this.openWorkspace()
     this.editingId = null
+    this.selectedId = null
     this.clearForm()
+    const normalizedHint = hostHint.replace(/^ssh\s+/i, '')
+    const at = normalizedHint.indexOf('@')
+    if (at > 0) {
+      this.input('user').value = normalizedHint.slice(0, at).trim()
+      this.input('host').value = normalizedHint.slice(at + 1).trim()
+    } else {
+      this.input('host').value = normalizedHint
+    }
     this.input('remember').checked = this.capabilities?.credentialPersistence === 'encrypted'
-    this.list.select(null)
+    this.list.select(this.selectedId)
     this.syncMode()
     this.updateButtons()
     this.ctx.clientView.status('新建主机：填好地址和用户名后点「保存」')
@@ -178,7 +283,7 @@ export class ClientHosts extends Service {
     const host = this.input('host').value.trim()
     const username = this.input('user').value.trim()
     if (!host || !username) return null
-    return { id: this.editingId ?? undefined, host, username,
+    return { id: this.editingId ?? undefined, label: this.input('host-label').value.trim() || undefined, host, username,
       port: Number(this.input('port').value) || 22, authMethod: this.auth(),
       ...savedCredentials(this.capabilities, this.credentials(), this.input('remember').checked) }
   }
@@ -201,6 +306,7 @@ export class ClientHosts extends Service {
       await this.ctx.clientTransport.api.hosts.remove(id)
       if (!this.scope.alive) return
       if (this.editingId === id) { this.editingId = null; this.clearForm() }
+      if (this.selectedId === id) this.selectedId = null
       await this.refresh(this.editingId)
       if (this.scope.alive) view.status(`已删除「${label}」`)
     } catch (error) { if (this.scope.alive) view.status(cleanError(error), 'err') }
@@ -209,7 +315,7 @@ export class ClientHosts extends Service {
   private async connect(): Promise<void> {
     if (!this.scope.alive || !this.capabilities) return
     const terminal = this.ctx.clientTerminal
-    if (terminal.sessionId || terminal.connecting) return
+    if (this.pendingForms.has(this.formRevision)) return
     const host = this.input('host').value.trim()
     const username = this.input('user').value.trim()
     const method = this.auth()
@@ -221,8 +327,11 @@ export class ClientHosts extends Service {
     const credentialFilled = !!this.input(method === 'privateKey' ? 'key-pass' : 'pass').value
     const remember = this.capabilities.credentialPersistence === 'encrypted' && this.input('remember').checked
     const saveRequest = remember && credentialFilled ? this.saveRequest() : null
+    this.pendingForms.add(revision)
     const result = await terminal.open({ host, port: Number(this.input('port').value) || 22, username, authMethod: method,
-      ...connectionCredentials(this.capabilities, this.credentials(), this.browserKey.value) })
+      ...connectionCredentials(this.capabilities, this.credentials(), this.browserKey.value) }, this.input('host-label').value.trim() || host)
+    this.pendingForms.delete(revision)
+    this.updateButtons()
     if (!result || !this.scope.alive || revision !== this.formRevision || !saveRequest || !this.input('remember').checked) return
     try { await this.save(saveRequest, revision) } catch (error) { if (this.scope.alive) this.ctx.clientView.status(`已连接，但保存主机失败：${cleanError(error)}`, 'err') }
   }

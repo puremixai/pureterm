@@ -3,7 +3,7 @@ export const CHANGELOG = [
   {
     "version": "Unreleased",
     "date": null,
-    "body": "### Changed\n\n- Make maintained Markdown documentation English-first while retaining complete Chinese translations.\n- Add English-first development guides with paired Chinese translations.\n- Add `VERSION.txt` as the source baseline and generate UI version and changelog metadata.\n- Keep this section updated while work is merged after `0.1.0-alpha.1`."
+    "body": "### Changed\n\n- Make host-card gestures explicit: single-click selects, Edit opens the host drawer, and double-click opens a new terminal tab.\n- Open every SSH connection in its own persistent terminal tab beside Hosts, with isolated output, independent disconnect/close/retry, and session-scoped SFTP state. Handle concurrent handshakes, late results from closed tabs, and closure of every session on WebSocket loss.\n- Add editable host labels, working card/list switching and shortcut help; remove unimplemented placeholder actions. Keep the file panel below the terminal without covering its prompt.\n- Rework the shared PureTerm workspace around a mature dark Hosts dashboard, Termius-inspired navigation rail and toolbar, searchable host cards, and a focused connection workspace while preserving responsive host/SFTP surfaces and keyboard focus states.\n- Make maintained Markdown documentation English-first while retaining complete Chinese translations.\n- Add English-first development guides with paired Chinese translations.\n- Add `VERSION.txt` as the source baseline and generate UI version and changelog metadata.\n- Keep this section updated while work is merged after `0.1.0-alpha.1`."
   },
   {
     "version": "0.1.0-alpha.1",
