@@ -4,6 +4,7 @@ import { ClientView, cleanError } from './client-runtime.js'
 import { ClientTransport } from './services/transport.js'
 import { ClientTerminal } from './services/terminal.js'
 import { ClientHosts } from './features/hosts.js'
+import { ClientKeychain } from './features/keychain.js'
 import { ClientSftp } from './features/sftp.js'
 import { ClientApplication } from './features/readiness.js'
 import type { TerminalFactory } from './terminal-view.js'
@@ -11,7 +12,7 @@ import type { TerminalFactory } from './terminal-view.js'
 export interface ClientOptions { document?: Document; api?: SshApi; terminalFactory?: TerminalFactory }
 export interface Client {
   readonly context: Context
-  readonly scopes: Readonly<Record<'view' | 'transport' | 'terminal' | 'hosts' | 'sftp' | 'application', Fiber>>
+  readonly scopes: Readonly<Record<'view' | 'transport' | 'terminal' | 'keychain' | 'hosts' | 'sftp' | 'application', Fiber>>
   readonly ready: Promise<RendererReadyPayload>
   dispose(): Promise<void>
 }
@@ -31,6 +32,7 @@ export function createClient(options: ClientOptions = {}): Client {
     view: context.plugin(ClientView, { document }),
     transport: context.plugin(ClientTransport, { api: options.api }),
     terminal: context.plugin(ClientTerminal, { terminalFactory: options.terminalFactory }),
+    keychain: context.plugin(ClientKeychain),
     hosts: context.plugin(ClientHosts),
     sftp: context.plugin(ClientSftp),
     application: context.plugin(ClientApplication),

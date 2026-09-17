@@ -43,6 +43,29 @@ test('WebSocket loss closes every live terminal tab once', async t => {
   assert.deepEqual(closed, ['two', 'one', 'three'])
 })
 
+test('transport loss notifies the client once even without an SSH session and stale sockets cannot notify again', async t => {
+  const instances = environment(t)
+  const api = createWebSocketTransport()
+  t.after(() => api.dispose())
+  const lost = []
+  const stop = api.onDisconnected(reason => lost.push(reason))
+  const initial = api.keychain.list()
+  instances[0].open(); await Promise.resolve()
+  instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: [] })
+  await initial
+  const oldClose = instances[0].onclose
+  instances[0].close()
+  assert.equal(lost.length, 1)
+  const next = api.keychain.list()
+  instances[1].open(); await Promise.resolve()
+  oldClose({ code: 1006, reason: 'stale' })
+  assert.equal(lost.length, 1)
+  instances[1].message({ kind: 'reply', id: instances[1].sent[0].id, ok: true, value: [] })
+  await next
+  stop(); instances[1].close()
+  assert.equal(lost.length, 1)
+})
+
 test('Web transport subscriptions unsubscribe and disposal rejects requests without reopening a socket', async t => {
   const instances = environment(t)
   const api = createWebSocketTransport()

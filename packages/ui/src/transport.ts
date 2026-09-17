@@ -5,6 +5,7 @@ import {
   decodeWire,
   encodeWire,
   type HostRecord,
+  type KeyRecord,
   type PickedPrivateKey,
   type RuntimeCapabilities,
   type SshApi,
@@ -80,6 +81,7 @@ export function createWebSocketTransport(): SshApi {
   const openedListeners = new Set<(sessionId: string, cols: number, rows: number) => void>()
   const dataListeners = new Set<(sessionId: string, chunk: Uint8Array) => void>()
   const closedListeners = new Set<(sessionId: string, reason: string) => void>()
+  const disconnectedListeners = new Set<(reason: string) => void>()
 
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
   let nextId = 1
@@ -161,6 +163,7 @@ export function createWebSocketTransport(): SshApi {
         }
         // 断线要让当前会话跟着结束，否则界面会停在「已连接」
         if (wasCurrent) {
+          for (const listener of disconnectedListeners) listener(reason)
           const sessions = [...currentSessions]
           currentSessions.clear()
           for (const session of sessions) emitClosed(session, reason)
@@ -282,6 +285,15 @@ export function createWebSocketTransport(): SshApi {
       save: (input) => call(METHODS.hostsSave, [input]) as Promise<HostRecord>,
       remove: (id) => call(METHODS.hostsRemove, [id]) as Promise<boolean>,
     },
+    onDisconnected: listener => {
+      disconnectedListeners.add(listener)
+      return () => { disconnectedListeners.delete(listener) }
+    },
+    keychain: {
+      list: () => call(METHODS.keysList, []) as Promise<KeyRecord[]>,
+      save: input => call(METHODS.keysSave, [input]) as Promise<KeyRecord>,
+      remove: id => call(METHODS.keysRemove, [id]) as Promise<boolean>,
+    },
 
     /*
      * 远端文件。返回值里的字节由 handleInbound → decodeWire 解回 Uint8Array，
@@ -316,6 +328,7 @@ export function createWebSocketTransport(): SshApi {
       openedListeners.clear()
       dataListeners.clear()
       closedListeners.clear()
+      disconnectedListeners.clear()
     },
   }
 }

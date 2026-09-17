@@ -62,7 +62,7 @@ function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
  * 3. 每个会话都有出口。连接失败、断线、shell 关闭、渲染层消失，都必须带 reason 通知渲染层。
  */
 export class TerminalBridge extends Service {
-  static inject = ['ssh', 'renderer', 'sessionStore']
+  static inject = ['ssh', 'renderer', 'sessionStore', 'keychain']
 
   private readonly bridges = new Map<string, Bridge>()
   private readonly openings = new Map<AbortController, string>()
@@ -138,8 +138,13 @@ export class TerminalBridge extends Service {
       const authMethod =
         payload.authMethod ??
         stored?.authMethod ??
-        (payload.privateKey || payload.privateKeyPath ? 'privateKey' : 'password')
-      const privateKeyPath = payload.privateKeyPath ?? stored?.privateKeyPath
+        (payload.privateKey || payload.privateKeyPath || payload.keyId ? 'privateKey' : 'password')
+      // An explicit file/content selection takes precedence over a host's saved key.
+      const keyId = authMethod === 'privateKey' ? payload.keyId ?? (payload.privateKey || payload.privateKeyPath ? undefined : stored?.keyId) : undefined
+      const key = keyId ? await withAbort(this.ctx.keychain.secret(keyId, clientId), controller.signal) : undefined
+      assertClientAvailable()
+      const privateKey = key?.privateKey ?? payload.privateKey
+      const privateKeyPath = key ? undefined : payload.privateKeyPath ?? stored?.privateKeyPath
 
       /*
        * 密文槽里只有一份凭据，它属于哪种认证由 authMethod 决定：
@@ -149,10 +154,10 @@ export class TerminalBridge extends Service {
       const saved = payload.hostId ? await withAbort(this.ctx.sessionStore.secret(payload.hostId), controller.signal) : undefined
       assertClientAvailable()
       const password = authMethod === 'password' ? payload.password ?? saved : undefined
-      const passphrase = authMethod === 'privateKey' ? payload.passphrase ?? saved : undefined
+      const passphrase = authMethod === 'privateKey' ? key ? key.passphrase : payload.passphrase ?? saved : undefined
 
       if (authMethod === 'privateKey') {
-        if (!payload.privateKey && !privateKeyPath) throw new Error('请选择私钥文件（或粘贴私钥内容）。')
+        if (!privateKey && !privateKeyPath) throw new Error('请选择密钥或私钥文件。')
       } else if (!password && stored?.authMethod === 'password' && stored.hasSecret) {
         throw new Error('已保存的密码无法解密（系统密钥可能已变更），请重新输入密码。')
       }
@@ -162,7 +167,7 @@ export class TerminalBridge extends Service {
         port: payload.port,
         username: payload.username,
         password,
-        privateKey: payload.privateKey,
+        privateKey,
         privateKeyPath,
         passphrase,
         acceptUnknownHostKey: payload.acceptUnknownHostKey,
@@ -234,6 +239,7 @@ export class TerminalBridge extends Service {
   }
 
   private push(bridge: Bridge, chunk: Buffer): void {
+    if (this.stopped || this.bridges.get(bridge.sessionId) !== bridge) return
     bridge.queue.push(chunk)
     bridge.bytes += chunk.length
     if (!bridge.timer) bridge.timer = setTimeout(() => this.flush(bridge), FLUSH_INTERVAL)

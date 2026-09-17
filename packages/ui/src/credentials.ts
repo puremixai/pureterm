@@ -6,6 +6,7 @@ export interface CredentialFields {
   passphrase: string
   privateKeyPath: string
   hostId?: string
+  keyId?: string
 }
 
 export interface BrowserPrivateKey {
@@ -13,7 +14,8 @@ export interface BrowserPrivateKey {
   content: string
 }
 
-export const MAX_PRIVATE_KEY_BYTES = 256 * 1024
+export { MAX_PRIVATE_KEY_BYTES } from '@pureterm/protocol'
+import { MAX_PRIVATE_KEY_BYTES } from '@pureterm/protocol'
 
 /** Validate the response before allowing credential-sensitive controls to become usable. */
 export function parseRuntimeCapabilities(value: unknown): RuntimeCapabilities {
@@ -28,6 +30,7 @@ export function parseRuntimeCapabilities(value: unknown): RuntimeCapabilities {
 }
 
 export function savedCredentials(capabilities: RuntimeCapabilities, fields: CredentialFields, remember: boolean): Partial<HostSaveRequest> {
+  if (fields.authMethod === 'privateKey' && fields.keyId) return { keyId: fields.keyId, rememberPassword: false }
   if (capabilities.credentialPersistence === 'session') return { rememberPassword: false }
   return fields.authMethod === 'privateKey'
     ? {
@@ -46,6 +49,7 @@ export function connectionCredentials(
   const credentials: Partial<TerminalOpenRequest> = {}
   if (capabilities.credentialPersistence === 'encrypted' && fields.hostId) credentials.hostId = fields.hostId
   if (fields.authMethod === 'privateKey') {
+    if (fields.keyId) { credentials.keyId = fields.keyId; return credentials }
     if (capabilities.privateKeyPicker === 'browser') {
       if (!selectedKey) throw new Error('请先选择私钥文件')
       credentials.privateKey = selectedKey.content

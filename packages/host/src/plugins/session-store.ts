@@ -22,6 +22,7 @@ interface StoredHost {
   username: string
   authMethod: 'password' | 'privateKey'
   privateKeyPath?: string
+  keyId?: string
   updatedAt: string
   /** 兼容字段：早期版本把密文塞在这里，读到就迁移走（见 migrateLegacySecrets） */
   sealedSecret?: string
@@ -39,6 +40,7 @@ export interface HostRecord {
   username: string
   authMethod: 'password' | 'privateKey'
   privateKeyPath?: string
+  keyId?: string
   hasSecret: boolean
   updatedAt: string
 }
@@ -54,6 +56,7 @@ export interface HostInput {
   authMethod?: 'password' | 'privateKey'
   /** 私钥认证时**只存路径**：私钥本体是用户自己的文件，我们不复制一份到自己这边 */
   privateKeyPath?: string
+  keyId?: string
   /** 私钥认证时的凭据（私钥口令） */
   passphrase?: string
   /**
@@ -131,7 +134,7 @@ export class SessionStore extends Service {
     this.hosts = Array.isArray(parsed) ? (parsed as StoredHost[]) : []
 
     if (!this.credentials.persistent) {
-      this.hosts = this.hosts.map(({ privateKeyPath: _path, ...host }) => host)
+      this.hosts = this.hosts.map(({ privateKeyPath: _path, keyId: _key, ...host }) => host)
       return
     }
 
@@ -236,10 +239,14 @@ export class SessionStore extends Service {
     if (input.authMethod && input.authMethod !== previousAuth) delete secrets[id]
     if (this.credentials.persistent) record.privateKeyPath = input.privateKeyPath ?? record.privateKeyPath
     else delete record.privateKeyPath
+    if (record.authMethod === 'privateKey' && this.credentials.persistent) {
+      if (input.keyId !== undefined) record.keyId = input.keyId || undefined
+      if (record.keyId) { delete record.privateKeyPath; delete secrets[id] }
+    } else { delete record.keyId; delete record.privateKeyPath }
 
     // 凭据槽存的是「当前认证方式对应的那一份」：密码认证存密码，私钥认证存口令。
     // 私钥本体永远不进这里——它已经在用户自己的 ~/.ssh 下，再存一份只是多一个泄露面。
-    const credential = record.authMethod === 'privateKey' ? input.passphrase : input.password
+    const credential = record.keyId ? undefined : record.authMethod === 'privateKey' ? input.passphrase : input.password
     if (this.credentials.persistent && input.rememberPassword && credential) {
       const sealed = await this.credentials.seal(credential)
       // 拿不到系统密钥就不落盘，而不是退化成明文

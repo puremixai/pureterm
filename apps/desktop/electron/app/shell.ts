@@ -26,6 +26,10 @@ export const LOAD_WATCHDOG_MS = 20_000
 export interface ShellGenerationOptions {
   htmlPath: string
   preloadPath: string
+  /** Windows/Linux 保留菜单快捷键，但默认不让菜单栏占据内容高度。 */
+  autoHideMenuBar: boolean
+  /** Windows/Linux 隐藏原生标题栏后叠回系统窗口控制按钮。 */
+  useWindowControlsOverlay: boolean
   /** 传给 loadFile 的 query，例如 'smoke=1' */
   search?: string
   /** 页面没能起来（超时 / 加载失败 / 渲染进程崩溃）。只在「还没加载完」时触发。 */
@@ -55,9 +59,18 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
     height: 740,
     minWidth: 720,
     minHeight: 420,
-    backgroundColor: '#12151b',
+    backgroundColor: '#121426',
     show: true,
-    title: 'SSH Cordis Client',
+    title: 'PureTerm',
+    titleBarStyle: 'hidden',
+    autoHideMenuBar: options.autoHideMenuBar,
+    ...(options.useWindowControlsOverlay ? {
+      titleBarOverlay: {
+        color: '#121426',
+        symbolColor: '#a1a5bb',
+        height: 76,
+      },
+    } : {}),
     webPreferences: {
       preload: options.preloadPath,
       nodeIntegration: false,
@@ -67,6 +80,7 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
       spellcheck: false,
     },
   })
+  if (options.autoHideMenuBar) window.setMenuBarVisibility(false)
 
   const disposers: Array<() => void> = []
   /*

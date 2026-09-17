@@ -1,10 +1,12 @@
 import { Context } from 'cordis'
 import { dirname, join } from 'node:path'
+import type { KeyRecord, KeySaveRequest } from '@pureterm/protocol'
 import { RendererService, type RendererBridge } from './services/renderer.js'
 import { SshService, type SshServiceConfig } from './services/ssh.js'
 import { SessionStore, assertSessionStoreCompatible, type HostInput, type HostRecord } from './plugins/session-store.js'
 import { sessionOnlyCredentials, type CredentialProvider } from './credentials.js'
 import { HostLog } from './plugins/host-log.js'
+import { Keychain } from './plugins/keychain.js'
 import { TerminalBridge, type TerminalOpenPayload, type TerminalOpenResult } from './plugins/terminal-bridge.js'
 import { SftpBridge, type SftpDir, type SftpReadResult, type SftpWriteResult } from './plugins/sftp-bridge.js'
 
@@ -52,9 +54,12 @@ export interface Host {
   close(sessionId: string): void
   /** 客户端断开时释放其活动会话与仍在握手的连接。 */
   releaseClient(clientId: string): void
-  listHosts(): HostRecord[]
-  saveHost(input: HostInput): Promise<HostRecord>
+  listHosts(clientId?: string): HostRecord[]
+  saveHost(input: HostInput, clientId?: string): Promise<HostRecord>
   removeHost(id: string): Promise<boolean>
+  listKeys(clientId: string): KeyRecord[]
+  saveKey(input: KeySaveRequest, clientId: string): Promise<KeyRecord>
+  removeKey(id: string, clientId: string): Promise<boolean>
   /**
    * 远端文件。全部作用在**已打开的会话**上，所以都要 sessionId。
    *
@@ -101,6 +106,8 @@ export async function createHost(options: HostOptions): Promise<Host> {
   try {
     await root.plugin(RendererService, options.bridge)
     await root.plugin(SessionStore, storeConfig)
+    await root.plugin(Keychain, { file: join(dirname(options.hostStoreFile), 'keychain.json'), credentials: storeConfig.credentials })
+    await root.keychain.ready
     await root.plugin(SshService, { knownHostsFile: options.knownHostsFile, ...options.ssh })
     await root.plugin(TerminalBridge)
     await root.plugin(SftpBridge)
@@ -113,10 +120,35 @@ export async function createHost(options: HostOptions): Promise<Host> {
   let disposed = false
   let disposing: Promise<void> | undefined
   const openings = new Set<Promise<TerminalOpenResult>>()
+  // One queue protects host/key references from save/delete races and drains on shutdown.
+  let mutations: Promise<void> = Promise.resolve()
+  const sessionKeys = new Map<string, Map<string, string>>()
+  function clientKeys(clientId: string): Map<string, string> {
+    let keys = sessionKeys.get(clientId)
+    if (!keys) sessionKeys.set(clientId, keys = new Map())
+    return keys
+  }
+  function mutate<T>(operation: () => T | Promise<T>, clientId?: string): Promise<T> {
+    if (disposed) return Promise.reject(new Error('Host 已关闭，无法修改记录。'))
+    const owner = !storeConfig.credentials.persistent && clientId !== undefined ? clientKeys(clientId) : undefined
+    const result = mutations.then(() => {
+      if (owner && sessionKeys.get(clientId!) !== owner) throw new Error('客户端已关闭，操作已取消。')
+      return operation()
+    })
+    mutations = result.then(() => undefined, () => undefined)
+    return result
+  }
+  function listHosts(clientId = ''): HostRecord[] {
+    return root.sessionStore.list().map(record => {
+      const keyId = sessionKeys.get(clientId)?.get(record.id)
+      return keyId && record.authMethod === 'privateKey' ? { ...record, keyId } : record
+    })
+  }
   return {
     openTerminal: async (payload) => {
       if (disposed) throw new Error('Host 已关闭，无法建立新连接。')
-      const opening = root.terminal.open(payload)
+      const sessionKey = payload.hostId && !payload.privateKey && !payload.privateKeyPath ? sessionKeys.get(payload.clientId)?.get(payload.hostId) : undefined
+      const opening = root.terminal.open({ ...payload, keyId: payload.keyId ?? sessionKey })
       openings.add(opening)
       try {
         return await opening
@@ -128,17 +160,48 @@ export async function createHost(options: HostOptions): Promise<Host> {
     resize: (sessionId, cols, rows) => root.terminal.resize(sessionId, cols, rows),
     close: (sessionId) => root.terminal.close(sessionId, '用户断开连接。'),
     releaseClient: (clientId) => {
-      if (!disposed) root.terminal.releaseClient(clientId)
+      if (!disposed) {
+        root.terminal.releaseClient(clientId)
+        root.keychain.releaseClient(clientId)
+        sessionKeys.delete(clientId)
+      }
     },
-    listHosts: () => root.sessionStore.list(),
-    saveHost: async (input) => {
-      if (disposed) throw new Error('Host 已关闭，无法修改主机记录。')
-      return root.sessionStore.save(input)
+    listHosts,
+    saveHost: (input, clientId = '') => {
+      const snapshot = { ...input }
+      return mutate(async () => {
+        if (snapshot.keyId !== undefined && typeof snapshot.keyId !== 'string') throw new Error('密钥 ID 无效。')
+        const previous = snapshot.id ? listHosts(clientId).find(host => host.id === snapshot.id) : undefined
+        const authMethod = snapshot.authMethod ?? previous?.authMethod ?? 'password'
+        const keyId = snapshot.keyId ?? previous?.keyId
+        if (authMethod === 'privateKey' && keyId && !root.keychain.has(keyId, clientId)) throw new Error('选择的密钥不存在，请重新选择。')
+        const record = await root.sessionStore.save(snapshot)
+        if (!storeConfig.credentials.persistent) {
+          if (record.authMethod !== 'privateKey') for (const keys of sessionKeys.values()) keys.delete(record.id)
+          const keys = sessionKeys.get(clientId)
+          if (keys) {
+            if (record.authMethod === 'privateKey' && keyId) keys.set(record.id, keyId)
+            else keys.delete(record.id)
+          }
+          return { ...record, ...(keys?.get(record.id) ? { keyId: keys.get(record.id) } : {}) }
+        }
+        return record
+      }, clientId)
     },
-    removeHost: async (id) => {
-      if (disposed) throw new Error('Host 已关闭，无法修改主机记录。')
-      return root.sessionStore.remove(id)
+    removeHost: id => mutate(async () => {
+      const removed = await root.sessionStore.remove(id)
+      if (removed) for (const keys of sessionKeys.values()) keys.delete(id)
+      return removed
+    }),
+    listKeys: clientId => disposed ? [] : root.keychain.list(clientId),
+    saveKey: (input, clientId) => {
+      const snapshot = { ...input }
+      return mutate(() => root.keychain.save(snapshot, clientId), clientId)
     },
+    removeKey: (id, clientId) => mutate(() => {
+      if (listHosts(clientId).some(host => host.keyId === id)) throw new Error('此密钥正在被主机使用，请先更改主机的认证设置或删除对应主机。')
+      return root.keychain.remove(id, clientId)
+    }, clientId),
     sftpList: (sessionId, path) => root.sftp.list(sessionId, path),
     sftpRead: (sessionId, path) => root.sftp.read(sessionId, path),
     sftpWrite: (sessionId, dir, name, bytes) => root.sftp.write(sessionId, dir, name, bytes),
@@ -148,10 +211,11 @@ export async function createHost(options: HostOptions): Promise<Host> {
       if (disposing) return disposing
       disposed = true
       root.terminal.shutdown()
-      const mutations = root.sessionStore.shutdown()
       disposing = (async () => {
         await Promise.allSettled([...openings])
         await mutations
+        await root.sessionStore.shutdown()
+        sessionKeys.clear()
         await root.fiber.dispose()
       })()
       return disposing

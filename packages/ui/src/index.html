@@ -30,16 +30,15 @@
             <span class="workspace-copy"><strong>PureTerm</strong><small>Vault</small></span>
           </button>
           <div id="workspace-tabs" class="workspace-tabs" role="tablist" aria-label="工作区标签">
-            <button type="button" id="hosts-tab" class="app-tab is-active" role="tab" aria-selected="true" aria-controls="hosts-panel"><span class="app-tab-mark" aria-hidden="true"><i class="ti ti-server-2"></i></span><span>Hosts</span></button>
+            <button type="button" id="hosts-tab" class="app-tab is-active" role="tab" aria-selected="true" aria-controls="hosts-panel"><span class="app-tab-mark" aria-hidden="true"><i class="ti ti-server-2"></i></span><span id="library-tab-title">Hosts</span></button>
           </div>
-          <button type="button" id="tab-new" class="icon-button tab-add" aria-label="新建连接标签" title="新建连接 (Ctrl+T)"><i class="ti ti-plus" aria-hidden="true"></i></button>
         </div>
       </header>
 
       <div class="app-body">
         <nav id="primary-nav" class="primary-nav" aria-label="主导航">
           <button type="button" id="nav-hosts" class="nav-item active" title="主机管理"><span class="nav-icon" aria-hidden="true"><i class="ti ti-server-2"></i></span><span>Hosts</span></button>
-          <button type="button" id="nav-new" class="nav-item" title="新建 SSH 连接"><span class="nav-icon" aria-hidden="true"><i class="ti ti-terminal-2"></i></span><span>新建连接</span></button>
+          <button type="button" id="nav-keychain" class="nav-item" title="密钥管理"><span class="nav-icon" aria-hidden="true"><i class="ti ti-key"></i></span><span>Keychain</span></button>
           <div class="nav-divider" aria-hidden="true"></div>
           <button type="button" id="nav-shortcuts" class="nav-item" title="快捷键"><span class="nav-icon" aria-hidden="true"><i class="ti ti-keyboard"></i></span><span>快捷键</span></button>
           <div class="nav-footer"><span class="nav-status-dot"></span><span>Local workspace</span></div>
@@ -50,15 +49,13 @@
             <div class="host-search-row">
               <label class="search-control">
                 <span class="search-icon" aria-hidden="true"><i class="ti ti-search"></i></span>
-                <input id="host-search" placeholder="搜索主机或 ssh user@hostname…" spellcheck="false" />
+                <input id="host-search" placeholder="搜索主机…" spellcheck="false" />
               </label>
-              <button type="button" id="quick-connect" class="search-connect" disabled>连接</button>
             </div>
 
             <div class="dashboard-toolbar">
               <div class="dashboard-actions">
                 <button type="button" id="host-new" class="action-primary"><span aria-hidden="true"><i class="ti ti-plus"></i></span> 新建主机</button>
-                <button type="button" id="terminal-new" class="action-tool"><span aria-hidden="true"><i class="ti ti-terminal-2"></i></span> Terminal</button>
               </div>
               <div class="dashboard-tools" aria-label="视图工具">
                 <button type="button" id="host-view-toggle" class="tool-icon" aria-label="列表视图" aria-pressed="false" title="切换卡片 / 列表视图"><i class="ti ti-list" aria-hidden="true"></i></button>
@@ -77,6 +74,44 @@
               <ul id="host-list" aria-label="已保存的主机"></ul>
               <p id="hosts-empty" class="empty">还没有保存的主机。<br />点击「新建主机」开始建立连接。</p>
             </div>
+          </section>
+
+          <section id="keychain-panel" class="keychain-dashboard" role="tabpanel" aria-labelledby="hosts-tab" hidden>
+            <div class="keychain-main">
+              <div class="dashboard-toolbar keychain-toolbar">
+                <button type="button" id="keychain-new" class="action-primary" disabled><i class="ti ti-plus" aria-hidden="true"></i> 新建密钥</button>
+                <div class="dashboard-tools">
+                  <label class="keychain-search"><i class="ti ti-search" aria-hidden="true"></i><input id="keychain-search" type="search" placeholder="搜索密钥…" aria-label="搜索密钥" /></label>
+                  <button type="button" id="keychain-view" class="tool-icon" aria-label="切换密钥卡片 / 列表视图" aria-pressed="false" title="切换卡片 / 列表视图"><i class="ti ti-list" aria-hidden="true"></i></button>
+                </div>
+              </div>
+              <div class="keychain-content">
+                <div class="hosts-heading"><h1>Keys</h1><span id="keychain-count" class="host-count"></span></div>
+                <p id="keychain-policy" class="keychain-policy"></p>
+                <p id="keychain-notice" class="keychain-message" role="status">正在加载密钥…</p>
+                <button id="keychain-reload" type="button" class="ghost" hidden>重新加载</button>
+                <ul id="keychain-list" class="keychain-list" aria-label="已保存的密钥"></ul>
+                <div id="keychain-empty" class="keychain-empty" hidden><i class="ti ti-key" aria-hidden="true"></i><h2>还没有密钥</h2><p>点击「新建密钥」，粘贴或导入私钥文件。<br />保存后可在主机认证设置中选择使用。</p></div>
+              </div>
+            </div>
+            <form id="keychain-editor" class="keychain-editor" autocomplete="off" hidden aria-labelledby="keychain-title">
+              <div class="toolbar-head"><div class="form-context"><span id="keychain-title" class="mode">新建密钥</span><span class="drawer-subtitle">Local keychain</span></div><button type="button" id="keychain-close" class="icon-button drawer-close" aria-label="关闭密钥编辑面板"><i class="ti ti-arrow-bar-right" aria-hidden="true"></i></button></div>
+              <fieldset id="keychain-fields" class="drawer-scroll">
+                <section class="keychain-form-section">
+                  <label class="field"><span>名称 <span aria-hidden="true">*</span></span><input id="keychain-label" placeholder="例如 production.pem" required maxlength="200" /></label>
+                  <label class="field"><span>私钥 <span id="keychain-required" aria-hidden="true">*</span></span><textarea id="keychain-private" rows="5" spellcheck="false" placeholder="粘贴完整的私钥内容" required></textarea></label>
+                  <label class="field"><span>私钥口令（仅加密私钥需要）</span><input id="keychain-passphrase" type="password" spellcheck="false" maxlength="4096" autocomplete="new-password" placeholder="未加密则留空" /></label>
+                  <label class="field"><span>公钥（留空自动生成）</span><textarea id="keychain-public" rows="3" spellcheck="false" placeholder="保存时从私钥生成，也可粘贴公钥校验匹配"></textarea></label>
+                  <div id="keychain-details" hidden><span id="keychain-type" class="tag"></span><code id="keychain-fingerprint"></code><button id="keychain-copy" type="button" class="ghost small"><i class="ti ti-copy" aria-hidden="true"></i> 复制公钥</button></div>
+                </section>
+                <section class="keychain-form-section">
+                  <div id="keychain-drop" class="keychain-drop"><i class="ti ti-file-upload" aria-hidden="true"></i><p>将私钥文件拖到这里导入</p><span>OpenSSH、PEM、PPK · 最大 256 KiB</span></div>
+                  <button id="keychain-import" type="button" class="keychain-import">从密钥文件导入</button><input id="keychain-file" type="file" hidden />
+                  <p class="keychain-help">私钥和口令不会在重新编辑时回显。修改名称不需要再次导入私钥。SSH 证书、Windows Hello 和 FIDO2 暂不支持。</p>
+                </section>
+              </fieldset>
+              <div class="drawer-footer"><p id="keychain-status" class="keychain-message" role="status"></p><div class="keychain-footer-actions"><button type="button" id="keychain-delete" class="ghost danger" hidden><i class="ti ti-trash" aria-hidden="true"></i> 删除</button><button type="submit" id="keychain-save" class="primary">保存密钥</button></div></div>
+            </form>
           </section>
 
           <section id="connection-workspace" class="connection-workspace" hidden>
@@ -116,10 +151,14 @@
                   <div class="row credential-row" id="cred-password"><label class="field grow"><span>Password</span><input id="pass" type="password" placeholder="Password" spellcheck="false" /></label></div>
 
                   <div class="row credential-row key-row" id="cred-key" hidden>
-                    <label class="field grow"><span>Private key</span><input id="key-path" placeholder="Choose a private key file" spellcheck="false" readonly /></label>
-                    <button type="button" id="key-pick" class="ghost" disabled>Choose…</button>
-                    <input id="private-key-file" type="file" hidden />
-                    <label class="field"><span>Passphrase</span><input id="key-pass" type="password" spellcheck="false" /></label>
+                    <label class="field keychain-selector"><span>Keychain</span><select id="host-keychain"><option value="">使用本地私钥文件…</option></select></label>
+                    <div id="host-direct-key" class="key-row row">
+                      <label class="field grow"><span>Private key</span><input id="key-path" placeholder="Choose a private key file" spellcheck="false" readonly /></label>
+                      <button type="button" id="key-pick" class="ghost" disabled>Choose…</button>
+                      <input id="private-key-file" type="file" hidden />
+                      <label class="field"><span>Passphrase</span><input id="key-pass" type="password" spellcheck="false" /></label>
+                    </div>
+                    <p id="host-keychain-hint" class="keychain-help" hidden>连接时由密钥库读取私钥与口令，无需重复填写。</p>
                   </div>
                   <label class="check"><input id="remember" type="checkbox" disabled /><span id="remember-label">Remember password</span></label>
                   <p id="credential-hint" hidden>Web 模式只在当前页面使用凭据；刷新或关闭后需重新填写。</p>
@@ -186,7 +225,6 @@
     <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
       <h2 id="shortcuts-title">工作区快捷键</h2>
       <dl>
-        <div><dt>新建连接</dt><dd>Ctrl / ⌘ + T</dd></div>
         <div><dt>下一个标签</dt><dd>Ctrl + Tab</dd></div>
         <div><dt>上一个标签</dt><dd>Ctrl + Shift + Tab</dd></div>
         <div><dt>关闭当前会话标签</dt><dd>Ctrl / ⌘ + W</dd></div>

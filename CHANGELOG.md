@@ -8,8 +8,14 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 
 ## [Unreleased]
 
+### Added
+
+- Add a functional Keychain library with import/paste/drop, private-key and passphrase validation, derived public keys/fingerprints, search, card/list views, safe editing and deletion protection. Hosts select saved keys and authenticate in independent terminal tabs. Desktop uses an atomic system-encrypted vault; Web keys and associations are isolated per client and never persisted.
+
 ### Changed
 
+- Replace the native title bar with a compact PureTerm top bar, keep platform window controls in an integrated overlay, and auto-hide the Windows/Linux menu bar while retaining its keyboard shortcuts.
+- Consolidate host creation behind the New Host action; remove duplicate top-bar, navigation, search, Terminal, and Ctrl/Cmd+T launchers.
 - Make host-card gestures explicit: single-click selects, Edit opens the host drawer, and double-click opens a new terminal tab.
 - Open every SSH connection in its own persistent terminal tab beside Hosts, with isolated output, independent disconnect/close/retry, and session-scoped SFTP state. Handle concurrent handshakes, late results from closed tabs, and closure of every session on WebSocket loss.
 - Add editable host labels, working card/list switching and shortcut help; remove unimplemented placeholder actions. Keep the file panel below the terminal without covering its prompt.

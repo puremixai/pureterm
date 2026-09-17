@@ -52,7 +52,7 @@ pureterm/
 
 Desktop 主进程提供 IPC 和原有本机 Web carrier，通过私有父子 IPC 共享独立 Node Host。主进程保留 safeStorage 和原生选钥，子进程通过异步能力调用使用它们。独立 Web 自己创建一个 Host，默认使用另一份数据文件。共享代码不意味着两个应用自动共享会话或凭据。
 
-独立 Web 不读写凭据文件、不保存私钥路径。发现指定目录已有 `secrets.json` 或主机记录含旧密文时，启动会拒绝使用该目录，避免覆盖 Desktop 数据。默认目录分别是 `~/.ssh-cordis/` 和 `~/.ssh-cordis/web/`；自定义时仍应保持数据文件分离。
+独立 Web 不读写凭据文件、不保存私钥路径。发现指定目录已有 `secrets.json`、加密的 `keychain.json` 密钥库或主机记录含旧密文时，启动会拒绝使用该目录，避免覆盖 Desktop 数据。默认目录分别是 `~/.ssh-cordis/` 和 `~/.ssh-cordis/web/`；自定义时仍应保持数据文件分离。Web Keychain 密钥及主机关联仅存在按客户端隔离的内存中，客户端断开时清除。
 
 ## 可执行约束
 

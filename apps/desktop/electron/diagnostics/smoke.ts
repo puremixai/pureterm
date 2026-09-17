@@ -74,6 +74,27 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
       console.log('[SFTP-SMOKE-OK]')
       console.log('[CREDENTIAL-SMOKE-OK] system-encrypted credential crossed the Host process boundary')
     }
+    // Supplied only by the isolated local fixture runner, never by normal startup.
+    if (process.env.SSH_CORDIS_SMOKE_KEYCHAIN) {
+      const keychainOk = await window.webContents.executeJavaScript(`(async () => {
+        const api = window.sshAPI;
+        const config = ${JSON.stringify(config)};
+        const key = await api.keychain.save({ label: 'IPC Keychain check', privateKey: ${JSON.stringify(process.env.SSH_CORDIS_SMOKE_KEYCHAIN)} });
+        if (key.privateKey || key.passphrase || !key.fingerprint) throw new Error('Unsafe Keychain public record');
+        const { password, ...connection } = config;
+        const host = await api.hosts.save({ ...connection, authMethod: 'privateKey', keyId: key.id });
+        let sessionId;
+        try {
+          sessionId = (await api.open({ ...connection, hostId: host.id })).sessionId;
+          return !!sessionId && (await api.keychain.list()).some(item => item.id === key.id);
+        } finally {
+          if (sessionId) api.close(sessionId);
+          await api.hosts.remove(host.id);
+        }
+      })()`)
+      if (!keychainOk) throw new Error('Desktop Keychain authentication failed')
+      console.log('[KEYCHAIN-IPC-OK] system-encrypted key authenticated through preload and the Node Host')
+    }
     console.log('[SMOKE] ' + JSON.stringify({ preloadType, ...report }))
     console.log(ok ? '[SMOKE-OK]' : '[SMOKE-FAIL]')
     code = ok ? 0 : 1

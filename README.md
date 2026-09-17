@@ -26,16 +26,23 @@ npm run start:desktop
 
 The start commands build the required shared modules and application. Web uses a random loopback port by default; press Ctrl+C to stop it. Desktop stores data in `~/.ssh-cordis/` by default, while standalone Web uses `~/.ssh-cordis/web/`; each location stores host records and trusted SSH host keys for its own entry point.
 
-Desktop can use the operating system credential store for passwords or private-key passphrases and can open native private-key file dialogs. Standalone Web stores host information only; passwords, passphrases, and private-key content selected in the browser live only in the current page and must be entered or selected again after a refresh. See the [Desktop guide](apps/desktop/README.md) and [local Web guide](apps/web/README.md).
+Desktop can use the operating system credential store for passwords, private-key passphrases, and imported Keychain keys, and can open native private-key file dialogs. Standalone Web persists host information only; credentials and Keychain keys are scoped to the current client session and must be entered or imported again after a refresh. See the [Desktop guide](apps/desktop/README.md) and [local Web guide](apps/web/README.md).
 
 ## Working with connections
 
 - Hosts is a permanent management tab. A single click selects a saved host without changing pages; use its Edit action to open the editor. Double-clicking a host opens a new terminal tab. Each connection gets a separate tab, including repeated connections to the same host.
 - Tabs keep independent input, output, scrollback, connection state, and SFTP directories. Switching tabs or returning to Hosts leaves other connections running. The Files panel uses the selected SSH session and reserves space below its terminal.
 - Disconnect retains output for inspection. Reconnect retries in the same tab; failed connections provide logs, retry, and host editing. Closing a tab releases only that session. A tab closed during its handshake releases the connection if the handshake later succeeds.
-- Use `+` or Ctrl/Cmd+T for a new connection, Ctrl+Tab / Ctrl+Shift+Tab to switch, and Ctrl/Cmd+W to close the current terminal tab. Tab buttons also support arrow keys, Home, and End. Browsers may reserve some shortcuts; the visible controls remain available.
+- Create hosts through **New Host** and double-click a host card to connect; use Ctrl+Tab / Ctrl+Shift+Tab to switch tabs and Ctrl/Cmd+W to close the current terminal tab. Tab buttons also support arrow keys, Home, and End. Browsers may reserve some shortcuts; the visible controls remain available.
 
-Open sessions and retry credentials live only in the current client; they are not restored after a reload. SFTP currently supports directory navigation, upload/download (up to 4 MiB per file), folder creation, and deletion with confirmation. Serial connections, port forwarding, and standalone keychain/snippet management are not implemented and are not shown as working controls.
+Open sessions and retry credentials live only in the current client; they are not restored after a reload. SFTP currently supports directory navigation, upload/download (up to 4 MiB per file), folder creation, and deletion with confirmation. Serial connections, port forwarding, SSH certificate authentication, Windows Hello, FIDO2, and snippet management are not implemented and are not shown as working controls.
+
+## Working with Keychain
+
+- Open **Keychain → New key**, enter a label, then paste, choose, or drag in a private-key file (OpenSSH, PEM, or supported PPK; up to 256 KiB). Enter the passphrase for an encrypted key and save. The SSH parser validates the key and derives its type, public key, and SHA-256 fingerprint; an optional supplied public key must match.
+- Single-click a card to select it; use **Edit** to rename or replace the key. Stored private material and passphrases are never returned to the editor. Leave the private-key field empty when renaming. Search by label, type, or fingerprint, switch card/list views, and copy the saved public key.
+- In a host's **Private key** authentication settings, select the saved Keychain entry, save the host, then connect in its own terminal tab. The Host resolves the key ID internally. Direct private-key file selection remains available.
+- Desktop stores a dedicated atomic, system-encrypted `keychain.json` vault with no plaintext private material; unavailable encryption fails the save. Web keeps imported keys and host-key associations only in that client's Host memory and clears them on disconnect/reload. A key used by a saved host cannot be deleted until that host's authentication is changed or the host is removed. Deletion requires confirmation and cannot be undone.
 
 ## Verification
 

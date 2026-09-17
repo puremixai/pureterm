@@ -23,6 +23,9 @@ export const METHODS = {
   hostsList: 'hosts:list',
   hostsSave: 'hosts:save',
   hostsRemove: 'hosts:remove',
+  keysList: 'keys:list',
+  keysSave: 'keys:save',
+  keysRemove: 'keys:remove',
   sftpList: 'sftp:list',
   sftpRead: 'sftp:read',
   sftpWrite: 'sftp:write',
@@ -63,6 +66,7 @@ export interface HostRecord {
   authMethod: AuthMethod
   /** 只记路径，不记私钥本体 */
   privateKeyPath?: string
+  keyId?: string
   hasSecret: boolean
   updatedAt: string
 }
@@ -83,6 +87,8 @@ export interface TerminalOpenRequest {
   password?: string
   privateKey?: string
   privateKeyPath?: string
+  /** Resolve a Keychain key inside Host; saved private material never returns to the UI. */
+  keyId?: string
   passphrase?: string
   hostId?: string
   acceptUnknownHostKey?: boolean
@@ -116,8 +122,33 @@ export interface HostSaveRequest {
   password?: string
   authMethod?: AuthMethod
   privateKeyPath?: string
+  /** Empty string explicitly switches back to a directly selected key file. */
+  keyId?: string
   passphrase?: string
   rememberPassword?: boolean
+}
+
+export const MAX_PRIVATE_KEY_BYTES = 256 * 1024
+
+/** Public key metadata only. Private keys and passphrases are write-only. */
+export interface KeyRecord {
+  id: string
+  label: string
+  type: string
+  publicKey: string
+  fingerprint: string
+  hasPassphrase: boolean
+  updatedAt: string
+}
+
+export interface KeySaveRequest {
+  id?: string
+  label: string
+  /** Omit when renaming an existing key without replacing its private material. */
+  privateKey?: string
+  passphrase?: string
+  /** Optional verification; Host derives the public key when omitted. */
+  publicKey?: string
 }
 
 // ── SFTP ─────────────────────────────────────────────────────────
@@ -218,11 +249,18 @@ export interface SshApi {
   onOpened(listener: (sessionId: string, cols: number, rows: number) => void): () => void
   onData(listener: (sessionId: string, chunk: Uint8Array) => void): () => void
   onClosed(listener: (sessionId: string, reason: string) => void): () => void
+  /** Carrier connection loss, including when no SSH terminal is open. IPC exits with its shell instead. */
+  onDisconnected(listener: (reason: string) => void): () => void
   /** Release this client's subscriptions and transport resources. */
   dispose(): void
   hosts: {
     list(): Promise<HostRecord[]>
     save(input: HostSaveRequest): Promise<HostRecord>
+    remove(id: string): Promise<boolean>
+  }
+  keychain: {
+    list(): Promise<KeyRecord[]>
+    save(input: KeySaveRequest): Promise<KeyRecord>
     remove(id: string): Promise<boolean>
   }
   /**

@@ -73,7 +73,7 @@ Desktop 先应用平台策略，启动 Node Host、完成带版本的握手并�
 
 Host 创建失败会卸载此前装配的服务。关闭 Host 时先取消连接和解密等待、等候已接受的存储修改，再卸载插件树；关闭后拒绝新连接与修改。save/remove 串行执行，加密完成前不会提交新状态。opened 事件无法送到客户端时也会收尾，避免浏览器关闭与握手完成竞态留下连接。
 
-共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、hosts、SFTP 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。IPC dispose 取消该客户端会话且保留 bridge 可重新订阅，Web dispose 关闭 socket。
+共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、Keychain、hosts、SFTP 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器、私钥草稿和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。IPC dispose 取消该客户端会话且保留 bridge 可重新订阅，Web dispose 关闭 socket。
 
 Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_SANDBOX_FALLBACK=1` 禁止自动无沙箱回退及对应档案回填；`SSH_CORDIS_NO_LAUNCH_PROFILE=1` 禁止读写档案。档案未按 CI、容器或日常环境分区，测试使用临时目录。
 
@@ -87,9 +87,13 @@ Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_
 
 ## 数据与入口能力
 
-Desktop 通过 `SSH_CORDIS_DATA_DIR` 覆盖数据目录。`hosts.json` 保存主机元数据及私钥路径；`secrets.json` 保存 safeStorage 生成的密文；`known_hosts.json` 保存 TOFU 指纹；`launch-profile.json` 保存已就绪启动的配置。safeStorage 留在主进程，Host 的异步 CredentialProvider 经私有 IPC 请求加解密；没有可用系统加密后端时不退化为明文持久化。私钥文件在连接时读取，不复制到主机存储。附带的本机浏览器入口使用相同加密能力和原生选钥。
+Desktop 通过 `SSH_CORDIS_DATA_DIR` 覆盖数据目录。`hosts.json` 保存主机元数据以及私钥路径或 Keychain 密钥 ID；`secrets.json` 保存主机凭据密文；`known_hosts.json` 保存 TOFU 指纹；`launch-profile.json` 保存已就绪启动的配置。safeStorage 留在主进程，Host 的异步 CredentialProvider 经私有 IPC 请求加解密；没有可用系统加密后端时不退化为明文持久化。直接选择的私钥文件在连接时读取，不复制到主机存储。附带的本机浏览器入口使用相同加密能力和原生选钥。
 
-独立 Web 可通过 `--data-dir` 或 `SSH_CORDIS_WEB_DATA_DIR` 设置目录，命令行优先。它保存 `hosts.json` 和 `known-hosts.json`，不读写 `secrets.json`、不持久化私钥路径，公开记录的 `hasSecret` 恒为 false。即使调用方请求记住密码或口令，也不会保存。若目录已存在凭据文件或旧版内嵌密文，Host 会明确拒绝，原文件不迁移、不覆盖。
+Keychain 导入使用独立 `keychain.json` 密钥库：每条记录包含不透明 ID，以及由系统加密的 JSON（元数据、私钥、可选口令）。写入使用同目录临时文件（0600）和原子重命名；加密或写入失败保留原密钥库。启动时解密以建立公开元数据，认证时在 Host 内部解密所选记录；列表及保存响应均不包含私密内容。Host 将密钥及主机修改放在同一队列中，拒绝无效关联、阻止删除被引用的密钥，并在关闭前完成已接受的写入。`keys:list/save/remove` 经过共享分发器及两种载体。SSH 证书和硬件密钥不在本次实现范围内。
+
+客户端的 `SshApi.onDisconnected()` 订阅在没有 SSH 会话时也会传递 WebSocket 连接代际失效。传输断开时 Keychain 清理未保存草稿；本次会话模式还会清除密钥卡片与缓存的主机密钥引用，不需要刷新页面。UI 操作归属标记避免旧保存/删除刷新解锁新的请求。共享 Web 主机切换离开私钥认证时会清除所有客户端中该主机的关联；显式传入的私钥内容优先于隐式会话关联。
+
+独立 Web 可通过 `--data-dir` 或 `SSH_CORDIS_WEB_DATA_DIR` 设置目录，命令行优先。它保存 `hosts.json` 和 `known-hosts.json`，不读写凭据或 Keychain 密钥库内容、不持久化私钥路径或 Keychain 关联，公开记录的 `hasSecret` 恒为 false。即使调用方请求记住密码或口令，也不会保存。导入密钥和主机关联保留在按客户端隔离的 Host 内存表中，其他客户端不可访问，由 `releaseClient()` 清除；已释放客户端排队中的修改会被取消。若目录已存在凭据密钥库或旧版内嵌密文，Host 会明确拒绝，原文件不迁移、不覆盖。
 
 浏览器通过文件选择器读取私钥内容，不把文件名当成本机绝对路径。密码、私钥及口令保留在当前页面，刷新后重填。UI 根据入口返回的能力选择浏览器/原生选钥，并关闭独立 Web 的凭据记忆选项。默认两个进程使用不同数据文件；自定义目录时也不应让它们同时写入同一份 JSON 存储。
 

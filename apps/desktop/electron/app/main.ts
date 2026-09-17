@@ -194,6 +194,8 @@ function startGeneration(): ElectronShellGeneration {
   const generation = createShellGeneration({
     htmlPath: rendererHtml,
     preloadPath: preloadScript,
+    autoHideMenuBar: platform.autoHideMenuBar,
+    useWindowControlsOverlay: platform.useWindowControlsOverlay,
     search: process.env.SSH_CORDIS_SMOKE ? 'smoke=1' : '',
     onLoadFailure: (reason) => fallbackToNoSandbox(reason),
     onRelease: () => { if (clientId) host?.releaseClient(clientId) },

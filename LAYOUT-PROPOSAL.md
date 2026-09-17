@@ -52,7 +52,7 @@ Run `npm ci` at the repository root with the single root lockfile and workspace 
 
 The Desktop main process provides IPC and the existing local Web carrier. A private parent/child IPC channel shares the independent Node Host. The main process owns safeStorage and native key picking; the child process consumes them through asynchronous capability calls. Standalone Web creates its own Host with a separate default data file. Shared code does not imply shared sessions or credentials.
 
-Standalone Web neither reads credential files nor stores private-key paths. If the selected directory already contains `secrets.json`, or a host record contains legacy ciphertext, startup rejects that directory instead of overwriting Desktop data. Defaults are `~/.ssh-cordis/` and `~/.ssh-cordis/web/`; custom locations must keep the files separate as well.
+Standalone Web neither reads credential files nor stores private-key paths. If the selected directory already contains `secrets.json` or the encrypted `keychain.json` vault, or a host record contains legacy ciphertext, startup rejects that directory instead of overwriting Desktop data. Defaults are `~/.ssh-cordis/` and `~/.ssh-cordis/web/`; custom locations must keep the files separate as well. Web Keychain keys and host associations are client-scoped memory only, cleared when the client disconnects.
 
 ## Enforced constraints
 

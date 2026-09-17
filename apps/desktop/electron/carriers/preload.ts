@@ -55,11 +55,18 @@ const sshAPI: SshApi = {
   onOpened: (listener) => subscribe<[string, number, number]>(EVENTS.terminalOpened, listener),
   onData: (listener) => subscribe<[string, Uint8Array]>(EVENTS.terminalData, listener),
   onClosed: (listener) => subscribe<[string, string]>(EVENTS.terminalClosed, listener),
+  // A failed Desktop Host terminates its shell; there is no reconnectable IPC socket.
+  onDisconnected: () => () => {},
 
   hosts: {
     list: () => ipcRenderer.invoke(METHODS.hostsList),
     save: (input) => ipcRenderer.invoke(METHODS.hostsSave, input),
     remove: (id) => ipcRenderer.invoke(METHODS.hostsRemove, id),
+  },
+  keychain: {
+    list: () => ipcRenderer.invoke(METHODS.keysList),
+    save: input => ipcRenderer.invoke(METHODS.keysSave, input),
+    remove: id => ipcRenderer.invoke(METHODS.keysRemove, id),
   },
 
   /**

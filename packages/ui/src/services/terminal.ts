@@ -32,6 +32,7 @@ declare module 'cordis' {
     'client/connection-change'(): void
     'client/tab-closed'(tabId: string): void
     'client/edit-connection'(request: TerminalOpenRequest, title: string): void
+    'client/keychain-change'(): void
   }
 }
 
@@ -45,6 +46,7 @@ export class ClientTerminal extends Service {
   private readonly factory: TerminalFactory
   private idle: { terminal: TerminalView; container: HTMLElement } | null
   private activeId: string | null = null
+  private libraryPage: 'hosts' | 'keychain' = 'hosts'
   private nextId = 0
   private opening = 0
   private stopped = false
@@ -101,7 +103,7 @@ export class ClientTerminal extends Service {
         if (pending) pending.closed = reason || '连接已结束。'
       }
     }), 'terminal.closed')
-    this.scope.listen(view.element('hosts-tab'), 'click', () => this.select(null))
+    this.scope.listen(view.element('hosts-tab'), 'click', () => this.select(null, this.libraryPage))
     this.scope.listen(view.element('disconnect'), 'click', () => this.disconnect())
     for (const id of ['session-reconnect', 'failure-retry']) {
       this.scope.listen(view.element(id), 'click', () => { if (this.active) void this.retry(this.active.id) })
@@ -121,7 +123,7 @@ export class ClientTerminal extends Service {
       const next = key.key === 'Home' ? 0 : key.key === 'End' ? ids.length - 1
         : (index + (key.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length
       key.preventDefault()
-      this.select(ids[next]!)
+      this.select(ids[next]!, this.libraryPage)
       ;(this.active ? this.owned.get(this.active.id)!.button : view.element('hosts-tab')).focus()
     })
     this.scope.listen(view.document, 'keydown', event => {
@@ -131,7 +133,7 @@ export class ClientTerminal extends Service {
         key.preventDefault()
         key.stopPropagation()
         const ids = [null, ...this.owned.keys()]
-        this.select(ids[(ids.indexOf(this.activeId) + (key.shiftKey ? -1 : 1) + ids.length) % ids.length]!)
+        this.select(ids[(ids.indexOf(this.activeId) + (key.shiftKey ? -1 : 1) + ids.length) % ids.length]!, this.libraryPage)
       } else if (key.key.toLowerCase() === 'w' && this.active) {
         key.preventDefault()
         key.stopPropagation()
@@ -207,9 +209,10 @@ export class ClientTerminal extends Service {
     return tab
   }
 
-  select(id: string | null): void {
+  select(id: string | null, page: 'hosts' | 'keychain' = 'hosts'): void {
     if (this.stopped || (id !== null && !this.owned.has(id))) return
     this.activeId = id
+    if (!id) this.libraryPage = page
     this.render()
     ;(id ? this.owned.get(id)!.strip : this.ctx.clientView.element('hosts-tab')).scrollIntoView({ block: 'nearest', inline: 'nearest' })
     this.ctx.emit('client/session-change', this.sessionId)
@@ -224,13 +227,18 @@ export class ClientTerminal extends Service {
     const app = view.element('app')
     app.classList.toggle('session-mode', !!active)
     app.classList.remove('failure-mode')
-    view.element('hosts-panel').hidden = !!active
+    view.element('hosts-panel').hidden = !!active || this.libraryPage !== 'hosts'
+    view.element('keychain-panel').hidden = !!active || this.libraryPage !== 'keychain'
+    view.element('nav-hosts').classList.toggle('active', this.libraryPage === 'hosts')
+    view.element('nav-keychain').classList.toggle('active', this.libraryPage === 'keychain')
+    view.element('library-tab-title').textContent = this.libraryPage === 'keychain' ? 'Keychain' : 'Hosts'
     view.element('session-workspace').hidden = !active
-    if (active) {
+    if (active || this.libraryPage === 'keychain') {
       app.classList.remove('drawer-open')
       view.element('connection-workspace').hidden = true
     }
     const hosts = view.element('hosts-tab')
+    hosts.setAttribute('aria-controls', this.libraryPage === 'keychain' ? 'keychain-panel' : 'hosts-panel')
     hosts.classList.toggle('is-active', !active)
     hosts.setAttribute('aria-selected', String(!active))
     hosts.tabIndex = active ? -1 : 0

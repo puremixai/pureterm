@@ -48,13 +48,14 @@ try {
     env: { PURETERM_TEST_WEB_URL: url, PURETERM_TEST_PRIVATE_KEY: keyFile,
       SSH_CORDIS_SMOKE_HOST: ssh.host, SSH_CORDIS_SMOKE_PORT: String(ssh.port),
       SSH_CORDIS_SMOKE_USER: ssh.username, SSH_CORDIS_SMOKE_PASS: ssh.password },
-    successMarker: '[WEB-SMOKE-OK]', requiredMarkers: ['[WEB-READY]', '[WEB-MULTI-TAB]', '[WEB-BROWSER-KEY-AUTH]', '[WEB-BROWSER-KEY]'],
+    successMarker: '[WEB-SMOKE-OK]', requiredMarkers: ['[WEB-READY]', '[WEB-MULTI-TAB]', '[WEB-BROWSER-KEY-AUTH]', '[WEB-BROWSER-KEY]', '[WEB-KEYCHAIN]'],
   })
   if (result.code === 0) {
     assert.ok(ssh.authentications.includes('publickey'), 'browser connection must complete signed public-key authentication')
     const files = await readdir(dataDir)
     assert.ok(files.includes('hosts.json'))
     assert.equal(files.includes('secrets.json'), false)
+    assert.equal(files.includes('keychain.json'), false)
     for (const name of files) {
       const text = await readFile(join(dataDir, name), 'utf8')
       assert.equal(text.includes('browser-key-passphrase-never-persist'), false)
@@ -65,6 +66,7 @@ try {
     assert.equal(hosts[0].username, ssh.username)
     assert.equal(hosts[0].authMethod, 'privateKey')
     assert.equal(hosts[0].privateKeyPath, undefined)
+    assert.equal(hosts[0].keyId, undefined)
   }
 } catch (error) {
   console.error('[WEB-SMOKE-FAIL]', error)

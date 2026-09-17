@@ -22,7 +22,7 @@ async function until(predicate, description, timeout = 8000) {
 
 const evaluate = (script) => window.webContents.executeJavaScript(script, true)
 
-async function pickBrowserFile(path) {
+async function pickBrowserFile(path, button = 'key-pick', resultField = 'key-path') {
   const debug = window.webContents.debugger
   debug.attach('1.3')
   let timer
@@ -35,7 +35,7 @@ async function pickBrowserFile(path) {
       debug.on('message', listener)
       timer = setTimeout(() => reject(new Error('Browser file chooser did not open from the selection button')), 5000)
     })
-    await evaluate('document.getElementById("key-pick").click()')
+    await evaluate(`document.getElementById(${JSON.stringify(button)}).click()`)
     const event = await picker
     await debug.sendCommand('DOM.setFileInputFiles', { files: [path], backendNodeId: event.backendNodeId })
   } finally {
@@ -43,7 +43,7 @@ async function pickBrowserFile(path) {
     if (listener) debug.removeListener('message', listener)
     if (debug.isAttached()) debug.detach()
   }
-  await until(() => evaluate(`document.getElementById('key-path').value === ${JSON.stringify(basename(path))}`), 'browser File.text() private-key selection')
+  await until(() => evaluate(`document.getElementById(${JSON.stringify(resultField)}).value === ${JSON.stringify(basename(path))}`), 'browser File.text() private-key selection')
 }
 
 async function main() {
@@ -75,7 +75,7 @@ async function main() {
 
     for (const label of ['Alpha terminal', 'Beta terminal']) {
       await evaluate(`(() => {
-        document.getElementById('tab-new').click();
+        document.getElementById('host-new').click();
         document.getElementById('host').value = ${JSON.stringify(config.host)};
         document.getElementById('port').value = ${JSON.stringify(String(config.port))};
         document.getElementById('user').value = ${JSON.stringify(config.username)};
@@ -148,6 +148,36 @@ async function main() {
       passphrase: document.getElementById('key-pass').value, password: document.getElementById('pass').value })`),
     { key: '', passphrase: '', password: '' })
     console.log('[WEB-BROWSER-KEY] browser-selected key and passphrase cleared after reload')
+
+    await evaluate(`document.getElementById('nav-keychain').click(); document.getElementById('keychain-new').click()`)
+    await pickBrowserFile(process.env.PURETERM_TEST_PRIVATE_KEY, 'keychain-import', 'keychain-label')
+    await evaluate(`document.getElementById('keychain-save').click()`)
+    await until(() => evaluate(`document.getElementById('keychain-status').textContent.startsWith('密钥已保存')`), 'Keychain import and save')
+    assert.equal(await evaluate(`document.getElementById('keychain-private').value`), '')
+    assert.match(await evaluate(`document.getElementById('keychain-public').value`), /^ssh-rsa /)
+    assert.match(await evaluate(`document.getElementById('keychain-fingerprint').textContent`), /^SHA256:/)
+    await evaluate(`(() => {
+      document.getElementById('nav-hosts').click();
+      document.querySelector('.host-row [data-act=edit]').click();
+      const key = document.getElementById('host-keychain'); key.selectedIndex = 1; key.dispatchEvent(new Event('change'));
+      document.getElementById('host-save').click();
+    })()`)
+    await until(() => evaluate(`document.getElementById('status').textContent.startsWith('已保存')`), 'host key association save')
+    assert.equal(await evaluate(`document.getElementById('host-direct-key').hidden`), true)
+    await evaluate(`document.getElementById('connect').click()`)
+    await until(() => evaluate(`document.getElementById('session-state').className === 'connected'`), 'SSH authentication using Keychain ID')
+    await paste('keychain-authenticated')
+    await until(() => evaluate(`${visibleText}.includes('echo:keychain-authenticated')`), 'Keychain-authenticated SSH terminal echo')
+    await evaluate(`document.querySelector('.session-tab.is-active [data-tab-close]').click(); document.getElementById('nav-keychain').click()`)
+    await until(() => evaluate(`document.querySelectorAll('.keychain-card').length === 1`), 'saved key list')
+    await window.loadURL(url.href)
+    await until(() => evaluate('document.getElementById("status").textContent === "就绪"'), 'reload after Keychain authentication')
+    await evaluate(`document.getElementById('nav-keychain').click()`)
+    await until(() => evaluate(`document.getElementById('keychain-list').getAttribute('aria-busy') === 'false'`), 'refreshed Keychain')
+    assert.equal(await evaluate(`document.querySelectorAll('.keychain-card').length`), 0)
+    await evaluate(`document.getElementById('nav-hosts').click(); document.querySelector('.host-row [data-act=edit]').click()`)
+    assert.equal(await evaluate(`document.getElementById('host-keychain').value`), '')
+    console.log('[WEB-KEYCHAIN] file import, public-key derivation, host reference, real SSH echo and refresh cleanup succeeded')
     code = 0
   } catch (error) {
     console.error('[WEB-SMOKE-FAIL]', error)

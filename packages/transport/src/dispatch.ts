@@ -1,4 +1,4 @@
-import { METHODS, NOTICES, type PickedPrivateKey, type RendererReadyPayload, type RuntimeCapabilities } from '@pureterm/protocol'
+import { METHODS, NOTICES, type KeySaveRequest, type PickedPrivateKey, type RendererReadyPayload, type RuntimeCapabilities } from '@pureterm/protocol'
 import type { Host, HostInput, TerminalOpenPayload } from '@pureterm/host'
 import { normalizeReadyPayload } from './readiness.js'
 
@@ -88,11 +88,17 @@ export function createDispatcher(options: DispatcherOptions): Dispatcher {
         case METHODS.sshPickPrivateKey:
           return options.pickPrivateKey(clientId)
         case METHODS.hostsList:
-          return host.listHosts()
+          return host.listHosts(clientId)
         case METHODS.hostsSave:
-          return host.saveHost(asObject(params[0], 'hosts:save') as unknown as HostInput)
+          return host.saveHost(asObject(params[0], 'hosts:save') as unknown as HostInput, clientId)
         case METHODS.hostsRemove:
           return host.removeHost(asString(params[0], 'hosts:remove'))
+        case METHODS.keysList:
+          return host.listKeys(clientId)
+        case METHODS.keysSave:
+          return host.saveKey(asObject(params[0], 'keys:save') as unknown as KeySaveRequest, clientId)
+        case METHODS.keysRemove:
+          return host.removeKey(asString(params[0], 'keys:remove'), clientId)
         /*
          * SFTP 五条。参数一律「先收窄、再往下传」：这里收到的东西来自边界之外，
          * 猜错一次就是拿一个 undefined 去操作远端文件。

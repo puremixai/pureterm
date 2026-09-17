@@ -45,6 +45,10 @@ export interface PlatformPlan {
   quitOnAllWindowsClosed: boolean
   /** 是否包含 macOS 的 App 菜单（Cmd+Q / Hide / About） */
   includeAppMenu: boolean
+  /** Windows/Linux 上菜单保留快捷键能力，但不占用一整行界面。 */
+  autoHideMenuBar: boolean
+  /** Windows/Linux 隐藏标题栏后，仍由系统绘制最小化、最大化与关闭按钮。 */
+  useWindowControlsOverlay: boolean
   /** 为什么这么选。写进启动日志——环境相关的决定最怕「不知道为什么」。 */
   reasons: string[]
 }
@@ -86,6 +90,8 @@ export function resolvePlatformPlan(input: PlatformPlanInput): PlatformPlan {
     disableHardwareAcceleration: disableHardwareAcceleration || existing.has('disable-gpu'),
     quitOnAllWindowsClosed: !isMac,
     includeAppMenu: isMac,
+    autoHideMenuBar: !isMac,
+    useWindowControlsOverlay: !isMac,
     reasons,
   }
 }

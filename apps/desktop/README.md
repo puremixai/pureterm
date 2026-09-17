@@ -19,6 +19,8 @@ Dependencies are installed by the single root lockfile; do not run a separate `n
 
 Enter a host, port, and user, choose password or private-key authentication, and connect. Desktop’s private-key picker is a native file dialog and stores only the path; the file is read when connecting, and an empty passphrase means no passphrase is supplied. When “remember credentials” is selected, ciphertext is stored through the operating-system encryption provider; switching authentication methods removes the old credential.
 
+Alternatively, import or paste a private key in **Keychain**, then select it in the host's authentication settings. Imported keys and their passphrases are saved in a dedicated system-encrypted vault. Public key/type/fingerprint are derived on save; editing never reveals the stored private material. See [Keychain usage](../../README.md#working-with-keychain).
+
 The Files panel supports directory browsing, upload/download, directory creation, and deletion. SFTP transfers are limited to 4 MiB per file and have no resume, progress bar, or rename operation; deletion acts on the remote host immediately and does not use an application recycle bin.
 
 ## Data and the attached Web entry
@@ -27,8 +29,9 @@ The default data directory is `~/.ssh-cordis/`, overridden by `SSH_CORDIS_DATA_D
 
 | File | Contents |
 | --- | --- |
-| `hosts.json` | host metadata, authentication mode, and private-key path |
+| `hosts.json` | host metadata, authentication mode, and private-key path or Keychain ID |
 | `secrets.json` | ciphertext produced by the operating-system credential provider |
+| `keychain.json` | atomic system-encrypted imported-key vault; no plaintext private material |
 | `known_hosts.json` | trusted SSH host fingerprints; changed keys reject the connection |
 | `launch-profile.json` | launch configuration submitted after renderer readiness |
 

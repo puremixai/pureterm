@@ -8,13 +8,15 @@ import { relaunchSelf } from '../dist/electron/runtime/relaunch.js'
 import { createFrameDecoder, encodeFrame, OPCODES, WsProtocolError } from '@pureterm/transport/ws-frame'
 import { encodeWire, decodeWire, isWireCall, isWireNotice } from '@pureterm/protocol'
 
-test('platform defaults keep sandbox/GPU intact and preserve native window/menu behavior', () => {
+test('platform defaults keep sandbox/GPU intact and use a compact native shell', () => {
   for (const platform of ['win32', 'linux', 'darwin']) {
     const plan = resolvePlatformPlan({ platform, env: {} })
     assert.deepEqual(plan.switches, [])
     assert.equal(plan.disableHardwareAcceleration, false)
     assert.equal(plan.quitOnAllWindowsClosed, platform !== 'darwin')
     assert.equal(plan.includeAppMenu, platform === 'darwin')
+    assert.equal(plan.autoHideMenuBar, platform !== 'darwin')
+    assert.equal(plan.useWindowControlsOverlay, platform !== 'darwin')
   }
 })
 

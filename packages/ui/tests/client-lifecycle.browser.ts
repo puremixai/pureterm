@@ -1,7 +1,7 @@
 import { createClient } from '../src/client.js'
 import { mountPageClient } from '../src/page-client.js'
 import { ClientTransport } from '../src/services/transport.js'
-import type { SshApi, HostRecord, HostSaveRequest, RendererReadyPayload, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
+import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, RendererReadyPayload, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
 import type { TerminalView } from '../src/terminal-view.js'
 
 const assert = (value: unknown, message: string): void => { if (!value) throw new Error(message) }
@@ -11,18 +11,26 @@ const click = (id: string): void => input(id).click()
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
 
 function fixture() {
-  const listeners = { opened: new Set<(...args: any[]) => void>(), data: new Set<(...args: any[]) => void>(), closed: new Set<(...args: any[]) => void>() }
+  const listeners = { opened: new Set<(...args: any[]) => void>(), data: new Set<(...args: any[]) => void>(), closed: new Set<(...args: any[]) => void>(), disconnected: new Set<(...args: any[]) => void>() }
   const stats = { disposed: 0, opens: 0, inputs: 0, closes: 0, lists: 0, ready: [] as RendererReadyPayload[] }
   const subscribe = (name: keyof typeof listeners, listener: (...args: any[]) => void) => { listeners[name].add(listener); return () => { listeners[name].delete(listener) } }
   const emit = (name: keyof typeof listeners, ...args: unknown[]) => { for (const listener of listeners[name]) listener(...args) }
   const hosts: HostRecord[] = [{ id: 'fixture', label: 'Fixture', host: 'localhost', username: 'demo', port: 22, authMethod: 'password', hasSecret: false, updatedAt: '' }]
+  const keys: KeyRecord[] = []
   const api: SshApi = {
     carrier: 'web', getCapabilities: async () => ({ credentialPersistence: 'session', privateKeyPicker: 'browser' }),
     open: async () => { const sessionId = `test-${++stats.opens}`; emit('opened', sessionId, 80, 24); return { sessionId, host: 'localhost', cols: 80, rows: 24 } },
     close: id => { stats.closes++; emit('closed', id, 'closed') },
     input: () => { stats.inputs++ }, resize: () => {}, pickPrivateKey: async () => undefined,
     onOpened: listener => subscribe('opened', listener), onData: listener => subscribe('data', listener), onClosed: listener => subscribe('closed', listener),
+    onDisconnected: listener => subscribe('disconnected', listener),
     hosts: { list: async () => hosts, save: async () => hosts[0]!, remove: async () => true },
+    keychain: { list: async () => [...keys], save: async request => {
+      const record = { id: request.id ?? `key-${keys.length}`, label: request.label, type: 'RSA', publicKey: 'ssh-rsa fixture', fingerprint: 'SHA256:fixture', hasPassphrase: !!request.passphrase, updatedAt: '' }
+      const index = keys.findIndex(key => key.id === record.id)
+      if (index < 0) keys.push(record); else keys[index] = record
+      return record
+    }, remove: async id => { const index = keys.findIndex(key => key.id === id); if (index >= 0) keys.splice(index, 1); return index >= 0 } },
     sftp: { list: async () => { stats.lists++; return { path: '/home', parent: '/', entries: [] } }, read: async () => ({ path: '', size: 0, bytes: new Uint8Array() }),
       write: async () => ({ path: '', size: 0 }), mkdir: async () => {}, remove: async () => {} },
     signalReady: payload => { stats.ready.push(payload) }, dispose: () => { stats.disposed++ },
@@ -40,7 +48,7 @@ function fixture() {
     terminals.push(device)
     return device
   }
-  return { api, hosts, stats, listeners, terminals, terminalFactory, emit }
+  return { api, hosts, keys, stats, listeners, terminals, terminalFactory, emit }
 }
 
 function fill() { input('host').value = 'localhost'; input('user').value = 'demo'; input('pass').value = 'password' }
@@ -61,6 +69,121 @@ async function runChecks() {
   let releasePageDisposal: (() => void) | undefined
   const checks: string[] = []
   try {
+    const vault = fixture()
+    const savedKeys: KeySaveRequest[] = []
+    const saveKey = vault.api.keychain.save
+    vault.api.keychain.save = async request => { savedKeys.push(request); return saveKey(request) }
+    client = createClient({ api: vault.api, terminalFactory: vault.terminalFactory })
+    assert((await client.ready).ok, 'keychain client failed readiness')
+    click('nav-keychain'); await tick()
+    assert(!input('keychain-panel').hidden && input('hosts-panel').hidden, 'Keychain must be a separate library page')
+    click('keychain-new')
+    change('keychain-label', 'test.pem'); change('keychain-private', 'fixture-private-key'); change('keychain-passphrase', 'fixture-passphrase')
+    click('keychain-save'); await tick(); await tick()
+    assert(vault.keys.length === 1 && savedKeys[0]?.privateKey === 'fixture-private-key', 'save must pass private material to the backend')
+    assert(input('keychain-private').value === '' && input('keychain-passphrase').value === '', 'save must clear write-only material from the editor')
+    click('keychain-close')
+    const keyCard = document.querySelector<HTMLButtonElement>('.keychain-card-main')!
+    keyCard.focus(); keyCard.click()
+    assert(input('keychain-editor').hidden, 'single click must select a key without opening its editor')
+    assert(document.activeElement === keyCard, 'selecting a key must retain keyboard focus')
+    document.querySelector<HTMLButtonElement>('.keychain-card-edit')!.click()
+    assert(!input('keychain-editor').hidden && input('keychain-label').value === 'test.pem', 'Edit must open the selected key')
+    change('keychain-label', 'renamed.pem'); click('keychain-save'); await tick(); await tick()
+    assert(savedKeys[1]?.id === vault.keys[0]!.id && savedKeys[1]?.privateKey === undefined, 'rename must retain the server-side private key')
+    click('keychain-close'); change('keychain-search', 'no-match')
+    assert(document.querySelectorAll('.keychain-card').length === 0 && !input('keychain-empty').hidden, 'key search must filter real records')
+    change('keychain-search', ''); click('keychain-view')
+    assert(input('keychain-list').classList.contains('list-view'), 'key list toggle must update layout')
+    click('keychain-view'); click('nav-hosts'); click('host-new'); fill()
+    input('auth').value = 'privateKey'; input('auth').dispatchEvent(new Event('change'))
+    input('host-keychain').value = vault.keys[0]!.id; input('host-keychain').dispatchEvent(new Event('change'))
+    let keyConnection: TerminalOpenRequest | undefined
+    const open = vault.api.open
+    vault.api.open = async request => { keyConnection = request; return open(request) }
+    click('connect'); await tick()
+    assert(keyConnection?.keyId === vault.keys[0]!.id && !keyConnection.privateKey && !keyConnection.passphrase, 'connection must use only the selected key ID')
+    assert(document.querySelectorAll('.session-tab').length === 1 && input('keychain-panel').hidden, 'key authentication must still open an independent terminal tab')
+    click('nav-keychain'); await tick()
+    assert(vault.stats.closes === 0, 'visiting Keychain must not close the SSH session')
+    document.querySelector<HTMLButtonElement>('.keychain-card-edit')!.click()
+    window.confirm = () => true
+    click('keychain-delete'); await tick(); await tick()
+    assert(vault.keys.length === 0 && input('keychain-editor').hidden, 'delete must update the list and close its editor')
+    window.confirm = nativeConfirm
+    await client.dispose()
+    checks.push('Keychain create, safe rename, explicit Edit, search, list view, delete, and host-key tab connection')
+
+    const importing = fixture()
+    client = createClient({ api: importing.api, terminalFactory: importing.terminalFactory })
+    assert((await client.ready).ok, 'key import client failed readiness')
+    click('nav-keychain'); click('keychain-new')
+    const files = new DataTransfer()
+    files.items.add(new File(['fixture-content'], 'dropped.pem'))
+    input('keychain-drop').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: files }))
+    await tick()
+    assert(input('keychain-private').value === 'fixture-content' && input('keychain-label').value === 'dropped.pem', 'drop must read file content and infer its label')
+    importing.api.keychain.save = async () => { throw new Error('invalid private key') }
+    click('keychain-save'); await tick()
+    assert(input('keychain-status').textContent?.includes('invalid private key') && input('keychain-private').value === 'fixture-content', 'validation failure must remain actionable without losing input')
+    let oversizedCalls = 0
+    importing.api.keychain.save = async () => { oversizedCalls++; throw new Error('must not reach transport') }
+    change('keychain-private', 'x'.repeat(256 * 1024 + 1)); click('keychain-save'); await tick()
+    assert(oversizedCalls === 0 && input('keychain-status').textContent?.includes('256 KiB'), 'oversized pasted keys must be rejected before transport to avoid losing active sockets')
+    await client.dispose()
+    assert(input('keychain-private').value === '', 'disposal must clear an unsaved imported private key')
+    checks.push('Keychain drop import, server validation errors, and private-material disposal')
+
+    const keyRace = fixture()
+    client = createClient({ api: keyRace.api, terminalFactory: keyRace.terminalFactory })
+    assert((await client.ready).ok, 'key save race failed readiness')
+    click('nav-keychain'); await tick(); click('keychain-new')
+    change('keychain-label', 'first'); change('keychain-private', 'fixture')
+    const oldKeyList = deferred<KeyRecord[]>()
+    keyRace.api.keychain.list = () => oldKeyList.promise
+    click('keychain-save'); await tick()
+    const newKeySave = deferred<KeyRecord>()
+    keyRace.api.keychain.save = () => newKeySave.promise
+    change('keychain-label', 'second'); click('keychain-save'); await tick()
+    oldKeyList.resolve([...keyRace.keys]); await tick()
+    assert(input('keychain-save').disabled && input('keychain-new').disabled, 'old refresh completion must not unlock a newer save')
+    const newKeyRecord = { ...keyRace.keys[0]!, label: 'second', fingerprint: 'SHA256:second' }
+    keyRace.api.keychain.list = async () => [newKeyRecord]
+    newKeySave.resolve(newKeyRecord); await tick(); await tick()
+    assert(input('keychain-label').value === 'second' && input('keychain-fingerprint').textContent === 'SHA256:second', 'the new save must keep its own editor response')
+    await client.dispose()
+    checks.push('Keychain refresh completion cannot unlock a newer operation or lose its response')
+
+    const lostKeys = fixture()
+    lostKeys.keys.push({ id: 'temporary-key', label: 'temporary', type: 'RSA', publicKey: 'ssh-rsa fixture', fingerprint: 'SHA256:fixture', hasPassphrase: false, updatedAt: '' })
+    lostKeys.hosts[0] = { ...lostKeys.hosts[0]!, authMethod: 'privateKey', keyId: 'temporary-key' }
+    client = createClient({ api: lostKeys.api, terminalFactory: lostKeys.terminalFactory })
+    assert((await client.ready).ok, 'disconnect keychain client failed readiness')
+    editHost('fixture')
+    assert(input('host-keychain').value === 'temporary-key', 'fixture must select a session key')
+    click('nav-keychain'); await tick(); click('keychain-new')
+    change('keychain-label', 'draft'); change('keychain-private', 'unsaved-private-material'); change('keychain-passphrase', 'unsaved-passphrase')
+    lostKeys.emit('disconnected', 'fixture transport loss')
+    assert(input('keychain-private').value === '' && input('keychain-passphrase').value === '', 'socket loss without page disposal must clear session key drafts')
+    assert(document.querySelectorAll('.keychain-card').length === 0 && input('host-keychain').value === '', 'socket loss must clear cached keys and the current host selection')
+    click('nav-hosts'); editHost('fixture')
+    assert(input('host-keychain').value === '', 'editing a cached host after socket loss must not revive its key association')
+    await client.dispose()
+    checks.push('Web transport loss clears key drafts, cached cards and host associations without page reload')
+
+    const soleEntry = fixture()
+    client = createClient({ api: soleEntry.api, terminalFactory: soleEntry.terminalFactory })
+    assert((await client.ready).ok, 'single-entry client failed readiness')
+    assert(document.getElementById('host-new'), 'New Host must remain available as the only host-creation entry')
+    for (const id of ['tab-new', 'terminal-new', 'nav-new', 'quick-connect']) {
+      assert(!document.getElementById(id), `${id} must not duplicate the New Host creation flow`)
+    }
+    click('host-new')
+    assert(!input('connection-workspace').hidden, 'New Host must still open a blank host form')
+    click('connection-close')
+    await client.dispose()
+    checks.push('New Host is the only visible entry for creating a host')
+
     const gestures = fixture()
     gestures.hosts[0]!.hasSecret = true
     gestures.api.getCapabilities = async () => ({ credentialPersistence: 'encrypted', privateKeyPicker: 'native' })
@@ -134,7 +257,7 @@ async function runChecks() {
     client = createClient({ api: concurrent.api, terminalFactory: concurrent.terminalFactory })
     assert((await client.ready).ok, 'concurrent client failed readiness')
     fill(); click('connect'); await tick()
-    click('tab-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+    click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
     assert(pendingOpens.length === 2, 'opening one host must not block another handshake')
     concurrent.emit('opened', 'later-request', 80, 24)
     concurrent.emit('data', 'later-request', new Uint8Array([66]))
@@ -145,7 +268,7 @@ async function runChecks() {
     assert(concurrent.terminals[0]!.writes.some(value => value instanceof Uint8Array && value[0] === 65), 'early output was not bound by the matching RPC reply')
     assert(concurrent.terminals[1]!.writes.some(value => value instanceof Uint8Array && value[0] === 66), 'out-of-order handshake lost second output')
     assert(client.context.clientTerminal.sessionId === 'later-request', 'background handshake completion stole the active tab')
-    click('tab-new'); fill(); click('connect'); await tick()
+    click('host-new'); fill(); click('connect'); await tick()
     const cancelledId = client.context.clientTerminal.active!.id
     client.context.clientTerminal.closeTab(cancelledId)
     concurrent.emit('opened', 'cancelled', 80, 24)
@@ -164,7 +287,7 @@ async function runChecks() {
     fill(); click('connect'); await tick()
     const failedId = client.context.clientTerminal.active!.id
     assert(!input('connection-failure').hidden, 'connection error did not appear in its tab')
-    click('tab-new'); fill(); input('host').value = 'unrelated.example'
+    click('host-new'); fill(); input('host').value = 'unrelated.example'
     client.context.clientTerminal.select(failedId); click('failure-retry'); await tick()
     assert(attempts.length === 2 && attempts[1]!.host === 'localhost' && client.context.clientTerminal.tabs.length === 1, 'retry must use the failed tab snapshot and reuse its tab')
     click('failure-edit')
