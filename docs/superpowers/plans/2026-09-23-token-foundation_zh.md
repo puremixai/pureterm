@@ -26,6 +26,12 @@ spec 列了六个提交。提交 1–2 在这里。提交 3–5（chrome、hosts
 
 `tokens.css` 会新增大约 55 个条目，按每个旧字面量*当前做什么*来命名（`--scroll-thumb`、`--tint-ok`、`--fail-log-icon`）。多数会存活到最终体系里。那些一次性的条目存在的唯一理由，是让"禁止字面量"这条测试能在本计划里就打开。计划二的配色翻转会在一个提交内删掉整块。不要往块里加东西 —— 要么引用已有条目，要么记为后续事项。
 
+有评审建议把登记表单独放进 `styles/legacy.css`，好让计划二用一次 `git rm` 删掉。此建议被否决：它原本的动机是 `block(':root')` 会在追加了巨大 body 后解析出错，而任务 1 的加固提交已经改成锚定选择器、先剥注释、并拒绝嵌套 `{`，隐患不复存在。一个文件一份契约比两个文件更好推理，而且翻转提交本身的 `git show` 已经把删除隔离开了。
+
+## 任务 1 在评审后的修正
+
+任务 1 以 `432c72e` 落地，随后由 `6b89946` 加固。下文代码块与已提交文件不一致时，以文件为准。变化之处：浅色 `--idle` 改为 `#7e8590`，因为 `#c9ced5` 在 surface 上只有 1.58:1、在 chrome 上 1.385:1，断开状态点会完全看不见；`--font-term` 保留 `"Sarasa Mono SC"` 与 `"Microsoft YaHei Mono"`，早期草稿把这两级中文等宽回退从 `terminal-view.ts:21` 实际在用的栈里丢了；测试文件改为先剥注释、按行首锚定选择器来解析 CSS，测试数从 5 条增至 9 条。
+
 ## 文件结构
 
 | 文件 | 职责 |
@@ -721,10 +727,15 @@ const ANSI: string[] = [
     background: read('--term-bg'),
     foreground: read('--term-fg'),
     cursor: read('--term-cursor'),
+    cursorAccent: read('--term-bg'),
     selectionBackground: read('--term-selection'),
     ANSI,
   },
 ```
+
+`cursorAccent` 必须留在对象里。它替换的那条字面量（`terminal-view.ts:23`）原本是 `cursorAccent: '#121426'`，也就是该文件自己的背景值：xterm 用它来反转光标下方字形的颜色，删掉这个键会改变光标压在文字上的观感。它解析到 `--term-bg`，因为光标下的单元格就是画布。
+
+给任务 4 的测试再加一条断言：`--term-cursor` 必须与 `:root` 的 `--ac` 携带相同的 RGB 三元组。任务 1 的评审发现 `--term-cursor: #5aaeff` 是 accent 的第三份手抄，而三元组跟踪只覆盖了 `--ac-bg` 和 `--term-selection`，所以计划二翻转 accent 时光标会被静默地丢在原地。
 
 `read()` 刻意不带 fallback。`style.css` 由 `index.html` 链接、并在 `app.ts:2` 引入，所以构造任何终端时自定义属性都已解析完毕；写一个 fallback 字符串只会增加没有测试覆盖的分支，并把字面量数量推过下面那条断言的上限。
 
@@ -921,7 +932,7 @@ git commit -m "docs(ui): document the token system"
 
 - `feat/ui-redesign` 上 `npm run verify` 与 `npm run verify:electron` 均通过。
 - `design-tokens.test.mjs` 为绿，且任何在 `tokens.css` 之外新增的单个十六进制值都会让它失败。
-- 两套主题组声明的 token 名一致，终端在两套主题下都是深色。
+- 每套主题组都声明了全部颜色 token，且没有任何度量被复制进浅色主题。（任务 3 加入 legacy 登记后，`:root` 合理地多出约 55 个名字；不变式是"不存在只在浅色里的 token"，而不是"两组相等"。）
 - `docs/design-system.md` 与其中文配对存在且内容一致。
 - 外观仍是可辨认的当前 PureTerm，只是改用 Inter 重排。**向石墨配色的翻转是计划二的第一个提交**，本计划不得提前执行。
 

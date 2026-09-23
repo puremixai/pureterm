@@ -196,8 +196,9 @@ test('the terminal group is byte-identical dark and keeps a dark canvas', () => 
 })
 
 test('translucent accent tokens carry the --ac triplet they sit on', () => {
-  // Hand-synced on purpose: custom properties are not substituted by
-  // getComputedStyle, so terminal-view.ts would read a literal color-mix().
+  // Hand-synced on purpose: an unregistered custom property is substituted at
+  // computed-value time but never evaluated as a colour, so color-mix() would
+  // reach terminal-view.ts's getComputedStyle as a literal string.
   const darkAc = triplet(token(DARK, '--ac'))
   for (const selector of THEMES) {
     assert.deepEqual(triplet(token(selector, '--ac-bg')), triplet(token(selector, '--ac')),

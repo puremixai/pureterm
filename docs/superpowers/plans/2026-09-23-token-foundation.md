@@ -26,6 +26,12 @@ The spec lists six commits. Commits 1–2 are here. Commits 3–5 (chrome, hosts
 
 `tokens.css` will gain roughly 55 entries named after what each old literal *does* (`--scroll-thumb`, `--tint-ok`, `--fail-log-icon`). Most survive into the final system. The one-off ones exist only so the no-literals test can be switched on in this plan; Plan 2's palette flip deletes the whole block in one commit. Do not add to the block — reference an existing entry or file it as a follow-up.
 
+A review proposed moving the register to its own `styles/legacy.css` so Plan 2 could delete it with one `git rm`. That is rejected: the original reason was that `block(':root')` would mis-parse a huge appended body, and Task 1's follow-up commit anchors the selector match, strips comments and rejects a nested `{`, so the hazard is gone. One file with one contract is easier to reason about than two, and `git show` of the flip commit already isolates the deletion.
+
+## Task 1 corrections made after review
+
+Task 1 shipped as `432c72e` and was hardened by `6b89946`. Read the committed files rather than the blocks below where they disagree. What moved: light `--idle` is `#7e8590`, because `#c9ced5` measured 1.58:1 on surface and 1.385:1 on chrome and the disconnected dot would have been invisible; `--font-term` keeps `"Sarasa Mono SC"` and `"Microsoft YaHei Mono"`, which an earlier draft had dropped from the stack actually in use at `terminal-view.ts:21`; the test file parses CSS by stripping comments and anchoring each selector at line start, and grew from 5 tests to 9.
+
 ## File structure
 
 | File | Responsibility |
@@ -721,10 +727,15 @@ and in the `new Terminal({ ... })` options:
     background: read('--term-bg'),
     foreground: read('--term-fg'),
     cursor: read('--term-cursor'),
+    cursorAccent: read('--term-bg'),
     selectionBackground: read('--term-selection'),
     ANSI,
   },
 ```
+
+`cursorAccent` must stay in the object. The literal it replaces (`terminal-view.ts:23`) was `cursorAccent: '#121426'`, which is that file's own background value: xterm inverts the glyph under a hollow or opaque cursor using it, so dropping the key changes how the cursor renders over text. It resolves to `--term-bg` because the cell under the cursor is the canvas.
+
+Add one more assertion to the Task 4 test: `--term-cursor` carries the same RGB triplet as `:root`'s `--ac`. A review of Task 1 found that `--term-cursor: #5aaeff` is a third hand-copy of the accent, and only `--ac-bg` and `--term-selection` were placed under triplet tracking, so flipping the accent in Plan 2 would leave the cursor behind in silence.
 
 `read()` takes no fallback on purpose. `style.css` is linked in `index.html` and imported at `app.ts:2`, so the custom properties are resolved before any terminal is constructed; a fallback string would only add untested code paths and push the literal count past the assertion below.
 
@@ -921,7 +932,7 @@ git commit -m "docs(ui): document the token system"
 
 - `npm run verify` and `npm run verify:electron` pass on `feat/ui-redesign`.
 - `design-tokens.test.mjs` is green and would fail if any single hex value were added outside `tokens.css`.
-- Both theme groups define the same token names, and the terminal stays dark in both.
+- Each theme group declares every colour token, and no metric is duplicated into the light theme. (`:root` legitimately holds ~55 more names once Task 3 adds the legacy register; the invariant is "nothing is light-only", not "the two groups are equal".)
 - `docs/design-system.md` and its Chinese pair exist and agree.
 - Appearance is recognisably the current PureTerm, now re-typeset in Inter. **The palette flip to graphite is Plan 2's first commit**, and this plan must not do it early.
 

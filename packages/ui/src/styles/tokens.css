@@ -13,13 +13,17 @@
   --c-raised: #191c21;
   --c-control: #21252b;
   /* Hairlines are not text: --line measures ~1.27:1 on --c-surface by design,
-     where the rgba(222, 226, 255, .085) it replaces composited to ~1.35:1. */
+     marginally more visible than the rgba(222, 226, 255, .085) it replaces,
+     which composites to ~1.22-1.26 across the grounds it currently sits on. */
   --line: #262a31;
   --line-soft: #1c1f24;
   --line-strong: #3a4049;
-  /* Legality is per ground, not per token: muted and accent text are legal on
-     --c-surface, with --c-canvas the only other permitted ground; on
-     --c-control / --c-chrome they fall to 3.9-4.2 and the AA guard is silent. */
+  /* Legality is per ground and per theme, not per token. In the light theme
+     --tx-3 and --ac fall to 3.88-4.23 on --c-control / --c-chrome, and even
+     --ac on --c-canvas is only 4.36, so there muted and accent text belong on
+     --c-surface alone. Dark clears AA on every ground (--ac 6.55 on
+     --c-control, 8.11 on --c-chrome; --tx-3 4.99 on --c-chrome).
+     design-tokens.test.mjs measures --c-surface grounds only. */
   --tx-1: #f2f3f5;
   --tx-2: #b9bec6;
   --tx-3: #7d838d;
