@@ -98,30 +98,45 @@ function token(selector, name) {
   return match[1].trim()
 }
 
-const NEW_TOKENS = [
+const THEME_TOKENS = [
   '--c-inset', '--c-canvas', '--c-chrome', '--c-surface', '--c-raised', '--c-control',
   '--line', '--line-soft', '--line-strong',
   '--tx-1', '--tx-2', '--tx-3', '--tx-4',
   '--ac', '--ac-hi', '--ac-bg', '--ac-fg',
   '--ok', '--warn', '--err', '--idle',
+  '--term-bg', '--term-fg', '--term-cursor', '--term-selection',
+]
+
+// Metrics are theme-invariant: `:root` and `[data-theme="light"]` match the
+// same element, so the light group inherits them. Repeating them would
+// recreate the hand-synced duplicate debt this plan exists to remove.
+const GLOBAL_TOKENS = [
   '--r-1', '--r-2', '--r-3', '--r-full',
   '--s-1', '--s-2', '--s-3', '--s-4', '--s-5', '--s-6',
   '--row-h', '--row-h-compact',
   '--z-drawer', '--z-popover', '--z-toast', '--z-dialog',
   '--t-1', '--t-2', '--t-3', '--ease',
-  '--term-bg', '--term-fg', '--term-cursor', '--term-selection',
 ]
 
-test('both theme groups declare the same new tokens', () => {
+test('both theme groups declare the same colour tokens', () => {
   for (const selector of [':root', '[data-theme="light"]']) {
     const declared = new Set(names(block(selector)))
-    for (const name of NEW_TOKENS) {
+    for (const name of THEME_TOKENS) {
       assert.ok(declared.has(name), `${selector} is missing ${name}`)
     }
   }
   const dark = new Set(names(block(':root')))
   const light = new Set(names(block('[data-theme="light"]')))
   for (const name of light) assert.ok(dark.has(name), `${name} exists only in the light theme`)
+})
+
+test('theme-invariant metrics are declared once, in :root only', () => {
+  const dark = new Set(names(block(':root')))
+  const light = new Set(names(block('[data-theme="light"]')))
+  for (const name of GLOBAL_TOKENS) {
+    assert.ok(dark.has(name), `:root is missing ${name}`)
+    assert.ok(!light.has(name), `${name} must not be duplicated into the light theme`)
+  }
 })
 
 test('text and accent tokens clear WCAG AA on their surfaces', () => {
@@ -278,7 +293,7 @@ Create `packages/ui/src/styles/tokens.css` with exactly this content. The `:root
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test packages/ui/tests/design-tokens.test.mjs`
-Expected: PASS, 4 tests. If the AA test fails on `--tx-3` in the light theme, re-measure before changing any value — the intended ratios are ≈16.5:1 and ≈4.8:1 dark, ≈17.7:1 and ≈4.9:1 light.
+Expected: PASS, 5 tests. If an AA test fails, re-measure before changing any value — the intended ratios are dark `--tx-1` ≈16.46:1, `--tx-3` ≈4.79:1, `--ac-fg` on `--ac` ≈8.58:1; light `--tx-1` ≈17.77:1, `--tx-3` ≈4.83:1, `--ac-fg` on `--ac` ≈4.63:1.
 
 - [ ] **Step 5: Commit**
 
@@ -352,6 +367,25 @@ Overwrite `packages/ui/src/style.css`:
 - [ ] **Step 4: Move each line range verbatim into its partial**
 
 Move, do not rewrite, and keep every rule on one line exactly as it is today. Blank lines and section comments move with their rules. Ranges are current `style.css` line numbers; read the file before each move.
+
+**The old `:root` block (old `3-29`) is the one part you cannot move verbatim.** Its 25 declarations collide with the new ramp in four places, and a later `:root` in the cascade would silently win: `--line`, `--line-strong`, `--ok` and `--err` already mean something new. Handle it like this, in this same commit:
+
+- The other 21 declarations (`--topbar`, `--nav`, `--main`, `--main-soft`, `--card`, `--card-hover`, `--field`, `--field-hover`, `--text-strong`, `--text`, `--text-muted`, `--text-faint`, `--accent`, `--accent-strong`, `--accent-soft`, `--warning`, `--radius-sm`, `--radius-md`, `--radius-lg`, `--motion-standard`, and the `color-scheme: dark` line) move into `tokens.css` inside the existing `:root`, appended after the new tokens with the `/* ── Legacy aliases: debt register ── */` comment from Task 3 in front of them. Do not redeclare `color-scheme`.
+- Rename the four collisions, keeping their old values, and add them to that same block:
+
+```css
+  --legacy-line: rgba(222, 226, 255, 0.085);
+  --legacy-line-strong: rgba(222, 226, 255, 0.17);
+  --legacy-ok: #7bd6af;
+  --legacy-err: #ff929e;
+```
+
+- Rewrite every reference to the old bare names in the partials: `var(--line)`→`var(--legacy-line)` (11 sites), `var(--line-strong)`→`var(--legacy-line-strong)` (7 sites), `var(--ok)`→`var(--legacy-ok)` (7 sites), `var(--err)`→`var(--legacy-err)` (8 sites). Then grep to prove nothing is left:
+
+```powershell
+Select-String -Path packages/ui/src/styles/*.css -Pattern 'var\(--line\)|var\(--line-strong\)|var\(--ok\)|var\(--err\)'
+```
+Expected: no matches, because the four bare names must now resolve only to the graphite ramp. `var(--line-soft)` is a different name and is unaffected.
 
 **`styles/base.css`** — old `31-83`, plus `232-235` (textarea) and `527-529` (reduced motion):
 
@@ -470,32 +504,13 @@ Expected: FAIL, listing every offending line. Record the total — it is the num
 
 Insert before the closing `}` of `:root`. These are the old rules' current values given roles, so this task changes appearance by at most a step or two. Plan 2 deletes the block.
 
+Task 2 already moved the 21 non-colliding old names and the four `--legacy-line`/`--legacy-ok`/`--legacy-err` entries into this block, so the comment header may already be present — do not duplicate it. Append only the role entries below.
+
 ```css
   /* ── Legacy aliases: debt register ────────────────────────────────
      Values are the pre-redesign palette, named by role. Reference an
      entry here only when nothing above fits. Plan 2's palette flip
      removes this entire block. */
-  --topbar: #121426;
-  --nav: #272b40;
-  --main: #1d2033;
-  --main-soft: #22263a;
-  --card: #292d43;
-  --card-hover: #30354d;
-  --field: #171a2b;
-  --field-hover: #1d2134;
-  --text-strong: #f5f5fb;
-  --text: #e5e7f2;
-  --text-muted: #a1a5bb;
-  --text-faint: #737991;
-  --accent: #a7c4ff;
-  --accent-strong: #3c9ef5;
-  --accent-soft: rgba(121, 169, 255, 0.16);
-  --warning: #f2c86f;
-  --radius-sm: 7px;
-  --radius-md: 10px;
-  --radius-lg: 15px;
-  --motion-standard: cubic-bezier(0.32, 0.72, 0, 1);
-
   --legacy-surface-sunken: #1c2033;
   --legacy-surface-raised: #24283d;
   --legacy-surface-raised-hover: #2d324a;
@@ -912,6 +927,6 @@ git commit -m "docs(ui): document the token system"
 
 ## Not in this plan
 
-- Plan 2: delete the legacy alias block, flip to the graphite ramp, rebuild the chrome (52px rail, top-bar tabs, 24px status bar, brand SVG and favicon, theme switch, dead `.window-control` removal), fold remaining radii onto `--r-*`, apply `--fs-term`.
+- Plan 2: delete the legacy alias block, flip to the graphite ramp, rebuild the chrome (52px rail, top-bar tabs, 24px status bar, brand SVG and favicon, theme switch, dead `.window-control` removal), fold remaining radii onto `--r-*`, apply `--fs-term`, and add the deferred half of the theme-sync rule (`index.html` meta and `shell.ts`'s two literals). **Watch the light theme's `--ac-fg` on `--ac`: it measures 4.63:1, only 0.13 above the AA floor.** Any lightening of the accent during the flip breaks it, and `design-tokens.test.mjs` will fail — darken the accent rather than loosening the threshold.
 - Plan 3: hosts and keychain tables, docked Inspector, resizable SFTP split, four states, toasts, failure diagnostics, the breakpoint consolidation to 1100/820/620, and the `docs/architecture.md` update.
 - Both later plans inherit this plan's no-literals rule, so any new CSS they add must reference a token from the first commit of that task.

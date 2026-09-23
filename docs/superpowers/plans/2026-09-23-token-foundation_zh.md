@@ -98,30 +98,45 @@ function token(selector, name) {
   return match[1].trim()
 }
 
-const NEW_TOKENS = [
+const THEME_TOKENS = [
   '--c-inset', '--c-canvas', '--c-chrome', '--c-surface', '--c-raised', '--c-control',
   '--line', '--line-soft', '--line-strong',
   '--tx-1', '--tx-2', '--tx-3', '--tx-4',
   '--ac', '--ac-hi', '--ac-bg', '--ac-fg',
   '--ok', '--warn', '--err', '--idle',
+  '--term-bg', '--term-fg', '--term-cursor', '--term-selection',
+]
+
+// Metrics are theme-invariant: `:root` and `[data-theme="light"]` match the
+// same element, so the light group inherits them. Repeating them would
+// recreate the hand-synced duplicate debt this plan exists to remove.
+const GLOBAL_TOKENS = [
   '--r-1', '--r-2', '--r-3', '--r-full',
   '--s-1', '--s-2', '--s-3', '--s-4', '--s-5', '--s-6',
   '--row-h', '--row-h-compact',
   '--z-drawer', '--z-popover', '--z-toast', '--z-dialog',
   '--t-1', '--t-2', '--t-3', '--ease',
-  '--term-bg', '--term-fg', '--term-cursor', '--term-selection',
 ]
 
-test('both theme groups declare the same new tokens', () => {
+test('both theme groups declare the same colour tokens', () => {
   for (const selector of [':root', '[data-theme="light"]']) {
     const declared = new Set(names(block(selector)))
-    for (const name of NEW_TOKENS) {
+    for (const name of THEME_TOKENS) {
       assert.ok(declared.has(name), `${selector} is missing ${name}`)
     }
   }
   const dark = new Set(names(block(':root')))
   const light = new Set(names(block('[data-theme="light"]')))
   for (const name of light) assert.ok(dark.has(name), `${name} exists only in the light theme`)
+})
+
+test('theme-invariant metrics are declared once, in :root only', () => {
+  const dark = new Set(names(block(':root')))
+  const light = new Set(names(block('[data-theme="light"]')))
+  for (const name of GLOBAL_TOKENS) {
+    assert.ok(dark.has(name), `:root is missing ${name}`)
+    assert.ok(!light.has(name), `${name} must not be duplicated into the light theme`)
+  }
 })
 
 test('text and accent tokens clear WCAG AA on their surfaces', () => {
@@ -278,7 +293,7 @@ test('terminal tokens exist in both themes and stay dark', () => {
 - [ ] **Step 4: 运行测试，确认它通过**
 
 运行：`node --test packages/ui/tests/design-tokens.test.mjs`
-预期：PASS，4 个测试。如果 AA 测试在浅色主题的 `--tx-3` 上失败，先重新量测再考虑改值 —— 目标比值是深色 ≈16.5:1 与 ≈4.8:1、浅色 ≈17.7:1 与 ≈4.9:1。
+预期：PASS，5 个测试。若某条 AA 测试失败，先重新量测再考虑改值 —— 目标比值是深色 `--tx-1` ≈16.46:1、`--tx-3` ≈4.79:1、`--ac-fg` 压在 `--ac` 上 ≈8.58:1；浅色 `--tx-1` ≈17.77:1、`--tx-3` ≈4.83:1、`--ac-fg` 压在 `--ac` 上 ≈4.63:1。
 
 - [ ] **Step 5: 提交**
 
@@ -352,6 +367,25 @@ test('each partial is a leaf and the manifest owns cascade order', () => {
 - [ ] **Step 4: 把每段行号区间原样移入对应分片**
 
 只做移动，不要重写，并保持每条规则像今天一样写在同一行。空行和分段注释跟着规则一起走。区间是当前 `style.css` 的行号；每次移动前先读文件。
+
+**旧 `:root` 块（旧 `3-29`）是唯一不能原样移动的部分。** 它的 25 条声明里有四处与新灰阶撞名，而层叠中后出现的 `:root` 会静默胜出：`--line`、`--line-strong`、`--ok`、`--err` 已经有了新含义。在同一个提交里按下面处理：
+
+- 其余 21 条（`--topbar`、`--nav`、`--main`、`--main-soft`、`--card`、`--card-hover`、`--field`、`--field-hover`、`--text-strong`、`--text`、`--text-muted`、`--text-faint`、`--accent`、`--accent-strong`、`--accent-soft`、`--warning`、`--radius-sm`、`--radius-md`、`--radius-lg`、`--motion-standard`，以及 `color-scheme: dark` 那一行）移入 `tokens.css` 已有的 `:root`，追加在新 token 之后，并在前面加上任务 3 里那段 `/* ── Legacy aliases: debt register ── */` 注释。不要重复声明 `color-scheme`。
+- 把撞名的四条改名保留旧值，加进同一块：
+
+```css
+  --legacy-line: rgba(222, 226, 255, 0.085);
+  --legacy-line-strong: rgba(222, 226, 255, 0.17);
+  --legacy-ok: #7bd6af;
+  --legacy-err: #ff929e;
+```
+
+- 重写各分片里对旧裸名的每一个引用：`var(--line)`→`var(--legacy-line)`（11 处）、`var(--line-strong)`→`var(--legacy-line-strong)`（7 处）、`var(--ok)`→`var(--legacy-ok)`（7 处）、`var(--err)`→`var(--legacy-err)`（8 处）。然后 grep 证明已无残留：
+
+```powershell
+Select-String -Path packages/ui/src/styles/*.css -Pattern 'var\(--line\)|var\(--line-strong\)|var\(--ok\)|var\(--err\)'
+```
+预期：无匹配 —— 这四个裸名此后只能解析到石墨灰阶。`var(--line-soft)` 是另一个名字，不受影响。
 
 **`styles/base.css`** —— 旧 `31-83`，加 `232-235`（textarea）和 `527-529`（reduced motion）：
 
@@ -469,32 +503,13 @@ test('no partial hard-codes a colour', async () => {
 
 插入到 `:root` 的收尾 `}` 之前。这些是旧规则的当前值配上角色名，因此本任务最多改变一两个色阶。计划二会删掉整块。
 
+任务 2 已经把 21 个不撞名的旧名和 `--legacy-line`/`--legacy-ok`/`--legacy-err` 那几条移进了这个块，所以注释头可能已存在 —— 不要重复添加。只追加下面的角色条目。
+
 ```css
   /* ── Legacy aliases: debt register ────────────────────────────────
      Values are the pre-redesign palette, named by role. Reference an
      entry here only when nothing above fits. Plan 2's palette flip
      removes this entire block. */
-  --topbar: #121426;
-  --nav: #272b40;
-  --main: #1d2033;
-  --main-soft: #22263a;
-  --card: #292d43;
-  --card-hover: #30354d;
-  --field: #171a2b;
-  --field-hover: #1d2134;
-  --text-strong: #f5f5fb;
-  --text: #e5e7f2;
-  --text-muted: #a1a5bb;
-  --text-faint: #737991;
-  --accent: #a7c4ff;
-  --accent-strong: #3c9ef5;
-  --accent-soft: rgba(121, 169, 255, 0.16);
-  --warning: #f2c86f;
-  --radius-sm: 7px;
-  --radius-md: 10px;
-  --radius-lg: 15px;
-  --motion-standard: cubic-bezier(0.32, 0.72, 0, 1);
-
   --legacy-surface-sunken: #1c2033;
   --legacy-surface-raised: #24283d;
   --legacy-surface-raised-hover: #2d324a;
@@ -912,6 +927,6 @@ git commit -m "docs(ui): document the token system"
 
 ## 不在本计划内
 
-- 计划二：删除 legacy 别名块、翻转到石墨灰阶、重建 chrome（52px 轨道、顶栏标签、24px 状态栏、品牌 SVG 与 favicon、主题开关、清理失效的 `.window-control`），把剩余圆角折进 `--r-*`，应用 `--fs-term`。
+- 计划二：删除 legacy 别名块、翻转到石墨灰阶、重建 chrome（52px 轨道、顶栏标签、24px 状态栏、品牌 SVG 与 favicon、主题开关、清理失效的 `.window-control`），把剩余圆角折进 `--r-*`，应用 `--fs-term`，并补上 spec 主题同步规则被延后的另一半（`index.html` 的 meta 与 `shell.ts` 的两处字面量）。**注意浅色主题的 `--ac-fg` 压在 `--ac` 上只有 4.63:1**，距 AA 的 4.5 底线仅剩 0.13。翻转时把 accent 调亮一点就会跌破，`design-tokens.test.mjs` 会立刻报错 —— 那时应该调暗 accent，而不是放宽阈值。
 - 计划三：hosts 与 keychain 表格、右固定 Inspector、可拖拽 SFTP 分栏、四态、toast、失败诊断、断点合并为 1100/820/620，以及 `docs/architecture.md` 的更新。
 - 两个后续计划继承本计划的"禁止字面量"规则，所以它们新增的任何 CSS，从该任务的第一个提交起就必须引用 token。
