@@ -1,3 +1,6 @@
+/* Contract: colour groups are redeclared per theme; metrics live in :root once
+   and inherit, because :root and [data-theme="light"] match the same element.
+   --shadow-pop is the one theme-varying derived token. Asserted by the tests. */
 :root {
   color-scheme: dark;
 
@@ -9,9 +12,14 @@
   --c-surface: #131519;
   --c-raised: #191c21;
   --c-control: #21252b;
+  /* Hairlines are not text: --line measures ~1.27:1 on --c-surface by design,
+     where the rgba(222, 226, 255, .085) it replaces composited to ~1.35:1. */
   --line: #262a31;
   --line-soft: #1c1f24;
   --line-strong: #3a4049;
+  /* Legality is per ground, not per token: muted and accent text are legal on
+     --c-surface, with --c-canvas the only other permitted ground; on
+     --c-control / --c-chrome they fall to 3.9-4.2 and the AA guard is silent. */
   --tx-1: #f2f3f5;
   --tx-2: #b9bec6;
   --tx-3: #7d838d;
@@ -55,7 +63,7 @@
 
   --font-ui: Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
-  --font-term: "Cascadia Mono", Consolas, monospace;
+  --font-term: "Cascadia Mono", Consolas, "Sarasa Mono SC", "Microsoft YaHei Mono", monospace;
   --fs-micro: 11px;
   --fs-meta: 12px;
   --fs-ui: 13px;
@@ -90,7 +98,7 @@
   --ok: #1a7f4b;
   --warn: #9a6a0a;
   --err: #c2363b;
-  --idle: #c9ced5;
+  --idle: #7e8590;
 
   /* Identical to dark on purpose; asserted by design-tokens.test.mjs. */
   --term-bg: #08090a;
