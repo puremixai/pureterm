@@ -207,3 +207,15 @@ test('translucent accent tokens carry the --ac triplet they sit on', () => {
       `${selector} --term-selection is dark terminal material and must track the dark --ac triplet`)
   }
 })
+
+test('--term-cursor carries the accent triplet rather than a hand-copy of it', () => {
+  // A third copy of the accent, and the one no consumer reads through var():
+  // terminal-view.ts resolves it once through getComputedStyle. Without this
+  // tie a palette flip would leave the cursor behind in silence. The terminal
+  // group is dark material in both themes, so both track the dark --ac.
+  const darkAc = triplet(token(DARK, '--ac'))
+  for (const selector of THEMES) {
+    assert.deepEqual(triplet(token(selector, '--term-cursor')), darkAc,
+      `${selector} --term-cursor must carry the dark --ac triplet`)
+  }
+})

@@ -1,5 +1,6 @@
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import type { ITheme } from '@xterm/xterm'
 
 export interface TerminalView {
   readonly cols: number
@@ -16,16 +17,34 @@ export interface TerminalView {
 export type TerminalFactory = (container: HTMLElement) => TerminalView
 
 export const createTerminalView: TerminalFactory = (container) => {
+  const probe = document.documentElement
+  const read = (name: string) => getComputedStyle(probe).getPropertyValue(name).trim()
+
+  const ANSI: string[] = [
+    '#08090a', '#f2555a', '#4ec27f', '#e0a83c', '#5aaeff', '#c58aff', '#57c8d0', '#b9bec6',
+    '#565b63', '#ff7b81', '#7ddba8', '#f2c86f', '#7cc0ff', '#d9a8ff', '#7fe0e8', '#f2f3f5',
+  ]
+  // xterm's ITheme names the sixteen palette entries individually and folds
+  // them into its own 0-15 array, so the neutral set above is handed over by
+  // position: 0-7 normal, 8-15 bright, in black/red/green/yellow/blue/magenta/
+  // cyan/white order. An `ANSI` key on the theme is rejected by the types.
+  const palette: ITheme = {
+    black: ANSI[0], red: ANSI[1], green: ANSI[2], yellow: ANSI[3],
+    blue: ANSI[4], magenta: ANSI[5], cyan: ANSI[6], white: ANSI[7],
+    brightBlack: ANSI[8], brightRed: ANSI[9], brightGreen: ANSI[10], brightYellow: ANSI[11],
+    brightBlue: ANSI[12], brightMagenta: ANSI[13], brightCyan: ANSI[14], brightWhite: ANSI[15],
+  }
+
   const terminal = new Terminal({
     cursorBlink: true, fontSize: 14, lineHeight: 1.2, scrollback: 5000,
     fontFamily: 'Cascadia Mono, Consolas, "Sarasa Mono SC", "Microsoft YaHei Mono", monospace',
     theme: {
-      background: '#121426', foreground: '#d6dee8', cursor: '#69c8f4', cursorAccent: '#121426',
-      selectionBackground: '#24445a', black: '#0b0e12', brightBlack: '#667382',
-      white: '#d6dee8', brightWhite: '#eef3f8', blue: '#69c8f4', brightBlue: '#9bdeff',
-      green: '#68d5a1', brightGreen: '#8ee8bc', yellow: '#e5bd75', brightYellow: '#f0cf8d',
-      red: '#ff8e8e', brightRed: '#ffb2b2', magenta: '#c6a8ff', brightMagenta: '#dfcbff',
-      cyan: '#69c8f4', brightCyan: '#a5e6ff',
+      background: read('--term-bg'),
+      foreground: read('--term-fg'),
+      cursor: read('--term-cursor'),
+      cursorAccent: read('--term-bg'),
+      selectionBackground: read('--term-selection'),
+      ...palette,
     },
   })
   const fit = new FitAddon()
