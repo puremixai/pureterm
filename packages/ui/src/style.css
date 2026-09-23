@@ -1,9 +1,10 @@
 /* Cascade contract. Import order is load-bearing: partials compete at equal
    specificity and the later import wins, so change it only with a measured
    cascade check. Each partial is a role-based leaf and must not @import.
-   The two font providers come first: a face has to be declared before any rule
-   asks for it. styles/fonts.css is the only place a family name is written out,
-   and it bundles the two Inter latin files the page actually renders.
+   The two font providers come first: CSS does not require a face to precede the
+   rules that use it, so this is a reading order, and the one that puts the
+   assets before the cascade. styles/fonts.css is the only place a family name
+   is written out, and it bundles the two Inter latin files the page renders.
    A colour literal may appear only in styles/tokens.css and styles/legacy.css;
    every other partial resolves colour through a token, which is what
    stylesheet-contract.test.mjs enforces. */

@@ -17,7 +17,7 @@
    the two files this page can reach. The descriptors and unicode-ranges are
    the package's own; only the family name, the subset selection and the format
    string differ — `woff2-variations` is a legacy spelling a UA may skip, while
-   a variable woff2 is already unlocked by the weight range above. */
+   the weight range descriptor in the same block is what unlocks the axis. */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
