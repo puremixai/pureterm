@@ -69,7 +69,7 @@
 - `--font-mono`：`"JetBrains Mono", "Cascadia Mono", Consolas, monospace` —— 仅用于外壳
 - `--font-term`：终端沿用系统 mono 栈 `"Cascadia Mono", Consolas`，原因见下文测量竞态
 
-终端表面 token 取代 `terminal-view.ts` 里那四个硬编码值：`--term-bg #08090a`、`--term-fg #c9ced6`、`--term-cursor #5aaeff`、`--term-selection rgba(90,174,255,.24)`。16 个 ANSI 项一次性收进一组中性值，并记入 `docs/design-system.md`：常规 `#08090a #f2555a #4ec27f #e0a83c #5aaeff #c58aff #57c8d0 #b9bec6`，亮色 `#565b63 #ff7b81 #7ddba8 #f2c86f #7cc0ff #d9a8ff #7fe0e8 #f2f3f5`。它们在浅色主题下仍然保持深色。
+终端表面 token 取代 `terminal-view.ts` 里那四个硬编码值：`--term-bg #08090a`、`--term-fg #c9ced6`、`--term-cursor #5aaeff`、`--term-selection rgba(90,174,255,.24)`。16 个 ANSI 项一次性收进一组中性值，并记入 `docs/design-system.md`：常规 `#101317 #f2555a #4ec27f #e0a83c #5aaeff #c58aff #57c8d0 #b9bec6`，亮色 `#5f656e #ff7b81 #7ddba8 #f2c86f #7cc0ff #d9a8ff #7fe0e8 #f2f3f5`。第 0 项刻意不等于 `--term-bg`，因为两者相同会让黑字压在终端底色上按构造恰好是 1.00:1；亮色第 0 项要过 3:1，因为提示符用它表示"调暗"而非"隐藏"的文字。它们在浅色主题下仍然保持深色。
 
 | Token | 规格 | 用途 |
 | --- | --- | --- |

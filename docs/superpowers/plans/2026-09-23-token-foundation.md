@@ -57,6 +57,11 @@ Task 3 landed as `d893346` and was hardened by `8e7541d`. `packages/ui/src/style
 
 Also for Plan 2: `legacy.css` has no light group, so all 100 entries stay dark in light mode — correct while the file exists, and a one-file change when it does not. And `white` remains in three places the literal regex cannot see: `\bwhite\b` also matches `white-space`, which appears 13 times in these partials, so catching named colours needs a value-position-aware rule rather than a wider word list.
 
+Task 4 added two more:
+
+5. **`index.html:15` still carries `<meta name="theme-color" content="#121426">`** — a retired-palette literal in a file no guard reads, now matching nothing that renders. It belongs to the theme-sync assertion the flip owes.
+6. **The `--term-*` group has no CSS consumer at all.** Its only reader is `terminal-view.ts`, which no CSS guard scans, so `terminal-theme.test.mjs` is the single tie holding it, and the palette flip cannot "see" the terminal through the stylesheet. Note also that xterm 6 ships only the DOM renderer here (`_createRenderer()` returns `DomRenderer`, no canvas addon is loaded), and that renderer pre-blends the selection alpha at construction: `--term-selection`'s stated `.24` resolves to a painted `#1c3045`. The alpha is decorative until a canvas or gpu renderer lands, which would render the same token differently.
+
 ## File structure
 
 | File | Responsibility |
@@ -754,9 +759,22 @@ and in the `new Terminal({ ... })` options:
     cursor: read('--term-cursor'),
     cursorAccent: read('--term-bg'),
     selectionBackground: read('--term-selection'),
-    ANSI,
+    ...palette,
   },
 ```
+
+**Correction found during execution: `ANSI` is not a key of xterm's `ITheme`.** Writing `ANSI,` into the theme object fails to compile with `TS2353: Object literal may only specify known properties, and 'ANSI' does not exist in type 'ITheme'`, and `@xterm/xterm` 6.0.0 accepts no array at all — its `ThemeService` folds the sixteen *named* keys into its own 0-15 array. A cast would have compiled and then silently delivered xterm's Tango defaults, with the red at `#cc0000`, and nothing anywhere would have errored. The shipped shape keeps the array as the single readable list and hands it over positionally:
+
+```ts
+  const palette: ITheme = {
+    black: ANSI[0], red: ANSI[1], green: ANSI[2], yellow: ANSI[3],
+    blue: ANSI[4], magenta: ANSI[5], cyan: ANSI[6], white: ANSI[7],
+    brightBlack: ANSI[8], brightRed: ANSI[9], brightGreen: ANSI[10], brightYellow: ANSI[11],
+    brightBlue: ANSI[12], brightMagenta: ANSI[13], brightCyan: ANSI[14], brightWhite: ANSI[15],
+  }
+```
+
+with `...palette` spread after the five token reads, and `ANSI[0]` set to `#101317` rather than `--term-bg` so black-on-terminal text is not exactly 1.00:1 by construction, and `ANSI[8]` set to `#5f656e` so the dimmed-prompt colour clears 3:1.
 
 `cursorAccent` must stay in the object. The literal it replaces (`terminal-view.ts:23`) was `cursorAccent: '#121426'`, which is that file's own background value: xterm inverts the glyph under a hollow or opaque cursor using it, so dropping the key changes how the cursor renders over text. It resolves to `--term-bg` because the cell under the cursor is the canvas.
 

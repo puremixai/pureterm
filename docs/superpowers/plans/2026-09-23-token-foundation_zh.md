@@ -57,6 +57,11 @@ spec 列了六个提交。提交 1–2 在这里。提交 3–5（chrome、hosts
 
 计划二还需知道：`legacy.css` 没有浅色组，所以 100 条在浅色模式下全是深色 —— 文件活着时这是对的，文件没了就是一处单行改动。另外 `white` 还留在三处字面量正则看不见的地方：`\bwhite\b` 同时匹配 `white-space`，而这些分片里 `white-space` 出现 13 次，所以要捕获具名颜色需要一条能识别取值位置的规则，而不是更宽的词表。
 
+任务 4 又添了两条：
+
+5. **`index.html:15` 仍带着 `<meta name="theme-color" content="#121426">`** —— 一处住在"没有任何守卫读取的文件"里的旧色板字面量，如今与任何实际渲染都不对应。它属于翻转欠下的那条主题同步断言。
+6. **`--term-*` 组完全没有 CSS 消费者。** 它唯一的读取方是 `terminal-view.ts`，而任何 CSS 守卫都不扫描 `.ts`，所以 `terminal-theme.test.mjs` 是拴住它的唯一一根线，配色翻转无法透过样式表"看见"终端。另需知道：xterm 6 在这里只有 DOM 渲染器（`_createRenderer()` 返回 `DomRenderer`，未加载 canvas 插件），而该渲染器在构造时就把选区的 alpha 预混合了 —— `--term-selection` 声明的 `.24` 实际画出的是 `#1c3045`。在 canvas 或 gpu 渲染器落地之前，那个 alpha 只是装饰；而它一旦落地，同一个 token 会渲染成别的样子。
+
 ## 文件结构
 
 | 文件 | 职责 |
@@ -754,9 +759,22 @@ const ANSI: string[] = [
     cursor: read('--term-cursor'),
     cursorAccent: read('--term-bg'),
     selectionBackground: read('--term-selection'),
-    ANSI,
+    ...palette,
   },
 ```
+
+**执行中发现的修正：`ANSI` 不是 xterm `ITheme` 的键。** 在 theme 对象里写 `ANSI,` 编译不过，报 `TS2353: Object literal may only specify known properties, and 'ANSI' does not exist in type 'ITheme'`；而 `@xterm/xterm` 6.0.0 根本不接受数组 —— 它的 `ThemeService` 是把十六个*具名*键折叠进自己的 0-15 数组。用类型断言强行通过的话会编译成功、然后把 xterm 的 Tango 默认色板原样交给终端（红色是 `#cc0000`），且任何地方都不会报错。实际落地的形状保留数组作为唯一可读清单，并按位置交接：
+
+```ts
+  const palette: ITheme = {
+    black: ANSI[0], red: ANSI[1], green: ANSI[2], yellow: ANSI[3],
+    blue: ANSI[4], magenta: ANSI[5], cyan: ANSI[6], white: ANSI[7],
+    brightBlack: ANSI[8], brightRed: ANSI[9], brightGreen: ANSI[10], brightYellow: ANSI[11],
+    brightBlue: ANSI[12], brightMagenta: ANSI[13], brightCyan: ANSI[14], brightWhite: ANSI[15],
+  }
+```
+
+用 `...palette` 展开在五处 token 读取之后；`ANSI[0]` 取 `#101317` 而不是 `--term-bg`，以免黑字压底色按构造恰好 1.00:1；`ANSI[8]` 取 `#5f656e`，让提示符的"调暗"色过 3:1。
 
 `cursorAccent` 必须留在对象里。它替换的那条字面量（`terminal-view.ts:23`）原本是 `cursorAccent: '#121426'`，也就是该文件自己的背景值：xterm 用它来反转光标下方字形的颜色，删掉这个键会改变光标压在文字上的观感。它解析到 `--term-bg`，因为光标下的单元格就是画布。
 

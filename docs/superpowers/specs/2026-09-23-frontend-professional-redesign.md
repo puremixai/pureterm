@@ -69,7 +69,7 @@ Measured ratios: `--tx-1` on `--c-surface` ≈ 16.5:1 dark and ≈ 17.7:1 light;
 - `--font-mono`: `"JetBrains Mono", "Cascadia Mono", Consolas, monospace` — shell only; the terminal keeps the system mono stack
 - `--font-term`: unchanged system mono stack, `"Cascadia Mono", Consolas`, because of the measurement race described below
 
-Terminal surface tokens replace the four hard-coded values in `terminal-view.ts`: `--term-bg #08090a`, `--term-fg #c9ced6`, `--term-cursor #5aaeff`, `--term-selection rgba(90,174,255,.24)`. The 16 ANSI entries are retuned once into a neutral set and listed in `docs/design-system.md`: normal `#08090a #f2555a #4ec27f #e0a83c #5aaeff #c58aff #57c8d0 #b9bec6`, bright `#565b63 #ff7b81 #7ddba8 #f2c86f #7cc0ff #d9a8ff #7fe0e8 #f2f3f5`. They stay dark in the light theme.
+Terminal surface tokens replace the four hard-coded values in `terminal-view.ts`: `--term-bg #08090a`, `--term-fg #c9ced6`, `--term-cursor #5aaeff`, `--term-selection rgba(90,174,255,.24)`. The 16 ANSI entries are retuned once into a neutral set and listed in `docs/design-system.md`: normal `#101317 #f2555a #4ec27f #e0a83c #5aaeff #c58aff #57c8d0 #b9bec6`, bright `#5f656e #ff7b81 #7ddba8 #f2c86f #7cc0ff #d9a8ff #7fe0e8 #f2f3f5`. Entry 0 is deliberately not `--term-bg`, because identical values make black-on-terminal text exactly 1.00:1 by construction, and bright entry 0 clears 3:1 because prompts use it for dimmed rather than hidden text. They stay dark in the light theme.
 
 | Token | Spec | Use |
 | --- | --- | --- |

@@ -20,9 +20,12 @@ export const createTerminalView: TerminalFactory = (container) => {
   const probe = document.documentElement
   const read = (name: string) => getComputedStyle(probe).getPropertyValue(name).trim()
 
+  // ANSI[0] is deliberately not --term-bg: identical values would make
+  // black-on-terminal text exactly 1.00:1 by construction. brightBlack clears
+  // 3:1 because prompts use it for dimmed rather than hidden text.
   const ANSI: string[] = [
-    '#08090a', '#f2555a', '#4ec27f', '#e0a83c', '#5aaeff', '#c58aff', '#57c8d0', '#b9bec6',
-    '#565b63', '#ff7b81', '#7ddba8', '#f2c86f', '#7cc0ff', '#d9a8ff', '#7fe0e8', '#f2f3f5',
+    '#101317', '#f2555a', '#4ec27f', '#e0a83c', '#5aaeff', '#c58aff', '#57c8d0', '#b9bec6',
+    '#5f656e', '#ff7b81', '#7ddba8', '#f2c86f', '#7cc0ff', '#d9a8ff', '#7fe0e8', '#f2f3f5',
   ]
   // xterm's ITheme names the sixteen palette entries individually and folds
   // them into its own 0-15 array, so the neutral set above is handed over by
