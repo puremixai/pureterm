@@ -75,7 +75,7 @@ The references establish a dark desktop shell, a persistent left navigation rail
 
 - Typography: Segoe UI Variable/Segoe UI fallbacks preserve the compact Windows desktop feel; terminal output uses a monospace stack with distinct ANSI colors.
 - Spacing and layout: dashboard rhythm, drawer padding, card gaps, control heights, and session margins use the reference proportions while adapting to the current viewport.
-- Colors and tokens: top bar, navigation rail, dashboard, card, field, border, muted text, accent, success, error, and warning colors are centralized in `packages/ui/src/style.css`.
+- Colors and tokens: top bar, navigation rail, dashboard, card, field, border, muted text, accent, success, error, and warning colors are centralized in `packages/ui/src/styles/legacy.css`, the pre-redesign palette kept as a debt register; the replacement neutral ramp lives in `packages/ui/src/styles/tokens.css`, as described in the [design system guide](docs/design-system.md).
 - Image quality and icons: Tabler Icons Webfont is bundled locally and used for navigation, search, terminal, view, window, drawer, failure, and utility icons; no remote asset is required.
 - Copy and content: structural labels follow the reference vocabulary where appropriate, while PureTerm-specific content remains bilingual/Chinese where the existing product uses it.
 - Interaction states: drawer open/close, connection retry, connection failure, successful session, SFTP drawer, keyboard focus, reduced motion, and session cleanup were checked in the live carrier.

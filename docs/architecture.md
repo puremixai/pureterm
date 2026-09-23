@@ -61,6 +61,8 @@ The root `package.json` declares workspaces and the root `package-lock.json` is 
 
 Root build scripts build shared packages first, then the selected entry, and clean the corresponding `dist/`. The shared UI produces one `packages/ui/dist/{index.html,app.js,app.css}`. Both entries locate it through the `@pureterm/ui/index.html` package export. Desktop serves those files through the secure `pureterm-app://app/` scheme and locates `dist/electron/carriers/preload.cjs` by compiled module location. The standalone Web entry is `apps/web/dist/main.js`. None of these paths depend on the launch cwd.
 
+For the UI's own layout, [design tokens and stylesheet layout](design-system.md) is the authority: `packages/ui/src/styles/tokens.css` holds every colour value, and `packages/ui/src/style.css` is only an `@import` manifest over the role-based partials that consume them.
+
 ## Lifecycle
 
 Desktop applies platform policy, registers the custom scheme and scoped WebSocket authorization, starts the Node Web Host, and creates a shell generation while Host startup continues. The page loads immediately; its minimal preload waits for Host readiness before receiving the loopback WebSocket URL. Each window generation, listener, and watchdog has an idempotent release path; window operations read the current generation. The readiness gate accepts a launch profile only after the current main frame reports `renderer-ready`; loaded HTML alone does not mean the application is usable.

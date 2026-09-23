@@ -61,6 +61,8 @@ services/plugins 保留原有业务分类，并不等于 Service/function plugin
 
 根构建脚本先构建共享包，再构建指定入口，清理对应项目的 `dist/`。共享界面只生成一份 `packages/ui/dist/{index.html,app.js,app.css}`。两个入口通过 `@pureterm/ui/index.html` 的包导出定位界面。Desktop 通过安全的 `pureterm-app://app/` scheme 提供这些文件，并根据编译模块位置找到 `dist/electron/carriers/preload.cjs`。独立 Web 入口为 `apps/web/dist/main.js`。这些定位不依赖启动时 cwd。
 
+界面自身的布局以[设计 Token 与样式表布局](design-system_zh.md)为权威：颜色取值全部位于 `packages/ui/src/styles/tokens.css`，`packages/ui/src/style.css` 只是覆盖按职责切分、消费这些取值的各分片的 `@import` 清单。
+
 ## 生命周期
 
 Desktop 先应用平台策略、注册自定义 scheme 与限定范围的 WebSocket 鉴权，再启动 Node Web Host；Host 启动的同时创建 shell generation。页面立即加载；最小 preload 等待 Host 就绪后才取得回环 WebSocket URL。每代窗口、监听器与看门狗由 shell 幂等释放；使用窗口时读取当前代。当前主框架报告 renderer-ready 后，就绪闸门才允许提交启动档案，HTML 已加载不等于应用已可用。
