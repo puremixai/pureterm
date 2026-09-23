@@ -1,0 +1,106 @@
+:root {
+  color-scheme: dark;
+
+  /* Neutral ramp. Hue is pinned to 210deg at <=5% saturation: depth is
+     hierarchy, never mood. */
+  --c-inset: #08090a;
+  --c-canvas: #0a0b0d;
+  --c-chrome: #0e1013;
+  --c-surface: #131519;
+  --c-raised: #191c21;
+  --c-control: #21252b;
+  --line: #262a31;
+  --line-soft: #1c1f24;
+  --line-strong: #3a4049;
+  --tx-1: #f2f3f5;
+  --tx-2: #b9bec6;
+  --tx-3: #7d838d;
+  --tx-4: #565b63;
+  --ac: #5aaeff;
+  --ac-hi: #7cc0ff;
+  --ac-bg: rgba(90, 174, 255, 0.12);
+  --ac-fg: #05070a;
+  --ok: #4ec27f;
+  --warn: #e0a83c;
+  --err: #f2555a;
+  --idle: #8b919b;
+
+  /* Terminal keeps one dark group in both themes. A light shell over a
+     dark canvas is the point, not an oversight. */
+  --term-bg: #08090a;
+  --term-fg: #c9ced6;
+  --term-cursor: #5aaeff;
+  --term-selection: rgba(90, 174, 255, 0.24);
+
+  --r-1: 3px;
+  --r-2: 5px;
+  --r-3: 8px;
+  --r-full: 999px;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --row-h: 38px;
+  --row-h-compact: 30px;
+  --z-drawer: 20;
+  --z-popover: 30;
+  --z-toast: 40;
+  --z-dialog: 50;
+  --t-1: 100ms;
+  --t-2: 160ms;
+  --t-3: 240ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --font-ui: Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --font-term: "Cascadia Mono", Consolas, monospace;
+  --fs-micro: 11px;
+  --fs-meta: 12px;
+  --fs-ui: 13px;
+  --fs-em: 14px;
+  --fs-h2: 16px;
+  --fs-h1: 20px;
+  --fs-term: 13.5px;
+  --ring: 0 0 0 2px var(--c-canvas), 0 0 0 4px var(--ac);
+  --shadow-pop: 0 8px 24px -6px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --c-inset: #eceef1;
+  --c-canvas: #f7f8f9;
+  --c-chrome: #eef0f2;
+  --c-surface: #ffffff;
+  --c-raised: #f4f6f8;
+  --c-control: #e8ebef;
+  --line: #dfe3e8;
+  --line-soft: #eceef1;
+  --line-strong: #c6ccd4;
+  --tx-1: #16181c;
+  --tx-2: #454b54;
+  --tx-3: #6b7280;
+  --tx-4: #9aa1aa;
+  --ac: #1f6feb;
+  --ac-hi: #1a5fcd;
+  --ac-bg: rgba(31, 111, 235, 0.1);
+  --ac-fg: #ffffff;
+  --ok: #1a7f4b;
+  --warn: #9a6a0a;
+  --err: #c2363b;
+  --idle: #c9ced5;
+
+  /* Identical to dark on purpose; asserted by design-tokens.test.mjs. */
+  --term-bg: #08090a;
+  --term-fg: #c9ced6;
+  --term-cursor: #5aaeff;
+  --term-selection: rgba(90, 174, 255, 0.24);
+
+  --shadow-pop: 0 8px 24px -6px rgba(16, 24, 40, 0.28);
+}
+
+[data-density="compact"] {
+  --row-h: var(--row-h-compact);
+}
