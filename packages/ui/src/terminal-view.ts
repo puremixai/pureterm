@@ -40,7 +40,10 @@ export const createTerminalView: TerminalFactory = (container) => {
 
   const terminal = new Terminal({
     cursorBlink: true, fontSize: 14, lineHeight: 1.2, scrollback: 5000,
-    fontFamily: 'Cascadia Mono, Consolas, "Sarasa Mono SC", "Microsoft YaHei Mono", monospace',
+    // --font-term carries exactly the stack this line used to hard-code, so the
+    // family list is unchanged. fontSize stays 14 and --fs-term stays unread:
+    // 13.5px would change xterm's measured cell metrics without a re-measure.
+    fontFamily: read('--font-term'),
     theme: {
       background: read('--term-bg'),
       foreground: read('--term-fg'),

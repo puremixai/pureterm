@@ -36,7 +36,7 @@ test('the shared UI exposes the mature workspace visual contract', () => {
 
 test('the manifest imports every partial exactly once and in cascade order', async () => {
   const { names, texts } = await readPartials()
-  assert.deepEqual(names, ['tokens', 'legacy', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states'],
+  assert.deepEqual(names, ['fonts', 'tokens', 'legacy', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states'],
     'cascade order is load-bearing; change it only with a measured cascade check')
   assert.equal(styleImportCount(manifest), names.length,
     'every @import of a styles/*.css partial must yield a name; a form the parser drops would slip the file out of the contract')

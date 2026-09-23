@@ -1,0 +1,30 @@
+/* Bundled faces — the one partial that names a family instead of asking a token
+   for one. --font-ui asks for `Inter`, so the face below carries that exact
+   name; assert it, or the token silently renders a system font and nothing in
+   the cascade can tell. */
+
+/* @fontsource-variable/inter is a variable package: it has no per-weight file,
+   because one file per subset serves the whole 100-900 range. That leaves the
+   subset as the only thing to choose, and every CSS file the package ships
+   declares all seven subsets at once, so the faces are declared here against
+   the two files this page can reach. The descriptors and unicode-ranges are
+   the package's own; only the family name, the subset selection and the format
+   string differ — `woff2-variations` is a legacy spelling a UA may skip, while
+   a variable woff2 is already unlocked by the weight range above. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../../../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../../../../node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}

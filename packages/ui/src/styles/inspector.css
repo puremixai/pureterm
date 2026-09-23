@@ -1,3 +1,5 @@
+/* Connection form — the drawer shell and its header, sections, fields and
+   footer, plus the shared form controls the keychain editor reuses. */
 #cred-key, #host-direct-key { display: grid; }
 #host-direct-key, .keychain-selector, #host-keychain-hint { grid-column: 1 / -1; }
 .keychain-selector { margin-bottom: 12px; }
@@ -11,9 +13,9 @@
 .connection-workspace.is-session #toolbar { display: none; }
 .toolbar-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 18px; min-height: 86px; padding: 17px 17px 15px 22px; border-bottom: 1px solid var(--legacy-line-edge); }
 .form-context { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
-.mode { overflow: hidden; color: var(--text-strong); font-size: 17px; font-weight: 750; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
+.mode { overflow: hidden; color: var(--text-strong); font-size: 17px; font-weight: 700; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
 .mode.editing { color: var(--accent); }
-.drawer-subtitle { color: var(--accent); font-size: 12px; }
+.drawer-subtitle { color: var(--accent); font-size: var(--fs-meta); }
 .drawer-subtitle i { margin-left: 3px; color: var(--text-muted); font-size: 14px; vertical-align: -1px; }
 .toolbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 3px; }
 .drawer-action { min-width: 34px; min-height: 34px; font-size: 20px; }
@@ -21,50 +23,50 @@
 .drawer-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px 22px 28px; scrollbar-color: var(--legacy-scroll-thumb-strong) transparent; scrollbar-width: thin; }
 .drawer-section { padding: 0 0 23px; }
 .drawer-section + .drawer-section { padding-top: 2px; }
-.drawer-section h2 { margin: 0 0 14px; color: var(--text-strong); font-size: 16px; font-weight: 750; letter-spacing: -0.01em; }
+.drawer-section h2 { margin: 0 0 14px; color: var(--text-strong); font-size: var(--fs-h2); font-weight: 700; letter-spacing: -0.01em; }
 .address-control { display: flex; align-items: center; gap: 14px; min-height: 153px; padding: 20px 21px 20px 22px; border-radius: 15px; background: var(--legacy-surface-block); }
 .connection-type { display: grid; flex: 0 0 auto; width: 55px; height: 55px; place-items: center; border-radius: 13px; background: var(--legacy-address-avatar); color: var(--legacy-on-solid); font-size: 28px; }
-.address-control input { flex: 1 1 auto; height: 55px; background: var(--legacy-surface-input); font-size: 16px; }
+.address-control input { flex: 1 1 auto; height: 55px; background: var(--legacy-surface-input); font-size: var(--fs-h2); }
 .address-control input:focus { border-color: var(--accent-strong); box-shadow: none; }
 .drawer-placeholder { display: flex; align-items: center; gap: 9px; min-height: 54px; margin-top: 12px; padding: 0 14px; border: 1px solid var(--legacy-line-mid); border-radius: 15px; background: var(--legacy-field-inset); color: var(--text-faint); }
 .drawer-placeholder:first-of-type { margin-top: 0; }
 .drawer-placeholder i { flex: 0 0 auto; font-size: 20px; }
-.drawer-placeholder input { height: 50px; padding: 0; border: 0; background: transparent; color: var(--text-muted); font-size: 14px; }
+.drawer-placeholder input { height: 50px; padding: 0; border: 0; background: transparent; color: var(--text-muted); font-size: var(--fs-em); }
 .drawer-placeholder input:disabled { opacity: 1; }
 .drawer-placeholder-split input { flex: 1 1 auto; }
-.drawer-placeholder-split span { color: var(--text-muted); font-size: 13px; }
+.drawer-placeholder-split span { color: var(--text-muted); font-size: var(--fs-ui); }
 .ssh-section { padding-top: 0; padding-bottom: 23px; border-bottom: 1px solid var(--legacy-line-faint); }
 .ssh-port-row { display: flex; align-items: center; gap: 8px; color: var(--text-strong); font-size: 15px; }
-.ssh-port-row strong { font-weight: 750; }
+.ssh-port-row strong { font-weight: 700; }
 .port-control { display: block; width: 118px; }
 .port-control input { height: 44px; text-align: center; }
 .credentials-section { padding-top: 19px; }
 .row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
 .field { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
-.field > span { color: var(--text-muted); font-size: 11px; font-weight: 600; }
+.field > span { color: var(--text-muted); font-size: var(--fs-micro); font-weight: 600; }
 .credentials-section > .field,
 .auth-field { margin-bottom: 12px; }
-input, select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--legacy-line-field); border-radius: 14px; outline: none; background: var(--legacy-surface-field); color: var(--text-strong); font-size: 14px; transition: border-color 180ms var(--motion-standard), background-color 180ms var(--motion-standard), box-shadow 180ms var(--motion-standard); }
+input, select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--legacy-line-field); border-radius: 14px; outline: none; background: var(--legacy-surface-field); color: var(--text-strong); font-size: var(--fs-em); transition: border-color 180ms var(--motion-standard), background-color 180ms var(--motion-standard), box-shadow 180ms var(--motion-standard); }
 input::placeholder { color: var(--text-faint); }
 input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--legacy-line-strong); background: var(--field-hover); }
 input:focus, select:focus { border-color: var(--legacy-tint-accent-focus); background: var(--field-hover); box-shadow: 0 0 0 3px var(--legacy-tint-accent); }
 input:disabled, select:disabled { cursor: not-allowed; opacity: 0.5; }
-#key-path { color: var(--text-muted); font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; text-overflow: ellipsis; }
+#key-path { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-meta); text-overflow: ellipsis; }
 .credential-row { display: grid; grid-template-columns: minmax(220px, 1fr); margin-top: 2px; }
 .key-row { grid-template-columns: minmax(160px, 1fr) auto; }
 .key-row .field:last-child { grid-column: 1 / -1; }
 .key-row > button { align-self: end; min-height: 46px; }
-.check { display: flex; align-items: center; min-height: 34px; gap: 8px; padding: 10px 2px 0; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.check { display: flex; align-items: center; min-height: 34px; gap: 8px; padding: 10px 2px 0; color: var(--text-muted); font-size: var(--fs-meta); white-space: nowrap; }
 .check input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent-strong); }
-#credential-hint { max-width: 80ch; margin: 14px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+#credential-hint { max-width: 80ch; margin: 14px 0 0; color: var(--text-muted); font-size: var(--fs-micro); line-height: 1.5; }
 .drawer-footer { flex: 0 0 auto; padding: 12px 22px 20px; border-top: 1px solid var(--legacy-line-edge); background: var(--nav); }
 .drawer-record-actions { display: flex; align-items: center; gap: 4px; margin-bottom: 11px; }
-.drawer-record-actions button { min-height: 30px; padding: 0 8px; font-size: 11px; }
+.drawer-record-actions button { min-height: 30px; padding: 0 8px; font-size: var(--fs-micro); }
 .drawer-record-actions i { margin-right: 4px; }
 .drawer-record-actions .danger:hover:not(:disabled) { color: var(--legacy-err); }
 .drawer-connect { width: 100%; min-height: 54px; border-radius: 13px; font-size: 15px; }
 .drawer-disconnect { width: 100%; margin-top: 8px; }
-#status { min-height: 20px; padding: 10px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+#status { min-height: 20px; padding: 10px 0 0; color: var(--text-muted); font-size: var(--fs-meta); line-height: 1.5; overflow-wrap: anywhere; }
 #status.ok { color: var(--legacy-ok); }
 #status.err { color: var(--legacy-err); }
 #status.pending { color: var(--accent); }

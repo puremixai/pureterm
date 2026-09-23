@@ -1,10 +1,14 @@
 /* Cascade contract. Import order is load-bearing: partials compete at equal
    specificity and the later import wins, so change it only with a measured
    cascade check. Each partial is a role-based leaf and must not @import.
+   The two font providers come first: a face has to be declared before any rule
+   asks for it. styles/fonts.css is the only place a family name is written out,
+   and it bundles the two Inter latin files the page actually renders.
    A colour literal may appear only in styles/tokens.css and styles/legacy.css;
    every other partial resolves colour through a token, which is what
    stylesheet-contract.test.mjs enforces. */
 @import "@tabler/icons-webfont/dist/tabler-icons.min.css";
+@import "./styles/fonts.css";
 @import "./styles/tokens.css";
 @import "./styles/legacy.css";
 @import "./styles/base.css";

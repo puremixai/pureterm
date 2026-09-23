@@ -1,12 +1,14 @@
+/* Nothing-to-show and something-went-wrong — the empty placeholder, the
+   shortcuts dialog, and the connection-failure page with its route and log. */
 .shortcuts-dialog { width: min(460px, calc(100vw - 40px)); padding: 28px; border: 1px solid var(--legacy-line-strong); border-radius: 18px; background: var(--card); color: var(--text); box-shadow: var(--legacy-shadow-dialog); }
 .shortcuts-dialog::backdrop { background: var(--legacy-backdrop); }
-.shortcuts-dialog h2 { margin: 0 0 24px; font-size: 20px; }
+.shortcuts-dialog h2 { margin: 0 0 24px; font-size: var(--fs-h1); }
 .shortcuts-dialog dl { margin: 0; }
 .shortcuts-dialog dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--legacy-line); }
 .shortcuts-dialog dd { margin: 0; color: var(--text-muted); }
 .shortcuts-dialog p { color: var(--text-muted); line-height: 1.7; }
 
-.empty { margin: 12px; padding: 20px 18px; border: 1px dashed var(--legacy-line-strong); border-radius: var(--radius-lg); color: var(--text-muted); font-size: 13px; line-height: 1.75; }
+.empty { margin: 12px; padding: 20px 18px; border: 1px dashed var(--legacy-line-strong); border-radius: var(--radius-lg); color: var(--text-muted); font-size: var(--fs-ui); line-height: 1.75; }
 
 .connection-failure { position: absolute; inset: 0; z-index: 12; display: flex; min-width: 0; min-height: 0; overflow: auto; background: var(--topbar); }
 .connection-failure[hidden] { display: none !important; }
@@ -14,22 +16,22 @@
 .failure-head { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
 .failure-host { display: flex; align-items: center; min-width: 0; gap: 15px; }
 .failure-host .host-avatar { width: 60px; height: 60px; }
-.failure-host h1 { margin: 0 0 5px; overflow: hidden; color: var(--text-strong); font-size: 18px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
-.failure-host p { margin: 0; color: var(--text-muted); font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
-.failure-copy { flex: 0 0 auto; min-height: 45px; padding: 0 15px; font-size: 13px; }
+.failure-host h1 { margin: 0 0 5px; overflow: hidden; color: var(--text-strong); font-size: 18px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.failure-host p { margin: 0; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-meta); }
+.failure-copy { flex: 0 0 auto; min-height: 45px; padding: 0 15px; font-size: var(--fs-ui); }
 .failure-copy i { margin-right: 5px; }
 .failure-route { display: flex; align-items: center; margin: 40px 0 42px; }
 .failure-route-node { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border-radius: 50%; background: var(--legacy-danger-node); color: var(--legacy-on-solid); font-size: 17px; }
 .failure-route-line { flex: 1 1 auto; height: 4px; background: var(--legacy-danger-node); }
-.failure-shell > h2 { margin: 0 0 34px; color: var(--legacy-danger-title); font-size: 17px; font-weight: 750; text-align: center; }
+.failure-shell > h2 { margin: 0 0 34px; color: var(--legacy-danger-title); font-size: 17px; font-weight: 700; text-align: center; }
 .failure-log { overflow: hidden; padding: 18px 24px; border-radius: 18px; background: var(--legacy-surface-log); box-shadow: var(--legacy-shadow-log); }
-.failure-log-entry { display: flex; align-items: flex-start; gap: 10px; color: var(--text-strong); font-size: 14px; line-height: 1.55; }
+.failure-log-entry { display: flex; align-items: flex-start; gap: 10px; color: var(--text-strong); font-size: var(--fs-em); line-height: 1.55; }
 .failure-log-entry + .failure-log-entry { margin-top: 10px; }
 .failure-log-entry i { flex: 0 0 auto; margin-top: 2px; color: var(--legacy-log-glyph); font-size: 18px; }
 .failure-log-entry.is-error i { color: var(--legacy-danger-log); }
 .failure-log-entry span { min-width: 0; overflow-wrap: anywhere; }
 .failure-actions { display: flex; justify-content: flex-end; gap: 14px; margin-top: 66px; }
-.failure-actions button { min-width: 108px; min-height: 53px; border-radius: 14px; font-size: 14px; }
+.failure-actions button { min-width: 108px; min-height: 53px; border-radius: 14px; font-size: var(--fs-em); }
 .failure-actions .primary { min-width: 144px; }
 .failure-secondary { background: var(--legacy-surface-secondary); }
 

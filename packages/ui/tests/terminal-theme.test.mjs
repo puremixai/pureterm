@@ -25,3 +25,13 @@ test('no xterm colour is hard-coded except the ANSI palette', () => {
 test('cursorAccent survives, because xterm needs it to invert the glyph under the cursor', () => {
   assert.match(source, /cursorAccent:\s*read\('--term-bg'\)/)
 })
+
+// The family list is CSS material too: a copy here would drift from --font-term
+// silently, and that token is the one holding the CJK mono fallbacks a terminal
+// needs to draw box-drawing and wide glyphs at all.
+test('the terminal font resolves from --font-term instead of a copy of it', () => {
+  assert.match(source, /fontFamily:\s*read\('--font-term'\)/,
+    'the terminal family must come from --font-term')
+  assert.ok(!/fontFamily:\s*['"]/.test(source),
+    'terminal-view.ts must not carry a font stack of its own')
+})

@@ -1,3 +1,5 @@
+/* Application shell — the #app grid, top bar, workspace and session tabs, the
+   navigation rail, and the state classes on .app-shell that reshape them. */
 #app {
   display: grid;
   grid-template-rows: 76px minmax(0, 1fr);
@@ -72,12 +74,12 @@
   background: var(--legacy-mark-bg);
   color: var(--legacy-mark-fg);
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.02em;
 }
 
 .workspace-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
-.workspace-copy strong { font-size: 14px; line-height: 1.1; }
+.workspace-copy strong { font-size: var(--fs-em); line-height: 1.1; }
 .workspace-copy small { color: var(--text-faint); font-size: 10px; line-height: 1.1; }
 .workspace-chevron { margin-left: auto; color: var(--text-muted); font-size: 21px; }
 
@@ -89,13 +91,13 @@
   padding: 0 17px;
   border-radius: 12px;
   color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--fs-em);
+  font-weight: 600;
 }
 
 .app-tab.is-active { background: var(--legacy-surface-pill); color: var(--text-strong); }
 .app-tab-mark { width: 18px; height: 18px; border-radius: 4px; background: var(--text-strong); color: var(--topbar); font-size: 8px; }
-.update-pill { min-height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--legacy-surface-pill); color: var(--text-strong); font-size: 12px; }
+.update-pill { min-height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--legacy-surface-pill); color: var(--text-strong); font-size: var(--fs-meta); }
 .update-pill:hover:not(:disabled) { background: var(--legacy-surface-pill-hover); }
 
 /* Navigation rail */
@@ -114,7 +116,7 @@
 .nav-item:hover:not(:disabled) { border-color: transparent; background: var(--legacy-overlay-hover); }
 .nav-item.active { background: var(--legacy-surface-nav-active); box-shadow: inset 0 0 0 1px var(--legacy-overlay-soft); }
 .nav-icon { display: grid; flex: 0 0 auto; width: 23px; place-items: center; color: var(--legacy-icon-on-nav); font-size: 21px; font-weight: 700; line-height: 1; }
-.nav-footer { display: flex; align-items: center; gap: 9px; margin-top: auto; padding: 14px; color: var(--text-faint); font-size: 11px; }
+.nav-footer { display: flex; align-items: center; gap: 9px; margin-top: auto; padding: 14px; color: var(--text-faint); font-size: var(--fs-micro); }
 .nav-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--legacy-ok); box-shadow: 0 0 0 4px var(--legacy-tint-ok); }
 
 /* Connection diagnostics */
@@ -158,7 +160,7 @@
 .workspace-tabs > .app-tab.is-active { background: var(--legacy-surface-tab-active); }
 .session-tab { flex: 0 0 auto; display: flex; align-items: center; width: clamp(150px, 17vw, 250px); min-width: 0; border: 1px solid transparent; border-radius: 11px; background: var(--legacy-surface-tab-session); }
 .session-tab.is-active { background: var(--legacy-surface-tab-active-session); border-color: var(--legacy-tint-ok-line); }
-.session-tab .app-tab { min-width: 0; flex: 1 1 auto; border: 0; padding: 0 10px 0 13px; background: transparent; font-size: 13px; }
+.session-tab .app-tab { min-width: 0; flex: 1 1 auto; border: 0; padding: 0 10px 0 13px; background: transparent; font-size: var(--fs-ui); }
 .session-tab.is-active .app-tab { color: var(--text-strong); }
 .tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-state-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }

@@ -9,7 +9,7 @@
 .keychain-search input { height: 40px; padding-left: 37px; border-color: transparent; border-radius: 10px; background: var(--main-soft); }
 .keychain-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 28px 32px; scrollbar-color: var(--legacy-scroll-thumb-strong) transparent; scrollbar-width: thin; }
 .keychain-content .hosts-heading { margin: 0 0 8px; }
-.keychain-policy { margin: 0 0 22px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.keychain-policy { margin: 0 0 22px; color: var(--text-muted); font-size: var(--fs-meta); line-height: 1.6; }
 .keychain-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
 @container (max-width: 1200px) { .keychain-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 630px) { .keychain-list { grid-template-columns: minmax(0, 1fr); } }
@@ -20,7 +20,7 @@
 .keychain-card-main:hover:not(:disabled) { background: transparent; }
 .keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 58px; height: 58px; border-radius: 15px; color: var(--legacy-on-solid); background: var(--legacy-key-avatar); font-size: 29px; }
 .keychain-card .host-content { gap: 5px; }
-.keychain-card-sub { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.keychain-card-sub { color: var(--text-muted); font-size: var(--fs-meta); font-weight: 400; }
 .keychain-card-edit { flex: 0 0 auto; min-width: 32px; margin-right: 10px; opacity: 0; }
 .keychain-card:hover .keychain-card-edit, .keychain-card:focus-within .keychain-card-edit, .keychain-card.active .keychain-card-edit { opacity: 1; }
 .keychain-list.list-view { grid-template-columns: minmax(0, 1fr); gap: 8px; }
@@ -38,19 +38,19 @@
 .keychain-form-section { padding: 22px; border-radius: 16px; background: var(--card); }
 .keychain-form-section + .keychain-form-section { margin-top: 20px; }
 .keychain-form-section .field + .field { margin-top: 15px; }
-.keychain-form-section .field > span { font-size: 12px; }
+.keychain-form-section .field > span { font-size: var(--fs-meta); }
 .keychain-form-section input, .keychain-form-section textarea { background: transparent; }
 
 #keychain-details { margin-top: 16px; }
-#keychain-fingerprint { display: block; margin: 12px 0; color: var(--text-muted); overflow-wrap: anywhere; font-size: 11px; line-height: 1.7; }
+#keychain-fingerprint { display: block; margin: 12px 0; color: var(--text-muted); overflow-wrap: anywhere; font-size: var(--fs-micro); line-height: 1.7; }
 .keychain-drop { display: grid; justify-items: center; gap: 8px; padding: 25px 12px; border: 1px dashed var(--legacy-line-strong); border-radius: 9px; text-align: center; color: var(--text-muted); }
 .keychain-drop > i { color: var(--accent); font-size: 36px; }
-.keychain-drop p { margin: 5px 0; font-size: 13px; }
-.keychain-drop > span { color: var(--text-faint); font-size: 11px; }
+.keychain-drop p { margin: 5px 0; font-size: var(--fs-ui); }
+.keychain-drop > span { color: var(--text-faint); font-size: var(--fs-micro); }
 .keychain-drop.is-dragging { border-color: var(--accent-strong); background: var(--accent-soft); }
 .keychain-import { width: 100%; min-height: 46px; margin-top: 18px; background: var(--legacy-surface-control); }
-.keychain-help { margin: 14px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
-.keychain-message { margin: 0 0 12px; color: var(--text-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.keychain-help { margin: 14px 0 0; color: var(--text-muted); font-size: var(--fs-micro); line-height: 1.7; }
+.keychain-message { margin: 0 0 12px; color: var(--text-muted); font-size: var(--fs-meta); line-height: 1.7; overflow-wrap: anywhere; }
 .keychain-message:empty { display: none; }
 .keychain-message.ok { color: var(--legacy-ok); }
 .keychain-message.err { color: var(--legacy-err); }
