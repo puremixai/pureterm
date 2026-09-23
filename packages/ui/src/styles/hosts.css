@@ -28,10 +28,6 @@
 .tool-icon.add { background: #3c4159; font-size: 24px; }
 .hosts-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin: 0 12px 18px; }
 .section-kicker { color: var(--text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-/* This keychain rule lives here because it must keep losing to the next line:
-   the keychain heading matches both selectors at equal specificity, and
-   keychain.css now loads after hosts.css. */
-.keychain-content h1 { font-size: 20px; }
 .hosts-heading h1 { margin: 0; color: var(--text-strong); font-size: 23px; font-weight: 700; letter-spacing: -0.02em; }
 .host-count { padding-bottom: 4px; color: var(--text-faint); font-size: 12px; }
 #hosts-body { flex: 1 1 auto; min-height: 0; }
@@ -61,7 +57,6 @@ button.mini:hover:not(:disabled) { border-color: var(--legacy-line); background:
 button.mini.danger:hover:not(:disabled) { border-color: rgba(255, 146, 158, 0.25); background: rgba(255, 146, 158, 0.1); color: var(--legacy-err); }
 
 @media (max-width: 1250px) {
-  .app-body { grid-template-columns: 232px minmax(0, 1fr); }
   #host-list { grid-template-columns: repeat(2, minmax(210px, 1fr)); }
 }
 
@@ -69,11 +64,7 @@ button.mini.danger:hover:not(:disabled) { border-color: rgba(255, 146, 158, 0.25
   .app-shell.drawer-open #hosts-panel { padding-right: 516px; }
 }
 
-/* .app-body's responsive column rule lives here, not in chrome.css: both the
-   1250px and the 820px overrides have the same specificity, so only this file
-   keeps 820px loading after 1250px. */
 @media (max-width: 820px) {
-  .app-body { grid-template-columns: 72px minmax(0, 1fr); }
   .dashboard-toolbar { align-items: flex-start; flex-direction: column; }
   .dashboard-tools { align-self: flex-end; }
   #host-list { grid-template-columns: repeat(2, minmax(190px, 1fr)); }

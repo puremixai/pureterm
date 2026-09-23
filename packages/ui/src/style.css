@@ -1,3 +1,7 @@
+/* Cascade contract. Import order is load-bearing: partials compete at equal
+   specificity and the later import wins, so change it only with a measured
+   cascade check. Each partial is a role-based leaf and must not @import.
+   styles/tokens.css is the only place a colour literal may appear. */
 @import "@tabler/icons-webfont/dist/tabler-icons.min.css";
 @import "./styles/tokens.css";
 @import "./styles/base.css";

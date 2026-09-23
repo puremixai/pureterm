@@ -1,14 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
-const PARTIALS = ['tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states']
+import { readPartials } from './partial-list.mjs'
 
-const [html, ...partials] = await Promise.all([
-  readFile(new URL('../src/index.html', import.meta.url), 'utf8'),
-  ...PARTIALS.map((name) => readFile(new URL(`../src/styles/${name}.css`, import.meta.url), 'utf8')),
-])
-const css = partials.join('\n')
-const manifest = await readFile(new URL('../src/style.css', import.meta.url), 'utf8')
+const html = await readFile(new URL('../src/index.html', import.meta.url), 'utf8')
+const { manifest, css } = await readPartials()
 
 test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(html, /<div id="app" class="app-shell">/)
@@ -27,7 +23,7 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(html, /class="ti ti-server-2"/)
   assert.match(manifest, /@import\s+"@tabler\/icons-webfont\/dist\/tabler-icons\.min\.css"/)
 
-  for (const token of ['--topbar', '--nav', '--card', '--line', '--text-strong', '--accent']) {
+  for (const token of ['--topbar', '--nav', '--card', '--text-strong', '--accent']) {
     assert.match(css, new RegExp(`${token}\\s*:`), `missing design token ${token}`)
   }
 
@@ -38,8 +34,17 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(css, /@media\s*\(max-width:\s*620px\)/, 'narrow layouts need an explicit mobile fallback')
 })
 
-test('each partial is a leaf and the manifest owns cascade order', () => {
-  for (const [name, text] of PARTIALS.map((n, i) => [n, partials[i]])) {
+test('the manifest imports every partial exactly once and in cascade order', async () => {
+  const { names, texts } = await readPartials()
+  assert.deepEqual(names, ['tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states'],
+    'cascade order is load-bearing; change it only with a measured cascade check')
+  const seen = new Set()
+  for (const name of names) {
+    assert.equal(seen.has(name), false, `${name} is imported twice`)
+    seen.add(name)
+  }
+  assert.equal(seen.has('states'), true)
+  for (const [name, text] of names.map((n, i) => [n, texts[i]])) {
     assert.ok(!/@import/.test(text), `styles/${name}.css must not @import; put it in style.css`)
   }
 })

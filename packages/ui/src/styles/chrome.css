@@ -103,6 +103,11 @@
 .app-shell.nav-collapsed #primary-nav { display: none; }
 
 .app-body { display: grid; grid-template-columns: 278px minmax(0, 1fr); min-height: 0; overflow: hidden; }
+
+@media (max-width: 1250px) {
+  .app-body { grid-template-columns: 232px minmax(0, 1fr); }
+}
+
 .primary-nav { display: flex; min-height: 0; flex-direction: column; gap: 4px; padding: 16px 14px 15px; background: var(--nav); border-right: 1px solid rgba(222, 226, 255, 0.05); }
 .nav-divider { height: 1px; margin: 14px 14px 10px; background: rgba(222, 226, 255, 0.07); }
 .nav-item { display: flex; align-items: center; min-height: 54px; gap: 15px; padding: 0 14px; border-color: transparent; border-radius: 13px; background: transparent; color: var(--text-strong); font-size: 15px; font-weight: 600; text-align: left; }
@@ -123,6 +128,7 @@
   .app-topbar { padding-left: 10px; }
   .workspace-switcher { min-width: 132px; }
   .app-tab { padding: 0 10px; }
+  .app-body { grid-template-columns: 72px minmax(0, 1fr); }
   .primary-nav { align-items: center; padding-right: 8px; padding-left: 8px; }
   .nav-item span:not(.nav-icon), .nav-footer span:not(.nav-status-dot) { display: none; }
   .nav-item { justify-content: center; width: 56px; padding: 0; }
