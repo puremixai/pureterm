@@ -1,7 +1,14 @@
 /* Bundled faces — the one partial that names a family instead of asking a token
    for one. --font-ui asks for `Inter`, so the face below carries that exact
    name; assert it, or the token silently renders a system font and nothing in
-   the cascade can tell. */
+   the cascade can tell. Only the latin and latin-ext subsets of the variable
+   weight axis ship, and the page never asks for the rest. */
+
+/* Legal comment: esbuild keeps `/*!` blocks, so the OFL attribution travels
+   with the bundled faces the same way Tabler's header does. */
+/*! Inter: Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter),
+    licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
+    Full licence text: node_modules/@fontsource-variable/inter/LICENSE (OFL-1.1). */
 
 /* @fontsource-variable/inter is a variable package: it has no per-weight file,
    because one file per subset serves the whole 100-900 range. That leaves the
