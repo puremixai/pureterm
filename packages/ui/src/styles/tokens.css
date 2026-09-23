@@ -14,16 +14,18 @@
   --c-control: #21252b;
   /* Hairlines are not text: --line measures ~1.27:1 on --c-surface by design,
      marginally more visible than the rgba(222, 226, 255, .085) it replaces,
-     which composites to ~1.22-1.26 across the grounds it currently sits on. */
+     which composites to ~1.21-1.25 across the grounds it currently sits on. */
   --line: #262a31;
   --line-soft: #1c1f24;
   --line-strong: #3a4049;
-  /* Legality is per ground and per theme, not per token. In the light theme
-     --tx-3 and --ac fall to 3.88-4.23 on --c-control / --c-chrome, and even
-     --ac on --c-canvas is only 4.36, so there muted and accent text belong on
-     --c-surface alone. Dark clears AA on every ground (--ac 6.55 on
-     --c-control, 8.11 on --c-chrome; --tx-3 4.99 on --c-chrome).
-     design-tokens.test.mjs measures --c-surface grounds only. */
+  /* Legality is per ground and per theme, not per token, and no ground is
+     free in both. Light: --tx-3 and --ac fall to 3.88-4.23 on --c-control and
+     --c-chrome, and even --ac on --c-canvas is only 4.36, so there muted and
+     accent text belong on --c-surface alone. Dark is wider but not total:
+     --tx-3 drops to 4.48 on --c-raised and 4.03 on --c-control, while --tx-1,
+     --tx-2 and --ac (worst 6.55) hold AA on every surface.
+     design-tokens.test.mjs measures --c-surface grounds only;
+     docs/design-system.md carries the full measured matrix. */
   --tx-1: #f2f3f5;
   --tx-2: #b9bec6;
   --tx-3: #7d838d;
