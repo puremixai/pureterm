@@ -46,6 +46,17 @@ Three further decisions changed:
 
 Two smaller things to fold into Task 5: it currently converts `font-size` literals onto `--fs-*` but leaves six copies of the hard-coded `"Cascadia Mono", Consolas, monospace` stack across five partials plus `terminal-view.ts:21` while `--font-mono` and `--font-term` sit unused — include `font-family` in the sweep. And give each partial the one-line responsibility header that `keychain.css:1` has; only two of eight have one.
 
+## Carry forward into Plan 2
+
+Task 3 landed as `d893346` and was hardened by `8e7541d`. `packages/ui/src/styles/legacy.css` is now the register: 100 declarations, 96 of them colour, guarded by a declaration-count ratchet and a reference liveness check with a one-entry allowlist. Four things must be handled by the palette flip, and nothing in the code warns about three of them:
+
+1. **Four register entries are not colour and cannot simply be deleted.** `--radius-sm` 7px, `--radius-md` 10px, `--radius-lg` 15px against a new ramp of 3/5/8px, and `--motion-standard` as `cubic-bezier(0.32, 0.72, 0, 1)` against `--ease` as `cubic-bezier(0.2, 0.8, 0.2, 1)`. Together they carry 22 live references, 14 of them from `--motion-standard` alone. Re-homing them is a measured rendering decision — widen the ramp, or retune 22 values — not a move. Plan 2 needs an explicit old-to-new mapping table for these four before anyone runs the `git rm`.
+2. **`visual-contract.test.mjs:26` asserts that `--topbar`, `--nav`, `--card`, `--text-strong` and `--accent` exist.** All five are colour aliases the flip deletes, so that assertion must be rewritten in the same commit, or the flip fails the suite for the wrong reason.
+3. **Shrinking the register touches two test files, deliberately.** `stylesheet-contract.test.mjs` pins the declaration count, the sanctioned exemption pair, and the reference liveness allowlist; `design-tokens.test.mjs`'s `GLOBAL_TOKENS` must grow if new metric steps are added. Two edits on purpose, so the deletion cannot become silent.
+4. **`.ssh-section`'s divider lost contrast in Task 3** — `rgba(222,226,255,.1)` mapped onto `--legacy-line-faint` at `.05`, because the register has no `.10` hairline entry. It is within the plan's tolerance and lands near where the flip is going anyway (`--line-soft` is 1.106:1 against `--line` at 1.269:1), but re-measure it onto the new ramp rather than inheriting it.
+
+Also for Plan 2: `legacy.css` has no light group, so all 100 entries stay dark in light mode — correct while the file exists, and a one-file change when it does not. And `white` remains in three places the literal regex cannot see: `\bwhite\b` also matches `white-space`, which appears 13 times in these partials, so catching named colours needs a value-position-aware rule rather than a wider word list.
+
 ## File structure
 
 | File | Responsibility |
