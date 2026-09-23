@@ -1,0 +1,117 @@
+/* Legacy alias / debt register — the pre-redesign palette, named by role.
+   This is the one file, besides tokens.css, allowed to carry a colour literal
+   (stylesheet-contract.test.mjs exempts both). Reference an existing entry
+   here rather than adding one; Plan 2's palette flip deletes this whole file
+   with a single `git rm` plus one manifest line. Kept flat and one token per
+   line, because design-tokens-style lookup anchors declarations at line start. */
+:root {
+  /* Original surface, text and accent aliases, moved verbatim out of
+     tokens.css. Do NOT rename: every var(--nav), var(--topbar),
+     var(--text-strong), var(--accent), var(--warning), var(--radius-*),
+     var(--motion-standard) in the partials keeps resolving through these. */
+  --topbar: #121426;
+  --nav: #272b40;
+  --main: #1d2033;
+  --main-soft: #22263a;
+  --card: #292d43;
+  --card-hover: #30354d;
+  --field: #171a2b;
+  --field-hover: #1d2134;
+  --legacy-line: rgba(222, 226, 255, 0.085);
+  --legacy-line-strong: rgba(222, 226, 255, 0.17);
+  --text-strong: #f5f5fb;
+  --text: #e5e7f2;
+  --text-muted: #a1a5bb;
+  --text-faint: #737991;
+  --accent: #a7c4ff;
+  --accent-strong: #3c9ef5;
+  --accent-soft: rgba(121, 169, 255, 0.16);
+  --legacy-ok: #7bd6af;
+  --legacy-err: #ff929e;
+  --warning: #f2c86f;
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 15px;
+  --motion-standard: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Role-named entries so no partial hard-codes a colour. Shadows carry their
+     own geometry because terminal-view.ts reads custom properties through
+     getComputedStyle, and an unregistered property holding a colour function
+     is never evaluated to a colour. */
+  --legacy-surface-sunken: #1c2033;
+  --legacy-surface-raised: #24283d;
+  --legacy-surface-raised-hover: #2d324a;
+  --legacy-surface-active: #323852;
+  --legacy-surface-field: #25293d;
+  --legacy-surface-block: #30344a;
+  --legacy-surface-block-alt: #3b4057;
+  --legacy-surface-control: #3b425e;
+  --legacy-surface-tool: #393e56;
+  --legacy-surface-tool-add: #3c4159;
+  --legacy-surface-action: #3f435a;
+  --legacy-surface-action-hover: #4a506b;
+  --legacy-surface-nav-active: #41465e;
+  --legacy-surface-input: #262a40;
+  --legacy-surface-log: #2a2e44;
+  --legacy-surface-secondary: #2d3147;
+  --legacy-surface-tab-active: #2b3048;
+  --legacy-surface-tab-session: #1c2033;
+  --legacy-surface-tab-active-session: #263b43;
+  --legacy-surface-tab-failed: #3e2939;
+  --legacy-surface-bar: #1a1e30;
+  --legacy-surface-pill: #20243a;
+  --legacy-surface-pill-hover: #303650;
+  --legacy-on-accent: #081426;
+  --legacy-on-accent-hover: #06111f;
+  --legacy-accent-hover: #56adff;
+  --legacy-danger-fill: #a84455;
+  --legacy-danger-node: #ff5962;
+  --legacy-danger-title: #ff6670;
+  --legacy-danger-log: #ff8a91;
+  --legacy-log-glyph: #bab3d0;
+  --legacy-icon-on-nav: #f5f6ff;
+  --legacy-strong-on-dark: #e7e9f4;
+  --legacy-placeholder-strong: #adb2c7;
+  --legacy-on-solid: #ffffff;
+  --legacy-mark-bg: #e5e8f2;
+  --legacy-mark-fg: #20243a;
+  --legacy-key-avatar: #075a87;
+  --legacy-address-avatar: #086ba7;
+  --legacy-tone-0: #f15b29;
+  --legacy-tone-1: #096da9;
+  --legacy-tone-2: #efad18;
+  --legacy-tone-2-fg: #fff8da;
+  --legacy-tone-3: #4b4d61;
+  --legacy-scroll-thumb: #454b67;
+  --legacy-scroll-thumb-strong: #4b5069;
+  --legacy-line-faint: rgba(222, 226, 255, 0.05);
+  --legacy-line-hair: rgba(222, 226, 255, 0.07);
+  --legacy-line-edge: rgba(222, 226, 255, 0.08);
+  --legacy-line-mid: rgba(222, 226, 255, 0.12);
+  --legacy-line-field: rgba(222, 226, 255, 0.13);
+  --legacy-overlay-soft: rgba(255, 255, 255, 0.025);
+  --legacy-overlay-hover: rgba(255, 255, 255, 0.07);
+  --legacy-overlay-hover-strong: rgba(255, 255, 255, 0.08);
+  --legacy-row-hover: rgba(222, 226, 255, 0.055);
+  --legacy-tint-accent: rgba(93, 157, 255, 0.13);
+  --legacy-tint-accent-line: rgba(167, 196, 255, 0.12);
+  --legacy-tint-accent-line-strong: rgba(167, 196, 255, 0.42);
+  --legacy-tint-accent-focus: rgba(167, 196, 255, 0.7);
+  --legacy-tint-ok: rgba(123, 214, 175, 0.1);
+  --legacy-tint-ok-line: rgba(123, 214, 175, 0.25);
+  --legacy-tint-err: rgba(255, 146, 158, 0.1);
+  --legacy-tint-err-line: rgba(255, 146, 158, 0.25);
+  --legacy-tint-warn: rgba(242, 200, 111, 0.1);
+  --legacy-tint-warn-line: rgba(242, 200, 111, 0.28);
+  --legacy-mini-bg: rgba(20, 23, 42, 0.55);
+  --legacy-field-inset: rgba(23, 26, 43, 0.22);
+  --legacy-shadow-sm: 0 8px 20px rgba(7, 8, 18, 0.08);
+  --legacy-shadow-card: 0 8px 18px rgba(8, 9, 22, 0.08);
+  --legacy-shadow-card-hover: 0 12px 24px rgba(8, 9, 22, 0.16);
+  --legacy-shadow-log: 0 14px 32px rgba(7, 8, 18, 0.14);
+  --legacy-shadow-drawer: -24px 0 42px rgba(7, 8, 18, 0.24);
+  --legacy-shadow-sheet: 0 -12px 28px rgba(0, 0, 0, 0.18);
+  --legacy-shadow-editor: -20px 0 40px rgba(8, 10, 27, 0.33);
+  --legacy-shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.53);
+  --legacy-backdrop: rgba(7, 9, 22, 0.6);
+}

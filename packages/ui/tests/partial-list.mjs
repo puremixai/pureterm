@@ -7,7 +7,14 @@ export async function readManifest() {
 }
 
 export function partialNames(manifest) {
-  return [...manifest.matchAll(/@import\s+"\.\/styles\/([a-z-]+)\.css"/g)].map((m) => m[1])
+  return [...manifest.matchAll(/@import\s+['"]\.\/styles\/([a-z-]+)\.css['"]/g)].map((m) => m[1])
+}
+
+// Counts every @import line that targets the styles directory, whatever quote
+// style it uses. partialNames only yields a name when the whole line parses, so
+// comparing the two catches an import form the parser silently drops.
+export function styleImportCount(manifest) {
+  return (manifest.match(/@import\s+['"]\.\/styles\//g) || []).length
 }
 
 export async function readPartials() {

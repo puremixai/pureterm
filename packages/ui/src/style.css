@@ -1,9 +1,12 @@
 /* Cascade contract. Import order is load-bearing: partials compete at equal
    specificity and the later import wins, so change it only with a measured
    cascade check. Each partial is a role-based leaf and must not @import.
-   styles/tokens.css is the only place a colour literal may appear. */
+   A colour literal may appear only in styles/tokens.css and styles/legacy.css;
+   every other partial resolves colour through a token, which is what
+   stylesheet-contract.test.mjs enforces. */
 @import "@tabler/icons-webfont/dist/tabler-icons.min.css";
 @import "./styles/tokens.css";
+@import "./styles/legacy.css";
 @import "./styles/base.css";
 @import "./styles/chrome.css";
 @import "./styles/hosts.css";

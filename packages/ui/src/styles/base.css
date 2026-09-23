@@ -46,8 +46,8 @@ button:disabled { cursor: not-allowed; opacity: 0.42; }
 
 button.ghost { border-color: transparent; background: transparent; color: var(--text-muted); }
 button.ghost:hover:not(:disabled) { border-color: var(--legacy-line); background: var(--card); color: var(--text-strong); }
-button.primary { border-color: transparent; background: var(--accent-strong); color: #081426; font-weight: 750; }
-button.primary:hover:not(:disabled) { border-color: transparent; background: #56adff; color: #06111f; }
+button.primary { border-color: transparent; background: var(--accent-strong); color: var(--legacy-on-accent); font-weight: 750; }
+button.primary:hover:not(:disabled) { border-color: transparent; background: var(--legacy-accent-hover); color: var(--legacy-on-accent-hover); }
 button.small { min-height: 30px; padding: 0 10px; border-radius: var(--radius-sm); font-size: 12px; }
 
 [hidden] { display: none !important; }

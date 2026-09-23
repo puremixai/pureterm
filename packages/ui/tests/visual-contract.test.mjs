@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
-import { readPartials } from './partial-list.mjs'
+import { readPartials, styleImportCount } from './partial-list.mjs'
 
 const html = await readFile(new URL('../src/index.html', import.meta.url), 'utf8')
 const { manifest, css } = await readPartials()
@@ -36,14 +36,15 @@ test('the shared UI exposes the mature workspace visual contract', () => {
 
 test('the manifest imports every partial exactly once and in cascade order', async () => {
   const { names, texts } = await readPartials()
-  assert.deepEqual(names, ['tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states'],
+  assert.deepEqual(names, ['tokens', 'legacy', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states'],
     'cascade order is load-bearing; change it only with a measured cascade check')
+  assert.equal(styleImportCount(manifest), names.length,
+    'every @import of a styles/*.css partial must yield a name; a form the parser drops would slip the file out of the contract')
   const seen = new Set()
   for (const name of names) {
     assert.equal(seen.has(name), false, `${name} is imported twice`)
     seen.add(name)
   }
-  assert.equal(seen.has('states'), true)
   for (const [name, text] of names.map((n, i) => [n, texts[i]])) {
     assert.ok(!/@import/.test(text), `styles/${name}.css must not @import; put it in style.css`)
   }
