@@ -1,8 +1,11 @@
-/* Bundled faces — the one partial that names a family instead of asking a token
-   for one. --font-ui asks for `Inter`, so the face below carries that exact
-   name; assert it, or the token silently renders a system font and nothing in
-   the cascade can tell. Only the latin and latin-ext subsets of the variable
-   weight axis ship, and the page never asks for the rest. */
+/* Bundled faces — the only place a family name may appear in a face declaration;
+   every rule that merely wants a family asks a token for one. tokens.css names
+   three families in --font-ui, --font-mono and --font-term, so this file is not
+   the only place a family is written out, only the only place one is declared.
+   --font-ui asks for `Inter`, so the face below carries that exact name; assert
+   it, or the token silently renders a system font and nothing in the cascade can
+   tell. Only the latin and latin-ext subsets of the variable weight axis ship,
+   and the page never asks for the rest. */
 
 /* Legal comment: esbuild keeps `/*!` blocks, so the OFL attribution travels
    with the bundled faces the same way Tabler's header does. */

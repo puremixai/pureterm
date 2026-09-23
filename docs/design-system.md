@@ -8,9 +8,11 @@ Paths are relative to the repository root. See the [architecture](architecture.m
 
 ## The one rule
 
-A colour literal may appear in exactly two files. `packages/ui/src/styles/tokens.css` is the system: the neutral ramp, the text ramp, the accent and status set, the terminal group, and the theme-invariant metrics. `packages/ui/src/styles/legacy.css` is the sole sanctioned exception — the pre-redesign palette, held as a guarded deletion list rather than allowed to spread back through the partials. Everything else resolves colour through a token.
+Inside the shared stylesheet, a colour literal may appear in exactly two files. `packages/ui/src/styles/tokens.css` is the system: the neutral ramp, the text ramp, the accent and status set, the terminal group, and the theme-invariant metrics. `packages/ui/src/styles/legacy.css` is the sole sanctioned exception — the pre-redesign palette, held as a guarded deletion list rather than allowed to spread back through the partials. Every other partial resolves colour through a token.
 
-`packages/ui/src/styles/fonts.css` is the only file that may name a typeface as a literal, because that is what an `@font-face` does: it declares a face rather than asking a token for one. The three stacks the page asks for — `--font-ui`, `--font-mono`, `--font-term` — are declared in `tokens.css`.
+The qualifier is load-bearing, because the rule is about CSS and the guard reads partials. Two places outside the cascade hold colour literals: the sixteen-entry `ANSI` array in `packages/ui/src/terminal-view.ts`, deliberate and covered in [Terminal palette](#terminal-palette), and `<meta name="theme-color" content="#121426">` at `packages/ui/src/index.html:15`, a retired value no guard reads, recorded in [Legacy register](#legacy-register). Naming them here is what keeps the two-file sentence honest rather than merely narrow.
+
+`packages/ui/src/styles/fonts.css` is the only file that may name a typeface in a face declaration, because that is what an `@font-face` does: it declares a face rather than asking a token for one. The three stacks the page asks for — `--font-ui`, `--font-mono`, `--font-term` — are named in `tokens.css`, so `fonts.css` is the only place a family is declared, not the only place one is written out.
 
 `packages/ui/tests/stylesheet-contract.test.mjs` enforces all of it, and the exemption list is itself asserted rather than declared:
 
@@ -18,6 +20,7 @@ A colour literal may appear in exactly two files. `packages/ui/src/styles/tokens
 - every member of `EXEMPT` must still be a partial the manifest imports, so a stale exemption fails.
 - `totalImports(manifest)` must equal the number of parsed partial names plus one (the external Tabler line), which closes the `url(...)` import form that yields no name and would therefore ship a partial into the cascade without ever being scanned.
 - the colour test counts the partials it scanned and asserts the total equals `names.length - EXEMPT.size`, so a skipped file is a failure rather than a pass.
+- every `var(--x)` in any partial, the two registers included, must name a token one of the registers declares. This is the opposite direction to the register's own liveness check, and it is the one that matters during the flip: an unknown custom property is not an error, it is substituted at computed-value time, so a mistyped `var(--fs-metax)` in a partial or a `var(--c-canvasx)` inside a token value makes the declaration quietly stop existing on the page.
 
 The pattern is `/#[0-9a-fA-F]{3,8}\b|\brgba?\(/`, applied to each partial with comments blanked. Comments are blanked rather than deleted so an offender keeps the line number a reader sees in the file. The same file also pins the type rules: only `fonts.css` may declare a face, every `font-family` and `font` shorthand must resolve through `var(--font-ui)`, `var(--font-mono)` or `var(--font-term)` (or a CSS-wide keyword), and every `font-weight` must be one of the four weights this app ships. The `@font-face` carve-out those censuses rely on is only honest because a separate test asserts exactly one file may hold faces.
 
@@ -25,11 +28,11 @@ The pattern is `/#[0-9a-fA-F]{3,8}\b|\brgba?\(/`, applied to each partial with c
 
 `packages/ui/src/style.css` is an `@import` manifest and nothing else: eleven lines, the first importing `@tabler/icons-webfont/dist/tabler-icons.min.css` and the next ten importing the local partials in cascade order.
 
-| # | Partial | Bytes | Responsibility |
+| # | Partial | Bytes (working tree) | Responsibility |
 | --- | --- | --- | --- |
-| 1 | `styles/fonts.css` | 2,236 | Bundled faces. The only file naming a family instead of asking a token for one. |
-| 2 | `styles/tokens.css` | 3,530 | The token system and the theme groups. |
-| 3 | `styles/legacy.css` | 5,569 | The pre-redesign palette as a debt register. |
+| 1 | `styles/fonts.css` | 2,469 | Bundled faces. The only file that may name a family in a face declaration. |
+| 2 | `styles/tokens.css` | 3,887 | The token system and the theme groups. |
+| 3 | `styles/legacy.css` | 6,165 | The pre-redesign palette as a debt register. |
 | 4 | `styles/base.css` | 3,076 | Element defaults: reset, inherited type, buttons and inputs, focus rings, reduced motion. |
 | 5 | `styles/chrome.css` | 8,944 | Application shell: the `#app` grid, top bar, workspace and session tabs, navigation rail, and the state classes on `.app-shell`. |
 | 6 | `styles/hosts.css` | 8,384 | Hosts dashboard: page header, search row, toolbar, and the card and list shapes. |
@@ -37,6 +40,8 @@ The pattern is `/#[0-9a-fA-F]{3,8}\b|\brgba?\(/`, applied to each partial with c
 | 8 | `styles/keychain.css` | 6,381 | Keychain library and editor over the shared host-card language. |
 | 9 | `styles/terminal.css` | 5,294 | Terminal surface: the xterm pane and its overrides, the session toolbar, the SFTP drawer. |
 | 10 | `styles/states.css` | 3,639 | Nothing-to-show and something-went-wrong: empty placeholder, shortcuts dialog, connection-failure page. |
+
+The size column is a working-tree measurement taken on Windows, and it is labelled that way because it does not reproduce everywhere: `core.autocrlf` is `true` and there is no `.gitattributes`, so the committed blobs are LF while eight of these ten files carry CRLF on disk. A checkout that keeps the blob form reads each of those eight smaller by exactly its line count — `tokens.css` 123, `legacy.css` 136, `base.css` 71, `chrome.css` 186, `hosts.css` 90, `inspector.css` 86, `keychain.css` 70, `states.css` 42 — while `fonts.css` and `terminal.css` are stored with LF endings already and read identically. Treat the numbers as an indication of how much each role carries, not as a checksum.
 
 The manifest owns cascade order because partials compete at equal specificity and the later import wins. That is why no partial may `@import`: a nested import would decide order in ten places instead of one, and `visual-contract.test.mjs` asserts `!/@import/` against every partial's own text. The order itself is pinned by the same test, which asserts the exact name list `['fonts', 'tokens', 'legacy', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states']` — and derives it from the manifest through `packages/ui/tests/partial-list.mjs` rather than a second copy of the file, so adding, renaming or reusing a partial fails until the assertion is edited with intent.
 
@@ -152,11 +157,11 @@ Contrast is a property of a pair, not of a token. The measured ratios:
 | `--tx-3` | 4.79 | 4.83 | **4.04** | **4.23** |
 | `--ac` | 7.77 | 4.63 | **3.88** | **4.06** |
 
-The rule the numbers force: **in the light theme, muted text and accent text belong on `--c-surface` alone.** `--tx-3` and `--ac` clear 4.5:1 there (4.83 and 4.63), and fall to 3.88–4.23 on `--c-control` and `--c-chrome`. The dark group is far more permissive but not unconditional: `--ac` clears every dark ground (6.55:1 at its worst, on `--c-control`), while `--tx-3` itself drops to 4.48 on `--c-raised` and 4.03 on `--c-control`. Note that `tokens.css`'s own header comment states the dark case as "clears AA on every ground", which holds for `--ac` and for `--tx-1`/`--tx-2` but not for `--tx-3` on the two lightest dark steps; the matrix above is the measured truth and the comment is the one place this document disagrees with the source.
+The rule the numbers force: **in the light theme, muted text and accent text belong on `--c-surface` alone.** `--tx-3` and `--ac` clear 4.5:1 there (4.83 and 4.63), and fall to 3.88–4.23 on `--c-control` and `--c-chrome`. The dark group is far more permissive but not unconditional: `--ac` clears every dark ground (6.55:1 at its worst, on `--c-control`), while `--tx-3` itself drops to 4.48 on `--c-raised` and 4.03 on `--c-control`. The `tokens.css` header comment over the text ramp states the same limit, so the source and this table agree.
 
 `design-tokens.test.mjs` asserts the `--c-surface` pairs plus `--tx-1` and `--idle` on `--c-chrome` and `--ac-fg` on `--ac`. It does not assert every cell of this table, so a change to a ground used only for chrome must be checked against the table by hand.
 
-The hairlines are deliberately excluded from that discipline: they are not text. `--line` measures 1.27:1 on `--c-surface` in the dark group (1.29:1 in the light group) and the near-1.27 target is intentional — depth carried by a barely-there edge, the way the ramp above carries depth at 1.04–1.19 between adjacent steps. The `rgba(222, 226, 255, 0.085)` it replaces composites to 1.21:1–1.25:1 across the six legacy surface colours it currently borders (`--topbar`, `--nav`, `--main`, `--main-soft`, `--card`, `--field`), so the new token is marginally more visible rather than a redesign of the divider. Making a hairline pass a text contrast test would be the mistake this note exists to prevent.
+The hairlines are deliberately excluded from that discipline: they are not text. `--line` measures 1.27:1 on `--c-surface` in the dark group (1.29:1 in the light group) and the near-1.27 target is intentional — depth carried by a barely-there edge, the way the ramp above carries depth at 1.04–1.19 between adjacent steps. The `rgba(222, 226, 255, 0.085)` it replaces composites to 1.21:1–1.26:1 across the six legacy surface colours it currently borders (`--topbar` 1.21, `--nav` 1.26, `--main` 1.25, `--main-soft` 1.25, `--card` 1.26, `--field` 1.23), so the new token is marginally more visible rather than a redesign of the divider. Making a hairline pass a text contrast test would be the mistake this note exists to prevent.
 
 ## Theme mechanism
 
@@ -193,6 +198,8 @@ The sixteen ANSI entries, in `ANSI` array order, with each entry's measured rati
 | 7 white | `#b9bec6` | 10.67 | 15 brightWhite | `#f2f3f5` | 17.95 |
 
 xterm's `ITheme` names those sixteen individually — `black`, `red`, … `brightWhite` — and its `ThemeService` folds the named keys into its own 0–15 array, so the list is handed over by position: 0–7 normal, 8–15 bright, in black/red/green/yellow/blue/magenta/cyan/white order. A literal `color` name for the neutral set would be misleading, so the array is kept as the readable list and the `palette: ITheme` object is only the fold.
+
+Seven of the sixteen are the dark group's own colours a second time over: entry 1 is `--err`, 2 `--ok`, 3 `--warn`, 4 `--ac`, 7 `--tx-2`, 12 `--ac-hi` and 15 `--tx-1`, each byte-identical to the token it mirrors. Like `--term-cursor`, none of the seven is reached through a `var()`, so `terminal-theme.test.mjs` reads the array out of `terminal-view.ts` — rather than re-typing the literals into a test, which could pass while the array it names drifted — and asserts those seven triplets still equal the dark tokens. The rationale is the one `design-tokens.test.mjs` already gives for the cursor: without the tie, a palette flip leaves the copy behind in silence. Retuning `--ok`, `--err`, `--warn`, `--ac`, `--ac-hi`, `--tx-1` or `--tx-2` therefore means editing the ANSI list in the same commit, and the suite now refuses to let that be forgotten. The tie binds to the dark group alone, because the ANSI list is dark terminal material in both themes, and it compares triplets rather than strings so a change of notation is not mistaken for a change of colour.
 
 Entry 0 is deliberately **not** `--term-bg`. Both values were `#08090a` in an earlier draft, which made black-on-terminal text exactly 1.00:1 by construction: `printf '\e[30mhidden\e[0m'` would have been invisible rather than dark. `#101317` lifts it to 1.07:1, still nearly invisible as a legible colour and correctly so — it is the shadow step of the canvas. Entry 8, bright black, is the one the constraint really binds: prompts use it for *dimmed* rather than hidden text, and the first draft's `#565b63` measured 2.92:1, under the 3:1 floor. `#5f656e` clears 3.39:1.
 
@@ -235,6 +242,7 @@ The palette flip still owes more than a find-and-replace:
 
 - `visual-contract.test.mjs` asserts that the concatenated cascade still declares `--topbar`, `--nav`, `--card`, `--text-strong` and `--accent`. Those five names live only in `legacy.css`, so deleting the file fails a test that has nothing to do with colour ownership. The flip must move those assertions onto the new ramp.
 - `.ssh-section` divides the connection form with `1px solid var(--legacy-line-faint)`, an `rgba(222, 226, 255, 0.05)` over the drawer's `--nav` ground: measured 1.14:1. It is a divider in name only, and the flip needs to decide whether it becomes a visible `--line` or stops pretending to be one.
+- The register's seven live hairlines now sit in one ladder group, faintest to strongest: `--legacy-line-faint` .05, `--legacy-line-hair` .07, `--legacy-line-edge` .08, `--legacy-line` .085, `--legacy-line-mid` .12, `--legacy-line-field` .13, `--legacy-line-strong` .17. The new ramp's three — `--line-soft`, `--line`, `--line-strong` — are pending at zero references each. So `--line-strong` and `--legacy-line-strong` are parallel names for different values, one live and one not, and a blind `s/--legacy-//` during the flip would land the live alpha where the opaque step belongs. Pair them by measured value, never by name; the trap is named in `legacy.css`'s own header too.
 - `packages/ui/src/index.html:15` still carries `<meta name="theme-color" content="#121426">`, a retired-palette literal in a file no guard reads and which now corresponds to nothing that renders. It belongs to the theme-sync assertion the flip owes.
 - The `--term-*` group has no CSS consumer at all: its only reader is `terminal-view.ts`, which no CSS guard scans. `terminal-theme.test.mjs` is the single tie holding it, so the palette flip cannot see the terminal through the stylesheet and must be told about it in the test.
 

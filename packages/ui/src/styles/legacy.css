@@ -2,7 +2,12 @@
    colour entries are Plan 2's deletion list, gone with one `git rm` and one
    manifest line; the four geometry/motion entries are not. --radius-sm,
    --radius-md, --radius-lg and --motion-standard have 22 references and no
-   other declaration, so the flip commit re-homes them in tokens.css first. */
+   other declaration, so the flip commit re-homes them in tokens.css first.
+   Watch the parallel names: the entries here are LIVE, and the new ramp's
+   --line, --line-soft and --line-strong are PENDING with zero call sites, so
+   --line-strong and --legacy-line-strong are two different values that a blind
+   s/--legacy-// rename would collapse into one. Pair them by measured value,
+   never by name. */
 :root {
   /* Original surface, text and accent aliases, moved verbatim out of
      tokens.css. Do NOT rename: every var(--nav), var(--topbar),
@@ -16,8 +21,6 @@
   --card-hover: #30354d;
   --field: #171a2b;
   --field-hover: #1d2134;
-  --legacy-line: rgba(222, 226, 255, 0.085);
-  --legacy-line-strong: rgba(222, 226, 255, 0.17);
   --text-strong: #f5f5fb;
   --text: #e5e7f2;
   --text-muted: #a1a5bb;
@@ -89,12 +92,17 @@
   /* Scrollbars. */
   --legacy-scroll-thumb: #454b67;
   --legacy-scroll-thumb-strong: #4b5069;
-  /* Hairlines, faintest to strongest. */
+  /* Hairlines, faintest to strongest, gathered into one group on purpose: the
+     last two used to sit up among the surface aliases, which is how a seven-step
+     ladder comes to read as two unrelated pairs. All seven are live.
+     `--legacy-line` at .085 is the value the new --line replaces. */
   --legacy-line-faint: rgba(222, 226, 255, 0.05);
   --legacy-line-hair: rgba(222, 226, 255, 0.07);
   --legacy-line-edge: rgba(222, 226, 255, 0.08);
+  --legacy-line: rgba(222, 226, 255, 0.085);
   --legacy-line-mid: rgba(222, 226, 255, 0.12);
   --legacy-line-field: rgba(222, 226, 255, 0.13);
+  --legacy-line-strong: rgba(222, 226, 255, 0.17);
   /* Overlays and row hovers. */
   --legacy-overlay-soft: rgba(255, 255, 255, 0.025);
   --legacy-overlay-hover: rgba(255, 255, 255, 0.07);

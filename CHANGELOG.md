@@ -26,7 +26,7 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 - Add `VERSION.txt` as the source baseline and generate UI version and changelog metadata.
 - Render the interface in Inter, bundled locally so the page makes no remote font request, and resolve monospace text through one shared stack instead of the several hand-copied ones it used to carry. Text weights are limited to 400/500/600/700: the off-scale 650/750/800 values could not be rendered by the Chinese and system fallback faces, which answered with a synthetic bold on 13px text.
 - Move the terminal to a neutral ANSI palette on a darker canvas. Black-on-terminal text is no longer exactly the background colour, and the dimmed prompt colour now clears 3:1 against the canvas.
-- Resolve every interface colour through one token file, `packages/ui/src/styles/tokens.css`. The palette itself has not changed yet: the pre-redesign values are still what renders, kept in a single guarded register that the chrome rebuild replaces step by step.
+- Resolve every interface colour through a token. The new system lives in `packages/ui/src/styles/tokens.css`, and the pre-redesign values it will replace are kept in one guarded register, `packages/ui/src/styles/legacy.css`; no other partial may name a colour. The palette itself has not changed yet: the pre-redesign values are still what renders, and the chrome rebuild replaces them step by step.
 - Keep this section updated while work is merged after `0.1.0-alpha.1`.
 
 ### Security

@@ -57,7 +57,9 @@ The stylesheet currently carries four blues (`#3c9ef5`, `#a7c4ff`, `#69c8f4`, `#
 | `--ok` | `#4ec27f` | `#1a7f4b` | Connected, verified |
 | `--warn` | `#e0a83c` | `#9a6a0a` | Legacy key, degraded capability |
 | `--err` | `#f2555a` | `#c2363b` | Failure; outline only, never a solid fill |
-| `--idle` | `#8b919b` | `#c9ced5` | Disconnected state dot |
+| `--idle` | `#8b919b` | `#7e8590` | Disconnected state dot |
+
+`--idle`'s light value is a correction rather than a re-tune, in the same way entry 0 and bright entry 0 of the ANSI set below were corrected: the `#c9ced5` specified here measured 1.58:1 on `--c-surface` and 1.385:1 on `--c-chrome`, well under the 3:1 floor a status dot has to clear, so Task 1 replaced it with `#7e8590`, which measures 3.72:1 and 3.26:1. `design-tokens.test.mjs` asserts that floor per theme.
 
 Primary buttons are solid accent with `--ac-fg` text. Destructive buttons keep a ghost outline whose border and label turn `--err`.
 

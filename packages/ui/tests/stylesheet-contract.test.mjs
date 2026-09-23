@@ -25,8 +25,8 @@ const LEGACY_DECLARATIONS = 100
 // shrink this set to empty.
 const UNREFERENCED_LEGACY = new Set(['--legacy-surface-sunken'])
 
-// styles/fonts.css is the one partial that names a font family instead of
-// asking for one through a token, because that is what an @font-face does. The
+// styles/fonts.css is the one partial that declares a face, which is the only
+// place a family name may be written rather than asked for through a token. The
 // censuses below read its face blocks out of the text, so this file has to stay
 // the only place a face is declared; that is asserted, not assumed.
 const FACE_SOURCE = 'fonts'
@@ -146,6 +146,45 @@ test('every legacy entry is read by a partial, or named in the allowlist', async
     assert.ok(declared.includes(name), `${name} is allowlisted but no longer declared; shrink the allowlist`)
     assert.ok(!referenced.has(name), `${name} has a call site again; shrink the allowlist`)
   }
+})
+
+// The test above reads declarations and asks whether anything references them.
+// This one reads references and asks whether anything declares them, which is
+// the direction that has no guard today. It matters more than it looks: an
+// unknown custom property is not an error, it is substituted at computed-value
+// time, so `padding: var(--s-3x)` does not fail the build and does not print a
+// warning — the declaration simply stops existing on the page. Every one of the
+// new ramp's ~90 call sites is still unwritten, so the palette flip will create
+// the whole exposure in a single commit, and a transposed suffix in a partial
+// (`--fs-metax`) or inside a token value (`var(--c-canvasx)`) is exactly the
+// mistake this catches. The registers' own references are scanned too: a token
+// may be exempt from the literal rule, but it is not exempt from pointing at a
+// name that exists.
+test('every var() reference names a token one of the registers declares', async () => {
+  const { names, texts } = await readPartials()
+  const declared = new Set()
+  for (const register of SANCTIONED) {
+    for (const match of sourceOf(names, texts, register).matchAll(/(--[a-z0-9-]+)\s*:/g)) {
+      declared.add(match[1])
+    }
+  }
+  assert.ok(declared.size > 0, 'the registers declare no tokens at all; the set is the contract')
+  const reports = []
+  let scanned = 0
+  for (const [name, text] of names.map((n, i) => [n, texts[i]])) {
+    scanned += 1
+    // Line numbers come from the blanked source: blanking keeps every newline,
+    // so a reference reports the line a reader finds in the file.
+    const source = withoutComments(text)
+    const offenders = [...source.matchAll(/var\(\s*(--[a-z0-9-]+)/g)]
+      .filter((match) => !declared.has(match[1]))
+      .map((match) => `  ${source.slice(0, match.index).split('\n').length}: var(${match[1]}) is declared nowhere`)
+    if (offenders.length) reports.push(`styles/${name}.css\n${[...new Set(offenders)].join('\n')}`)
+  }
+  assert.equal(scanned, names.length,
+    'the reference check must cover every partial the manifest imports; an unchecked file is an escape route')
+  assert.equal(reports.length, 0,
+    `every var() must name a token declared in styles/tokens.css or styles/legacy.css:\n\n${reports.join('\n\n')}`)
 })
 
 // A face names a family and publishes a weight range instead of asking for one,

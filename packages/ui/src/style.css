@@ -4,10 +4,13 @@
    The two font providers come first: CSS does not require a face to precede the
    rules that use it, so this is a reading order, and the one that puts the
    assets before the cascade. styles/fonts.css is the only place a family name
-   is written out, and it bundles the two Inter latin files the page renders.
-   A colour literal may appear only in styles/tokens.css and styles/legacy.css;
-   every other partial resolves colour through a token, which is what
-   stylesheet-contract.test.mjs enforces. */
+   may appear in a face declaration, and it bundles the two Inter latin files the
+   page renders; the three families the page asks for are named in tokens.css.
+   Within this stylesheet a colour literal may appear only in styles/tokens.css
+   and styles/legacy.css; every other partial resolves colour through a token,
+   which is what stylesheet-contract.test.mjs enforces. The guard reads partials,
+   so the ANSI list in terminal-view.ts and the meta theme-color in index.html
+   are outside its reach and are documented where they live. */
 @import "@tabler/icons-webfont/dist/tabler-icons.min.css";
 @import "./styles/fonts.css";
 @import "./styles/tokens.css";

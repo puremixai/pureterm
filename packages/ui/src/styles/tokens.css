@@ -1,6 +1,9 @@
 /* Contract: colour groups are redeclared per theme; metrics live in :root once
    and inherit, because :root and [data-theme="light"] match the same element.
-   --shadow-pop is the one theme-varying derived token. Asserted by the tests. */
+   --shadow-pop is the one theme-varying derived token. Asserted by the tests.
+   Changing a value here also means re-measuring the tables in
+   docs/design-system.md: no test reads that document, so forgetting it is
+   silent, and the numbers are the only record of what each pair measures. */
 :root {
   color-scheme: dark;
 
@@ -14,7 +17,7 @@
   --c-control: #21252b;
   /* Hairlines are not text: --line measures ~1.27:1 on --c-surface by design,
      marginally more visible than the rgba(222, 226, 255, .085) it replaces,
-     which composites to ~1.21-1.25 across the grounds it currently sits on. */
+     which composites to ~1.21-1.26 across the grounds it currently sits on. */
   --line: #262a31;
   --line-soft: #1c1f24;
   --line-strong: #3a4049;

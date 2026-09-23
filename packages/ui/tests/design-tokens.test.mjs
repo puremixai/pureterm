@@ -1,77 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFile } from 'node:fs/promises'
-
-const css = await readFile(new URL('../src/styles/tokens.css', import.meta.url), 'utf8')
-
-// Comments document, they do not declare. Stripping them first means an
-// explanatory note can never certify a token that no longer exists.
-const source = css.replace(/\/\*[\s\S]*?\*\//g, '')
-
-const DARK = ':root'
-const LIGHT = '[data-theme="light"]'
-
-function escapeRe(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-// Anchored on the start of a line, so a descendant rule such as
-// `[data-theme="light"] .host-row {` cannot be mistaken for the theme block.
-function block(selector) {
-  const pattern = new RegExp(`^[ \\t]*${escapeRe(selector)}[ \\t]*\\{`, 'gm')
-  const opens = [...source.matchAll(pattern)]
-  assert.equal(opens.length, 1, `expected exactly one ${selector} rule, found ${opens.length}`)
-  const start = opens[0].index + opens[0][0].length
-  const close = source.indexOf('}', start)
-  assert.notEqual(close, -1, `unterminated ${selector} block`)
-  const body = source.slice(start, close)
-  assert.ok(!body.includes('{'), `${selector} must be a flat declaration block, not a nested rule`)
-  return body
-}
-
-function names(text) {
-  return [...text.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1])
-}
-
-function hex(text) {
-  const value = String(text).trim().replace('#', '')
-  if (!/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(value)) {
-    throw new Error(`cannot parse colour: ${JSON.stringify(text)} is not #rgb or #rrggbb`)
-  }
-  const full = value.length === 3 ? [...value].map((c) => c + c).join('') : value
-  return [0, 2, 4].map((i) => Number.parseInt(full.slice(i, i + 2), 16))
-}
-
-function rgba(text) {
-  const match = /^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([\d.]+)\s*\)$/
-    .exec(String(text).trim())
-  if (!match) throw new Error(`cannot parse colour: ${JSON.stringify(text)} is not rgba(r, g, b, a)`)
-  return { rgb: [Number(match[1]), Number(match[2]), Number(match[3])], alpha: Number(match[4]) }
-}
-
-// The RGB triplet a colour token contributes, whichever notation it uses.
-function triplet(text) {
-  return String(text).trim().startsWith('#') ? hex(text) : rgba(text).rgb
-}
-
-function luminance(color) {
-  const channel = color.map((byte) => {
-    const srgb = byte / 255
-    return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * channel[0] + 0.7152 * channel[1] + 0.0722 * channel[2]
-}
-
-function ratio(foreground, background) {
-  const [a, b] = [luminance(foreground), luminance(background)].sort((x, y) => y - x)
-  return (a + 0.05) / (b + 0.05)
-}
-
-function token(selector, name) {
-  const match = new RegExp(`^[ \\t]*${escapeRe(name)}\\s*:\\s*([^;]+);`, 'm').exec(block(selector))
-  assert.ok(match, `missing ${name} in ${selector}`)
-  return match[1].trim()
-}
+// The reader, the colour maths and the comment-stripping live in token-source.mjs
+// so that terminal-theme.test.mjs can tie the ANSI palette to the same values
+// without keeping a second copy of either.
+import { DARK, LIGHT, block, hex, luminance, names, ratio, token, triplet } from './token-source.mjs'
 
 function contrast(selector, foreground, background) {
   return ratio(triplet(token(selector, foreground)), triplet(token(selector, background)))
