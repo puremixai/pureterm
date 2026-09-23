@@ -1,0 +1,70 @@
+/* Keychain shares the host card language, with a reflowing library/editor split. */
+.keychain-dashboard { display: flex; height: 100%; min-height: 0; overflow: hidden; }
+.keychain-main { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; container-type: inline-size; }
+.keychain-toolbar.dashboard-toolbar { flex: 0 0 auto; align-items: center; flex-direction: row; min-height: 86px; margin: 0; padding: 16px 24px; border-bottom: 1px solid var(--legacy-line); background: var(--nav); gap: 16px; }
+.keychain-toolbar .action-primary { flex: 0 0 auto; }
+.keychain-toolbar .dashboard-tools { min-width: 0; align-self: center; margin-left: auto; }
+.keychain-search { position: relative; display: flex; align-items: center; min-width: 0; max-width: 260px; }
+.keychain-search > i { position: absolute; left: 12px; color: var(--text-muted); font-size: 18px; pointer-events: none; }
+.keychain-search input { height: 40px; padding-left: 37px; border-color: transparent; border-radius: 10px; background: var(--main-soft); }
+.keychain-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 28px 32px; scrollbar-color: #4b5069 transparent; scrollbar-width: thin; }
+.keychain-content .hosts-heading { margin: 0 0 8px; }
+.keychain-policy { margin: 0 0 22px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.keychain-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+@container (max-width: 1200px) { .keychain-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 630px) { .keychain-list { grid-template-columns: minmax(0, 1fr); } }
+.keychain-card { display: flex; align-items: center; min-width: 0; min-height: 91px; border: 2px solid transparent; border-radius: 17px; background: var(--card); transition: background-color 160ms, border-color 160ms; }
+.keychain-card:hover { background: var(--card-hover); }
+.keychain-card.active { border-color: var(--accent-strong); }
+.keychain-card-main { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 14px; padding: 13px 8px 13px 15px; border: 0; background: transparent; text-align: left; }
+.keychain-card-main:hover:not(:disabled) { background: transparent; }
+.keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 58px; height: 58px; border-radius: 15px; color: white; background: #075a87; font-size: 29px; }
+.keychain-card .host-content { gap: 5px; }
+.keychain-card-sub { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.keychain-card-edit { flex: 0 0 auto; min-width: 32px; margin-right: 10px; opacity: 0; }
+.keychain-card:hover .keychain-card-edit, .keychain-card:focus-within .keychain-card-edit, .keychain-card.active .keychain-card-edit { opacity: 1; }
+.keychain-list.list-view { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.keychain-list.list-view .keychain-card { min-height: 68px; }
+.keychain-list.list-view .keychain-avatar { width: 40px; height: 40px; font-size: 24px; border-radius: 10px; }
+#keychain-view[aria-pressed="true"] { background: #393e56; }
+.keychain-empty { display: grid; justify-items: center; max-width: 450px; margin: 65px auto; text-align: center; color: var(--text-muted); }
+.keychain-empty > i { display: grid; place-items: center; width: 72px; height: 72px; margin-bottom: 18px; border-radius: 20px; background: var(--card); color: var(--accent); font-size: 34px; }
+.keychain-empty h2 { margin: 0; color: var(--text-strong); font-size: 19px; }
+.keychain-empty p { line-height: 1.8; }
+.keychain-editor { display: flex; flex: 0 0 clamp(360px, 28vw, 500px); min-width: 0; flex-direction: column; min-height: 0; border-left: 1px solid var(--legacy-line); background: var(--main); }
+.keychain-editor .toolbar-head { background: var(--nav); }
+.keychain-editor fieldset { min-inline-size: 0; margin: 0; border: 0; }
+.keychain-editor .drawer-scroll { padding: 18px 16px; }
+.keychain-form-section { padding: 22px; border-radius: 16px; background: var(--card); }
+.keychain-form-section + .keychain-form-section { margin-top: 20px; }
+.keychain-form-section .field + .field { margin-top: 15px; }
+.keychain-form-section .field > span { font-size: 12px; }
+.keychain-form-section input, .keychain-form-section textarea { background: transparent; }
+
+#keychain-details { margin-top: 16px; }
+#keychain-fingerprint { display: block; margin: 12px 0; color: var(--text-muted); overflow-wrap: anywhere; font-size: 11px; line-height: 1.7; }
+.keychain-drop { display: grid; justify-items: center; gap: 8px; padding: 25px 12px; border: 1px dashed var(--legacy-line-strong); border-radius: 9px; text-align: center; color: var(--text-muted); }
+.keychain-drop > i { color: var(--accent); font-size: 36px; }
+.keychain-drop p { margin: 5px 0; font-size: 13px; }
+.keychain-drop > span { color: var(--text-faint); font-size: 11px; }
+.keychain-drop.is-dragging { border-color: var(--accent-strong); background: var(--accent-soft); }
+.keychain-import { width: 100%; min-height: 46px; margin-top: 18px; background: #3b425e; }
+.keychain-help { margin: 14px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
+.keychain-message { margin: 0 0 12px; color: var(--text-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.keychain-message:empty { display: none; }
+.keychain-message.ok { color: var(--legacy-ok); }
+.keychain-message.err { color: var(--legacy-err); }
+.keychain-footer-actions { display: flex; gap: 12px; }
+.keychain-footer-actions .primary { flex: 1 1 auto; min-height: 46px; }
+.keychain-footer-actions .danger:hover { color: var(--legacy-err); }
+
+@media (max-width: 1100px) {
+  .keychain-toolbar.dashboard-toolbar { padding: 16px; flex-wrap: wrap; }
+  .keychain-content { padding: 24px 16px; }
+  .keychain-toolbar .dashboard-tools { flex: 1 1 auto; }
+  .keychain-search { flex: 1 1 auto; max-width: none; }
+}
+@media (max-width: 900px) {
+  .keychain-editor { position: absolute; inset: 0 0 0 auto; z-index: 6; width: min(480px, 100%); box-shadow: -20px 0 40px #080a1b55; }
+}
+@media (hover: none) { .keychain-card-edit { opacity: 1; } }
