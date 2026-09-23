@@ -14,6 +14,7 @@ PureTerm 的所有重要变更都记录在这里。本文件遵循 [Keep a Chang
 
 ### Changed
 
+- **0.x 内部集成破坏性变更：**移除 Desktop 的 `window.sshAPI` 和 SSH 业务 IPC，以最小的 `window.puretermDesktop` 负责启动信息/就绪，并通过子进程拥有的共享回环 Web Host 处理 SSH/SFTP、主机和 Keychain。Electron 窗口从 `pureterm-app://app/` 加载；既有 SSH 数据和面向用户的操作仍可使用。独立 Web 保持独立，`SSH_CORDIS_NO_WEB_CARRIER=1` 仅关闭附带浏览器访问。
 - 以紧凑的 PureTerm 顶栏替代原生标题栏，通过集成式系统控件保留窗口操作；Windows/Linux 菜单栏自动隐藏，同时保留其快捷键能力。
 - 将创建主机收敛为唯一的「新建主机」操作，移除顶部栏、导航、搜索、Terminal 与 Ctrl/Cmd+T 的重复入口。
 - 明确主机卡片操作：单击只选中，点击「编辑」打开主机抽屉，双击打开新的终端标签。
@@ -24,6 +25,10 @@ PureTerm 的所有重要变更都记录在这里。本文件遵循 [Keep a Chang
 - 增加英文优先的开发说明及对应中文翻译。
 - 增加 `VERSION.txt` 作为源码基准，并生成界面版本和变更日志元数据。
 - 在 `0.1.0-alpha.1` 之后合并的工作中持续更新此区段。
+
+### Security
+
+- 为 Desktop 窗口的准确 WebSocket 请求使用由主进程持有的独立 bearer token；不把它写入页面 URL、DOM、浏览器 cookie 或存储。
 
 ## [0.1.0-alpha.1] - 2026-09-16
 

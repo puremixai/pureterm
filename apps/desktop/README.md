@@ -2,7 +2,7 @@
 
 [中文版本](README_zh.md)
 
-PureTerm Desktop is an Electron SSH/SFTP client with password or private-key authentication, saved hosts, an interactive terminal, and basic remote file operations. Electron starts an independent Node Host child process; the default IPC window and the local browser entry share that Host. The main process owns operating-system encryption and native key selection.
+PureTerm Desktop is an Electron SSH/SFTP client with password or private-key authentication, saved hosts, an interactive terminal, and basic remote file operations. Electron starts an independent Node-mode Web Host child process. Its `pureterm-app://app/` window and optional local browser use that child’s WebSocket. The main process owns operating-system encryption and native key selection.
 
 Business logic, the protocol, HTTP/WS, and the UI live in shared root-workspace packages. The standalone entry that does not start Electron is documented in the [local Web guide](../web/README.md). See the [repository guide](../../README.md), [architecture](../../docs/architecture.md), and [layout decision](../../LAYOUT-PROPOSAL.md).
 
@@ -35,14 +35,14 @@ The default data directory is `~/.ssh-cordis/`, overridden by `SSH_CORDIS_DATA_D
 | `known_hosts.json` | trusted SSH host fingerprints; changed keys reject the connection |
 | `launch-profile.json` | launch configuration submitted after renderer readiness |
 
-Desktop’s HTTP carrier binds only to `127.0.0.1`; startup logs print a tokenized local URL. A new token is generated for every launch. The browser and Desktop share host records, encrypted credentials, and native private-key selection.
+Desktop’s internal Web Host always binds to `127.0.0.1`. The application window loads UI files through `pureterm-app://app/` while the Host starts. Its minimal `window.puretermDesktop` preload API waits for Host readiness to provide a loopback WebSocket URL and reports renderer readiness; SSH, SFTP, hosts, and Keychain operations use that WebSocket, not Electron business IPC. Electron main injects a separate bearer token only into the window’s exact WebSocket request; the token is never exposed to the page. When attached browser access is enabled, startup logs print a different tokenized local URL and issue browser session cookies. The attached browser and Desktop window share the Host process, encrypted storage, and native key picker; each client owns its SSH sessions.
 
-The standalone `npm run start:web` command uses its own Node Host and defaults to `~/.ssh-cordis/web/`. It stores hosts and fingerprints only; browser key selection does not depend on Electron, and passwords/private keys live only in the current page. Do not point both independent processes at the same data files.
+The standalone `npm run start:web` command uses a separate Node Web Host and defaults to `~/.ssh-cordis/web/`. It stores hosts and fingerprints only; browser key selection does not depend on Electron, and passwords/private keys live only in the current page. It does not share Desktop sessions or data files, and `SSH_CORDIS_NO_WEB_CARRIER=1` does not disable it. Do not point both independent processes at the same data files.
 
 | Environment variable | Effect |
 | --- | --- |
 | `SSH_CORDIS_DATA_DIR` | select the Desktop data directory |
-| `SSH_CORDIS_NO_WEB_CARRIER=1` | disable Desktop’s attached Web entry for this run |
+| `SSH_CORDIS_NO_WEB_CARRIER=1` | disable only Desktop’s attached ordinary-browser entry; the internal Web Host and Desktop window still work |
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | disable launch-profile reads and writes |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | disable automatic no-sandbox fallback and profile backfill |
 
@@ -54,12 +54,13 @@ Sandbox, GPU, and startup fallback behavior remain as implemented. Profiles are 
 | --- | --- |
 | `electron/app/` | main process, shell, platform APIs, system credentials, and native key picker |
 | `electron/runtime/` | platform policy, readiness, profiles, restart, and resource paths |
-| `electron/carriers/` | IPC and preload |
+| `electron/host/` | independent Node-mode Web Host child entry |
+| `electron/carriers/` | minimal preload WebSocket bootstrap and readiness report |
 | `electron/diagnostics/` | in-process boot/smoke hooks |
 | `scripts/`, `tests/` | Desktop build/launch, diagnostics, tests, and local protocol fixtures |
 | `../../packages/{host,protocol,transport,ui}/` | shared business logic, protocol, transport, and UI |
 
-From the root, `npm run build:desktop` builds shared packages and Desktop, producing `dist/electron/app/main.js` and `dist/electron/carriers/preload.cjs`. UI artifacts stay in `../../packages/ui/dist/` and are located through package exports rather than copied into Desktop dist.
+From the root, `npm run build:desktop` builds shared packages and Desktop, producing `dist/electron/app/main.js`, `dist/electron/host/entry.js`, and `dist/electron/carriers/preload.cjs`. UI artifacts stay in `../../packages/ui/dist/` and are located through package exports rather than copied into Desktop dist.
 
 Root `npm run typecheck` checks every workspace plus ESM extensions and dependency boundaries. Host has no Electron dependency; UI imports neither Node nor Host; the shell accesses business logic through public package exports and never reads `Host.internals`.
 
@@ -72,14 +73,14 @@ npm run verify
 npm run verify:electron
 ```
 
-`verify` includes builds, types, dependency constraints, and Host child-process, update-coordinator, UI, Web, SSH/SFTP, and HTTP/WS tests that do not need a window. Root `verify:electron` checks Desktop boot, IPC, Desktop Web, renderer-crash cleanup, update downloads, standalone Node Web, and shared Client lifecycle.
+`verify` includes builds, types, dependency constraints, and Host child-process, update-coordinator, UI, Web, SSH/SFTP, and HTTP/WS tests that do not need a window. Root `verify:electron` checks Desktop custom-scheme boot, WebSocket SSH/Keychain operations, Desktop Web, renderer-crash cleanup, update downloads, standalone Node Web, and shared Client lifecycle.
 
 Desktop-focused commands can be run from the root with `npm run <command> --workspace=@pureterm/desktop`:
 
 | Command | Scope |
 | --- | --- |
 | `boot` | start real Desktop and wait for renderer-ready and boot results |
-| `smoke:electron` | real preload, IPC, and terminal byte stream |
+| `smoke:electron` | real custom-scheme UI, minimal preload, WebSocket, and terminal byte stream |
 | `smoke:web` | real page and terminal in the Desktop Web carrier |
 | `smoke:node` | built platform, profile, Host, SFTP, carrier, and runner checks |
 | `smoke:profile` | profile persistence, invalid data, and readiness gate without two real launches |
@@ -93,4 +94,4 @@ Electron verification uses controlled windows and temporary user data and disabl
 
 ## Current scope
 
-Desktop Host separation, the shared Cordis Client, installer builds, and GitHub Releases update checks are implemented. “Help → Check for Updates” performs a manual check; after a download, a confirmed restart stops SSH and installs the update. Development builds do not check online. See the [release guide](../../docs/desktop-release.md) for packaging, signing, and publishing. Port forwarding, multiple tabs, user accounts, and multi-user isolation are not in the current scope. Historical remediation and test notes are in the [previous plan](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md); its old paths and pass counts describe that historical baseline.
+Desktop Web Host separation, the shared Cordis Client, terminal tabs, installer builds, and GitHub Releases update checks are implemented. “Help → Check for Updates” performs a manual check; after a download, a confirmed restart stops SSH and installs the update. Development builds do not check online. See the [release guide](../../docs/desktop-release.md) for packaging, signing, and publishing. Port forwarding, user accounts, and multi-user isolation are outside the current scope. Historical remediation and test notes are in the [previous plan](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md); its old paths and pass counts describe that historical baseline.

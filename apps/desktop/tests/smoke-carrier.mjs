@@ -55,7 +55,7 @@ async function wireClient(t, url) {
   }
 }
 
-async function carrierFixture(t) {
+async function carrierFixture(t, carrierOptions = {}) {
   let carrier
   const fixture = await hostFixture(t, { getRenderer: (id) => carrier?.getRenderer(id), seal: () => undefined, unseal: () => undefined })
   const ready = []
@@ -71,10 +71,28 @@ async function carrierFixture(t) {
   await writeFile(join(staticDir, 'index.html'), '<!doctype html><title>Local carrier fixture</title>', 'utf8')
   await writeFile(join(staticDir, 'app.js'), 'globalThis.carrierFixture = true', 'utf8')
   await writeFile(join(fixture.directory, 'outside.txt'), 'must not be served', 'utf8')
-  carrier = await createHttpCarrier({ dispatcher, staticDir, log: () => {} })
+  carrier = await createHttpCarrier({ dispatcher, staticDir, log: () => {}, ...carrierOptions })
   t.after(() => carrier.close())
   return { carrier, host: fixture.host, ready, picked }
 }
+
+test('Desktop bearer authenticates local HTTP and WebSocket without issuing a browser cookie', { timeout: 15000 }, async (t) => {
+  const { carrier } = await carrierFixture(t, { desktopToken: 'desktop-private-token', browserAccess: false })
+  const bearer = { Authorization: 'Bearer desktop-private-token' }
+  const allowed = await http(carrier.port, '/', bearer)
+  assert.equal(allowed.status, 200)
+  assert.equal(allowed.headers['set-cookie'], undefined)
+  assert.equal((await http(carrier.port, '/', { Authorization: 'Bearer wrong' })).status, 401)
+  assert.equal((await http(carrier.port, `/?token=${carrier.token}`)).status, 401)
+  assert.equal((await http(carrier.port, '/', { Cookie: `ssh-cordis-session-${carrier.port}=${carrier.token}` })).status, 401)
+  const upgrade = { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==' }
+  const origin = `http://127.0.0.1:${carrier.port}`
+  assert.equal((await http(carrier.port, '/ws', { ...upgrade, ...bearer, Origin: origin }, 'GET', true)).status, 101)
+  assert.equal((await http(carrier.port, '/ws', { ...upgrade, Authorization: 'Bearer wrong', Origin: origin }, 'GET', true)).status, 401)
+  assert.equal((await http(carrier.port, '/ws', { ...upgrade, ...bearer, Origin: 'https://attacker.invalid' }, 'GET', true)).status, 401)
+  assert.equal((await http(carrier.port, '/ws', { ...upgrade, ...bearer, Host: 'attacker.invalid' }, 'GET', true)).status, 401)
+  assert.equal((await http(carrier.port, `/ws?token=${carrier.token}`, { ...upgrade, Origin: origin }, 'GET', true)).status, 401)
+})
 
 test('shared HTTP carrier rejects nonloopback listeners before starting a server', async () => {
   for (const host of ['0.0.0.0', '::', '192.168.1.1', 'localhost']) {

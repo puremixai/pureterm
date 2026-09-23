@@ -17,7 +17,8 @@ export class ClientApplication extends Service {
     this.ready = Promise.race([this.initialize(), stopped])
     const window = ctx.clientView.window
     if (new URLSearchParams(window.location.search).get('smoke') === '1') {
-      const probe = { run: (config: { host: string; port: number; username: string; password: string }) => this.smoke(config) }
+      const probe = { api: this.ctx.clientTransport.api, ready: this.ready,
+        run: (config: { host: string; port: number; username: string; password: string }) => this.smoke(config) }
       window.__smoke = probe
       this.scope.onDispose(() => { if (window.__smoke === probe) delete window.__smoke })
     }
@@ -43,7 +44,7 @@ export class ClientApplication extends Service {
   }
 
   private async smoke(config: { host: string; port: number; username: string; password: string }): Promise<SmokeReport> {
-    const report: SmokeReport = { preload: typeof this.ctx.clientView.window.sshAPI, sessionId: null, openedSize: null,
+    const report: SmokeReport = { preload: typeof this.ctx.clientView.window.puretermDesktop, sessionId: null, openedSize: null,
       text: '', replacementChars: 0, closedReason: null, error: null }
     const api = this.ctx.clientTransport.api
     let unsubscribe: (() => void) | undefined

@@ -27,12 +27,11 @@ function check(files) {
 test('accepts Electron adapters and type-only access through the Host facade', () => {
   const result = check({
     'apps/desktop/electron/app/main.ts': "import { app } from 'electron'; import { createHost } from '@pureterm/host'",
-    'apps/desktop/electron/carriers/carrier-ipc.ts': "import { ipcMain } from 'electron'",
-    'apps/desktop/electron/carriers/preload.ts': "import { contextBridge } from 'electron'",
+    'apps/desktop/electron/carriers/preload.ts': "import { ipcRenderer, contextBridge } from 'electron'",
     'apps/desktop/electron/diagnostics/boot-check.ts': "import type { BrowserWindow } from 'electron'",
     'apps/desktop/electron/host/entry.ts': "import { createHost } from '@pureterm/host'; import '../runtime/process-rpc.js'",
     'packages/transport/src/dispatch.ts': "import type { Host } from '@pureterm/host'",
-    'apps/web/src/server.ts': "import { createHost } from '@pureterm/host'; import { createHttpCarrier } from '@pureterm/transport/carrier-http'",
+    'apps/web/src/server.ts': "import { startWebHost } from '@pureterm/transport/web-host'",
     'packages/host/src/host.ts': "import { Context } from 'cordis'",
     'packages/ui/src/app.ts': "import { Terminal } from '@xterm/xterm'; import type { SshApi } from '@pureterm/protocol'",
     'packages/protocol/src/protocol.ts': "export interface SshApi {} // import 'electron' is a comment",
@@ -62,7 +61,7 @@ const violations = [
   ['packages/protocol/src/protocol.ts', "import type { Host } from '@pureterm/host'", 'Shared protocol must not import'],
   ['packages/transport/src/carrier-http.ts', "import type { RendererHandle } from '../../src/services/renderer.js'", 'Relative source imports'],
   ['packages/transport/src/dispatch.ts', "import '../app/main.js'", 'Relative source imports'],
-  ['apps/desktop/electron/runtime/plan.ts', "import '../carriers/carrier-ipc.js'", 'Runtime may only import'],
+  ['apps/desktop/electron/runtime/plan.ts', "import '../carriers/preload.js'", 'Runtime may only import'],
   ['apps/desktop/electron/app/main.ts', 'host.internals.ctx.ssh.connect()', 'Host.internals is diagnostics-only'],
   ['apps/desktop/electron/app/main.ts', "host['internals'].ctx.ssh.connect()", 'Host.internals is diagnostics-only'],
   ['apps/desktop/electron/app/main.ts', 'const { internals } = host; internals.ctx.ssh.connect()', 'Host.internals is diagnostics-only'],

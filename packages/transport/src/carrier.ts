@@ -3,13 +3,11 @@ import type { RendererBridge, RendererHandle } from '@pureterm/host'
 /*
  * 载体（carrier）与「合成桥」。
  *
- * 一个载体 = 「能让渲染层说话的通道 + 它能提供哪些客户端」。目前两个：
- *   - carrier-ipc.ts：Electron 的 ipcMain/ipcRenderer，客户端 id 是 `ipc:<webContentsId>`
- *   - carrier-http.ts：本机 HTTP + WebSocket，客户端 id 是 `ws:<连接序号>`
+ * 载体负责识别客户端并把 Host 事件发回它。目前业务载体只有
+ * carrier-http.ts：本机 HTTP + WebSocket，客户端 id 是 `ws:<连接序号>`。
  *
- * 两个可以同时活着，所以领域层拿到的 `RendererBridge` 必须是**合成**的：
- * 按 clientId 问每一个载体，谁认识就归谁。这样 `RendererService` 仍然是
- * 「按不透明 id 找客户端」这一个语义，插件树完全不需要知道有几个载体。
+ * 合成桥按 clientId 查询已装配的载体。这样 `RendererService` 只认识
+ * 不透明 id，不需要知道入口如何创建载体。
  *
  * 注意 `seal` / `unseal` **不在载体接口里**：加解密是这台机器的平台能力
  * （Windows DPAPI / macOS Keychain），不是「哪条通道」的性质。
@@ -23,7 +21,7 @@ export interface Carrier {
   readonly name: string
   /** 认领一个 clientId。不是自己的就返回 undefined——**不许猜**。 */
   getRenderer(clientId: string): RendererHandle | undefined
-  /** 卸载。IPC 载体是同步的（摘监听器），Web 载体要关服务器所以返回 Promise。 */
+  /** 卸载载体；HTTP/WS 载体需要异步关闭服务器。 */
   dispose(): void | Promise<void>
 }
 

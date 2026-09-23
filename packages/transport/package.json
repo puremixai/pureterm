@@ -12,6 +12,10 @@
       "types": "./dist/carrier-http.d.ts",
       "default": "./dist/carrier-http.js"
     },
+    "./web-host": {
+      "types": "./dist/web-host.d.ts",
+      "default": "./dist/web-host.js"
+    },
     "./dispatch": {
       "types": "./dist/dispatch.d.ts",
       "default": "./dist/dispatch.js"

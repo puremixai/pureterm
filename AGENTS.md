@@ -13,7 +13,7 @@ English is the default reading language for every maintained Markdown document. 
 ## Current facts and historical material
 
 - Current entry points are `apps/desktop/` and `apps/web/`; shared capabilities are in `packages/host/`, `packages/protocol/`, `packages/transport/`, and `packages/ui/`.
-- Electron starts an independent Node Host child process for Desktop; standalone Web assembles Host in its own ordinary Node process.
+- Electron starts an independent Node-mode Web Host child process for Desktop; standalone Web assembles the same Web Host in its own ordinary Node process.
 - The root `package-lock.json` is the only lockfile. Run all install, build, and verification commands from the repository root.
 - Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `VERSION.txt`, `docs/architecture.md`, `docs/DEVELOPMENT.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`.
 - Dated files under `docs/superpowers/` are historical implementation records and specifications. They may preserve durable criteria, correct advice, and explicitly rejected options, but do not treat them as current commands, paths, branches, or test results. Removed archive, review, and screenshot research material is not a current source.
@@ -26,7 +26,7 @@ apps/desktop/       Electron shell, runtime, Host child entry, carriers, and Des
 apps/web/           standalone local Web Node entry, server, and tests
 packages/host/      Cordis Host, SSH/SFTP, host storage, and credential interfaces
 packages/protocol/  environment-neutral requests, events, capabilities, and binary protocol
-packages/transport/ dispatcher, HTTP/WebSocket, carriers, and readiness validation
+packages/transport/ shared Web Host, dispatcher, HTTP/WebSocket, and readiness validation
 packages/ui/        Cordis Client, terminal, host list, SFTP, and browser adapters
 VERSION.txt         source version baseline shared by all workspaces
 scripts/            root workspace build, type, boundary, staging, and release checks
@@ -42,17 +42,17 @@ Organize directories by entry point and capability. Do not copy deepseek-harness
 - `@pureterm/host` does not depend on Electron, the UI, or application entry points; its public API is exported from the package entry.
 - `@pureterm/ui` targets browsers only and cannot import Node, Electron, or Host; the page uses a static Cordis Client plugin composition.
 - `@pureterm/transport` dispatches through the public Host API and cannot read `Host.internals`.
-- Electron APIs may enter only Desktop `electron/app/`, `electron/carriers/`, preload, and diagnostic adapters; `electron/runtime/` and `electron/host/` have no Electron import.
+- Electron APIs may enter only Desktop `electron/app/`, preload, and diagnostic adapters; `electron/runtime/`, `electron/host/`, and ordinary carriers have no Electron import.
 - Cross-workspace references use public package exports; relative source imports are for modules inside one package.
 - Keep source checks separate from artifact checks. Tests that require `dist/` must build first so stale artifacts cannot hide source errors.
 - A protocol or public-type change in a shared package updates every consumer, test, document, and `CHANGELOG.md`; changing only the provider is incomplete.
 
 ## Runtime invariants
 
-- The Desktop Host child process performs a versioned private RPC handshake. On startup failure, window close, renderer crash, update, or exit, the parent waits for Host cleanup and terminates only after the timeout.
-- Parent/child IPC uses serialization that preserves `Uint8Array`; terminal and SFTP bytes must not be converted to strings in the transport layer.
+- The Desktop Host child process performs a versioned private RPC handshake. On startup failure, update, or application exit, the parent waits for Host cleanup and terminates only after the timeout. Window close and renderer crash release their WebSocket client; platform window policy determines whether the app also exits.
+- Desktop SSH/SFTP, hosts, and Keychain requests use the child-owned loopback WebSocket; private parent/child RPC handles startup, shutdown, system encryption, and native key selection. Terminal and SFTP bytes must not be converted to strings in the transport layer.
 - Client, carriers, and Host expose explicit `dispose` paths. Page remounts, WebSocket disconnects, and unexpected Host exits must not leave sessions, listeners, or timers behind.
-- Standalone Web binds only to `127.0.0.1`, uses a startup token and session cookie, and validates Origin/Host; do not add a public listening option.
+- Both Web Hosts bind only to `127.0.0.1` and validate Origin/Host. Browser access uses a startup token and session cookie; Desktop injects a separate bearer credential from its main process. `SSH_CORDIS_NO_WEB_CARRIER=1` disables only attached browser access, never the internal Desktop Web Host. Do not add a public listening option.
 - Desktop credentials use an operating-system encryption provider. Web stores host metadata and trusted fingerprints only, never passwords, passphrases, private-key content, or private-key paths, and uses a data directory separate from Desktop.
 
 ## Commands
@@ -82,7 +82,7 @@ npm run version:generate
 npm run version:sync
 ```
 
-`verify` covers build, types, dependency boundaries, Host/protocol/credential, UI, standalone Web, and local SSH/SFTP/HTTP/WS tests. `verify:electron` covers Desktop boot, IPC, attached Web, renderer-crash cleanup, update downloads, standalone Node Web, and Client lifecycle. Linux Electron checks run under `xvfb-run` in CI. `verify:package:windows` is limited to an isolated Windows install/uninstall flow.
+`verify` covers build, types, dependency boundaries, Host/protocol/credential, UI, standalone Web, and local SSH/SFTP/HTTP/WS tests. `verify:electron` covers Desktop boot, custom-scheme UI and WebSocket transport, attached Web, renderer-crash cleanup, update downloads, standalone Node Web, and Client lifecycle. Linux Electron checks run under `xvfb-run` in CI. `verify:package:windows` is limited to an isolated Windows install/uninstall flow.
 
 ## Test and change verification
 

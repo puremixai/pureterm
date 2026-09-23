@@ -5,14 +5,11 @@ import { normalizeReadyPayload } from './readiness.js'
 /*
  * 协议 → 公共契约 的唯一映射处。
  *
- * 为什么单独一个文件而不是在两个载体里各写一遍：
- * 通道名已经收进 shared/protocol.ts 了，但「这个名字对应哪个业务调用」同样是
- * 只能有一份的知识。两个载体各写一份 switch，就等于把「漂移」从通道名搬到了语义上
- * ——IPC 那边 hosts:save 走 saveHost、WS 那边走成 save（或者参数顺序反了），
- * 症状依然是「点了没反应」，而且更难查。
+ * WebSocket carrier 把线上的方法名和参数交到这里，统一映射到 Host 公共 API。
+ * Desktop 与独立 Web 共用这一份映射，避免入口之间的业务语义漂移。
  *
  * 这个文件**不 import electron**：载体依赖它，它不依赖载体。
- * 结果是这条路能脱离 Electron 测（tests/smoke-carrier.mjs 就是这么做的）。
+ * 因此可以脱离 Electron 测试业务分发。
  */
 
 export interface Dispatcher {
@@ -28,15 +25,15 @@ export interface DispatcherOptions {
   /**
    * 弹系统文件对话框选私钥。
    *
-   * Desktop 为 IPC 和伴随 Web 注入原生对话框。独立 Web 声明 browser 能力，
+   * Desktop Web Host 注入原生对话框。独立 Web 声明 browser 能力，
    * 由页面读取文件内容，此回调返回 undefined。clientId 用于确认调用者仍可用。
    */
   pickPrivateKey(clientId: string): Promise<PickedPrivateKey | undefined>
   /**
    * 渲染层上报「我起来了」。
    *
-   * **故意不放进 Host**：就绪闸门是壳的启动状态机的一部分，宿主（一个 Node 进程 +
-   * 一棵插件树）不该知道「应用启动完成」是什么意思。闸门归壳层，所以这个回调也归壳层传进来。
+   * 独立 Web 可通过 WebSocket notice 使用此回调；Desktop 主窗口通过最小 IPC
+   * 直接向 Electron main 上报。Host 不参与 Desktop 就绪闸门。
    */
   onReady(payload: RendererReadyPayload, clientId: string): void
 }
@@ -62,7 +59,7 @@ function asNumber(value: unknown, where: string): number {
  * 字节参数。
  *
  * 收窄成 Uint8Array，**不接受字符串**：上传的内容走线时被打了 `{ $bytes }` 标签，
- * 载体已经解回 Uint8Array 了（IPC 的结构化克隆本来就保持类型数组）。
+ * WebSocket 载体已经解回 Uint8Array 了。
  * 如果哪一天这里拿到的是字符串，说明有人绕过了编码那一步——那时把它
  * 当 UTF-8 收下也许「看起来能跑」，但二进制文件会被静默改坏，所以宁可当场报出来。
  */

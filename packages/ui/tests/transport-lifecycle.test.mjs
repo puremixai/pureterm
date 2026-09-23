@@ -4,7 +4,7 @@ import { build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
 
 const bundle = await build({ entryPoints: [fileURLToPath(new URL('../src/transport.ts', import.meta.url))], bundle: true, write: false, platform: 'node', format: 'esm' })
-const { createWebSocketTransport } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`)
+const { createTransport, createWebSocketTransport } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`)
 
 function environment(t) {
   const previousWindow = globalThis.window
@@ -14,7 +14,7 @@ function environment(t) {
     static OPEN = 1
     readyState = 0
     sent = []
-    constructor() { instances.push(this) }
+    constructor(url) { this.url = url; instances.push(this) }
     open() { this.readyState = 1; this.onopen?.({}) }
     send(text) { this.sent.push(JSON.parse(text)) }
     message(message) { this.onmessage?.({ data: JSON.stringify(message) }) }
@@ -33,6 +33,7 @@ test('WebSocket loss closes every live terminal tab once', async t => {
   const closed = []
   api.onClosed(id => closed.push(id))
   const initial = api.getCapabilities()
+  assert.equal(instances[0].url, 'ws://127.0.0.1:9000/ws')
   instances[0].open()
   await Promise.resolve()
   instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: {} })
@@ -192,4 +193,85 @@ test('an established socket closes its own session once and cannot disrupt the n
   assert.deepEqual(await next, [])
   assert.equal(closed.length, 1)
   assert.equal(instances[0].onmessage, null)
+})
+
+test('Desktop bridge bootstraps lazily and all business calls use its WebSocket', async t => {
+  const instances = environment(t)
+  let bootstraps = 0
+  const ready = []
+  globalThis.window.puretermDesktop = {
+    bootstrap: async () => { bootstraps++; return { webSocketUrl: 'ws://127.0.0.1:43210/ws' } },
+    signalReady: payload => ready.push(payload),
+  }
+  const api = createTransport()
+  t.after(() => api.dispose())
+  assert.equal(api.carrier, 'web')
+  assert.equal(bootstraps, 0)
+  assert.equal(instances.length, 0)
+  const payload = { ok: true, hosts: 0, cols: 80, rows: 24 }
+  api.signalReady(payload)
+  assert.deepEqual(ready, [payload])
+  assert.equal(bootstraps, 0)
+  assert.equal(instances.length, 0)
+  const result = api.hosts.list()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(bootstraps, 1)
+  assert.equal(instances[0].url, 'ws://127.0.0.1:43210/ws')
+  instances[0].open()
+  await Promise.resolve()
+  instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: [] })
+  assert.deepEqual(await result, [])
+  assert.equal(bootstraps, 1)
+})
+
+test('invalid Desktop bootstrap URLs never create a socket', async t => {
+  for (const webSocketUrl of [
+    'wss://127.0.0.1:43210/ws', 'ws://localhost:43210/ws', 'ws://127.0.0.1:43210/other',
+    'ws://user@127.0.0.1:43210/ws', 'ws://127.0.0.1:43210/ws?token=secret',
+    'ws://127.0.0.1:43210/ws#fragment', 'ws://127.0.0.1:0/ws',
+  ]) {
+    const instances = environment(t)
+    globalThis.window.puretermDesktop = { bootstrap: async () => ({ webSocketUrl }), signalReady() {} }
+    const api = createTransport()
+    await assert.rejects(api.hosts.list(), /WebSocket URL/)
+    assert.equal(instances.length, 0, webSocketUrl)
+    api.dispose()
+  }
+})
+
+test('bootstrap failure rejects calls and permits a later retry', async t => {
+  const instances = environment(t)
+  let attempts = 0
+  globalThis.window.puretermDesktop = {
+    bootstrap: async () => { if (++attempts === 1) throw new Error('startup failed'); return { webSocketUrl: 'ws://127.0.0.1:43210/ws' } },
+    signalReady() {},
+  }
+  const api = createTransport()
+  t.after(() => api.dispose())
+  await assert.rejects(api.hosts.list(), /startup failed/)
+  assert.equal(instances.length, 0)
+  const next = api.hosts.list()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(attempts, 2)
+  instances[0].open()
+  await Promise.resolve()
+  instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: [] })
+  assert.deepEqual(await next, [])
+})
+
+test('disposing during unresolved bootstrap promptly rejects callers and never creates a socket', async t => {
+  const instances = environment(t)
+  let finish
+  globalThis.window.puretermDesktop = {
+    bootstrap: () => new Promise(resolve => { finish = resolve }),
+    signalReady() {},
+  }
+  const api = createTransport()
+  const rejected = assert.rejects(api.hosts.list(), /卸载/)
+  await Promise.resolve()
+  api.dispose()
+  await rejected
+  finish({ webSocketUrl: 'ws://127.0.0.1:43210/ws' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(instances.length, 0)
 })

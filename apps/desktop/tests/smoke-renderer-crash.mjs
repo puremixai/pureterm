@@ -9,7 +9,7 @@ const server = await createFakeSshServer({ greeting: false })
 try {
   const result = await runElectron({
     entry: fileURLToPath(new URL('./electron-renderer-crash-entry.mjs', import.meta.url)),
-    env: { SSH_CORDIS_SMOKE_HOST: server.host, SSH_CORDIS_SMOKE_PORT: String(server.port),
+    env: { SSH_CORDIS_SMOKE: 'probe', SSH_CORDIS_SMOKE_HOST: server.host, SSH_CORDIS_SMOKE_PORT: String(server.port),
       SSH_CORDIS_SMOKE_USER: server.username, SSH_CORDIS_SMOKE_PASS: server.password },
     successMarker: '[RENDERER-CRASH-OK]',
     requiredMarkers: ['[main] 闸门已打开', '[RENDERER-CRASH-SESSION]', '[RENDERER-CRASH-OBSERVED]'],

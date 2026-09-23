@@ -14,6 +14,7 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 
 ### Changed
 
+- **0.x integration break:** replace Desktop’s `window.sshAPI` and SSH business IPC with `window.puretermDesktop` for minimal bootstrap/readiness and the shared child-owned loopback Web Host for SSH/SFTP, hosts, and Keychain. The Electron window loads from `pureterm-app://app/`; existing SSH data and user-facing operations remain available. Standalone Web stays independent, and `SSH_CORDIS_NO_WEB_CARRIER=1` limits only attached browser access.
 - Replace the native title bar with a compact PureTerm top bar, keep platform window controls in an integrated overlay, and auto-hide the Windows/Linux menu bar while retaining its keyboard shortcuts.
 - Consolidate host creation behind the New Host action; remove duplicate top-bar, navigation, search, Terminal, and Ctrl/Cmd+T launchers.
 - Make host-card gestures explicit: single-click selects, Edit opens the host drawer, and double-click opens a new terminal tab.
@@ -24,6 +25,10 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 - Add English-first development guides with paired Chinese translations.
 - Add `VERSION.txt` as the source baseline and generate UI version and changelog metadata.
 - Keep this section updated while work is merged after `0.1.0-alpha.1`.
+
+### Security
+
+- Give the Desktop window a separate main-process bearer token for its exact WebSocket request; keep it out of page URLs, DOM, browser cookies, and storage.
 
 ## [0.1.0-alpha.1] - 2026-09-16
 

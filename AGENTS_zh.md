@@ -13,7 +13,7 @@ PureTerm 是基于 Cordis、ssh2 和 xterm.js 的开源 SSH/SFTP 客户端，提
 ## 当前事实与历史资料
 
 - 当前入口是 `apps/desktop/` 和 `apps/web/`；共享能力位于 `packages/host/`、`packages/protocol/`、`packages/transport/` 和 `packages/ui/`。
-- Desktop 由 Electron 主进程启动独立 Node Host 子进程；独立 Web 在自己的普通 Node 进程内装配 Host。
+- Desktop 由 Electron 主进程启动独立 Node 模式 Web Host 子进程；独立 Web 在自己的普通 Node 进程内装配同一套 Web Host。
 - 根 `package-lock.json` 是唯一锁文件。所有安装、构建和验证命令从仓库根运行。
 - 当前状态以根 `README_zh.md`、`LAYOUT-PROPOSAL_zh.md`、`VERSION.txt`、`docs/architecture_zh.md`、`docs/DEVELOPMENT_zh.md`、`docs/desktop-release_zh.md`、应用 README 和 `CHANGELOG_zh.md` 为准。
 - `docs/superpowers/` 中带日期的文件是历史实施记录和规格。它们可以保留判据、正确建议和明确不采纳的方案，但不得当作当前命令、路径、分支或测试结果；已移除的旧归档、评审和截图研究资料不作为当前文档来源。
@@ -26,7 +26,7 @@ apps/desktop/       Electron 壳、运行时、Host 子进程入口、载体和 
 apps/web/           独立本机 Web 的 Node 入口、服务和测试
 packages/host/      Cordis Host、SSH/SFTP、主机存储和凭据接口
 packages/protocol/  环境无关的请求、事件、能力和二进制协议
-packages/transport/ dispatcher、HTTP/WebSocket、载体和就绪校验
+packages/transport/ 共享 Web Host、dispatcher、HTTP/WebSocket 和就绪校验
 packages/ui/        Cordis Client、终端、主机列表、SFTP 和浏览器适配
 VERSION.txt         所有 workspace 共用的源码版本基准
 scripts/            根 workspace 构建、类型、边界、staging 和发布检查
@@ -42,17 +42,17 @@ docs/               当前架构/发布文档及带日期的历史记录
 - `@pureterm/host` 不依赖 Electron、UI 或应用入口；Host 的公共接口从包入口导出。
 - `@pureterm/ui` 只面向浏览器，不能导入 Node、Electron 或 Host；页面内部使用静态 Cordis Client 插件组合。
 - `@pureterm/transport` 通过 Host 公共接口分派请求，不能读取 `Host.internals`。
-- Electron API 只进入 Desktop 的 `electron/app/`、`electron/carriers/`、preload 和诊断适配；`electron/runtime/` 与 `electron/host/` 不导入 Electron。
+- Electron API 只进入 Desktop 的 `electron/app/`、preload 和诊断适配；`electron/runtime/`、`electron/host/` 与普通载体不导入 Electron。
 - 跨 workspace 引用必须使用公开 package exports；只有包内模块才使用相对源码路径。
 - 源码检查和构建产物检查要明确区分。需要 `dist/` 的测试必须先构建，不要让过期产物掩盖源码错误。
 - 共享包之间的协议或公开类型变化必须更新所有消费者、测试、文档和 `CHANGELOG.md`，不能只改提供方。
 
 ## 运行时不变量
 
-- Desktop Host 子进程通过带版本的私有 RPC 握手；父进程在启动失败、窗口关闭、渲染崩溃、更新和退出时等待 Host 释放，超时才终止。
-- 父子 IPC 使用能保留 `Uint8Array` 的序列化方式。终端和 SFTP 的二进制内容不能在传输层提前转成字符串。
+- Desktop Host 子进程通过带版本的私有 RPC 握手；父进程在启动失败、更新和应用退出时等待 Host 释放，超时才终止。窗口关闭和渲染崩溃会释放对应 WebSocket 客户端；是否同时退出应用由平台窗口策略决定。
+- Desktop 的 SSH/SFTP、主机和 Keychain 请求走子进程拥有的本机 WebSocket；私有父子 RPC 负责启动、关闭、系统加密和原生选钥。终端和 SFTP 的二进制内容不能在传输层提前转成字符串。
 - Client、载体和 Host 都必须提供明确的 `dispose`/释放路径；页面重挂载、WebSocket 断开和 Host 意外退出不能留下会话、监听器或定时器。
-- 独立 Web 只绑定 `127.0.0.1`，使用启动 token、会话 cookie 以及 Origin/Host 校验；不能新增公开监听参数。
+- 两种 Web Host 都只绑定 `127.0.0.1` 并校验 Origin/Host。浏览器访问使用启动 token 和会话 cookie；Desktop 主进程注入单独的 bearer 凭据。`SSH_CORDIS_NO_WEB_CARRIER=1` 只关闭附带浏览器入口，不关闭 Desktop 内部 Web Host。不能新增公开监听参数。
 - Desktop 凭据通过系统加密 provider 保存。Web 只保存主机元数据和已信任指纹，不持久化密码、口令、私钥内容或私钥路径，且与 Desktop 使用分离的数据目录。
 
 ## 命令
@@ -82,7 +82,7 @@ npm run version:generate
 npm run version:sync
 ```
 
-`verify` 覆盖构建、类型、依赖边界、Host/协议/凭据、UI、独立 Web 和本机 SSH/SFTP/HTTP/WS 测试。`verify:electron` 覆盖 Desktop boot、IPC、附带 Web、渲染崩溃回收、更新下载、独立 Node Web 和 Client 生命周期。Linux 的 Electron 检查在 CI 中通过 `xvfb-run` 运行。`verify:package:windows` 只验收隔离的 Windows 安装/卸载流程。
+`verify` 覆盖构建、类型、依赖边界、Host/协议/凭据、UI、独立 Web 和本机 SSH/SFTP/HTTP/WS 测试。`verify:electron` 覆盖 Desktop boot、自定义 scheme 界面与 WebSocket 传输、附带 Web、渲染崩溃回收、更新下载、独立 Node Web 和 Client 生命周期。Linux 的 Electron 检查在 CI 中通过 `xvfb-run` 运行。`verify:package:windows` 只验收隔离的 Windows 安装/卸载流程。
 
 ## 测试与变更验证
 

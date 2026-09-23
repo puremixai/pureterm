@@ -53,6 +53,8 @@ SSH uses ssh2’s JavaScript implementation. Optional accelerators `cpu-features
 
 `asar:false` is currently used so the independent Node Host entry and its dependencies remain real files. Electron main and Host child processes share the packaged Electron/Node runtime; end users do not install Node.js separately.
 
+The packaged UI loads from `pureterm-app://app/`. The child starts the same loopback Web Host used by standalone Web, and the minimal preload gives the window only its WebSocket URL. Electron main injects the private Desktop bearer token into that window’s exact WebSocket request; ordinary attached-browser token/cookie access can be disabled with `SSH_CORDIS_NO_WEB_CARRIER=1` without disabling the Desktop window.
+
 ## CI and publishing
 
 `.github/workflows/desktop-release.yml` builds three platforms for pull requests, manual runs, and `v*` tags:
@@ -124,7 +126,7 @@ Local builds may receive certificates through environment variables. Apple API-k
 
 `packaging.test.mjs` checks that staging runs from a cwd outside the workspace, nested dependency versions remain correct, UI exports resolve, required Host entries and missing dependencies fail as expected, and linked directories cannot write outside the workspace or omit files. The installer itself still needs a real run.
 
-Windows acceptance uses an isolated install directory and `SSH_CORDIS_DATA_DIR`. First confirm that no existing PureTerm installation will be overwritten. Launch the installed `PureTerm.exe` from outside the workspace, verify shared UI, Host child process, SSH/SFTP, and process exit, then uninstall this test installation. A successful install does not replace acceptance of download, checksum, and restart installation between two versions.
+Windows acceptance uses an isolated install directory and `SSH_CORDIS_DATA_DIR`. First confirm that no existing PureTerm installation will be overwritten. Launch the installed `PureTerm.exe` from outside the workspace, verify the custom-scheme UI, child Web Host, WebSocket SSH/SFTP, and process exit, then uninstall this test installation. A successful install does not replace acceptance of download, checksum, and restart installation between two versions.
 
 `verify:package:windows` automates this flow: it refuses to overwrite an existing PureTerm installation; otherwise it installs into the system temporary directory `pureterm-installed-smoke-*` outside the repository, uses temporary Chromium/data directories and local SSH/SFTP fixtures, verifies encrypted credentials across processes, invokes the test uninstaller, and checks registry and process cleanup. The install directory and launch cwd are outside the workspace, and `NODE_PATH` is removed so workspace dependencies cannot hide omitted package files.
 

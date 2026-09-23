@@ -11,7 +11,7 @@ import { TerminalBridge, type TerminalOpenPayload, type TerminalOpenResult } fro
 import { SftpBridge, type SftpDir, type SftpReadResult, type SftpWriteResult } from './plugins/sftp-bridge.js'
 
 export interface HostOptions {
-  /** 宿主与渲染层之间的桥；主进程传真实 Electron 实现，测试传假实现 */
+  /** Host 到 WebSocket 客户端的事件桥；测试可传假实现。 */
   bridge: RendererBridge
   /** 默认不持久化凭据；Desktop 显式注入系统密钥提供器。 */
   credentials?: CredentialProvider
@@ -27,7 +27,7 @@ export interface HostOptions {
 
 /**
  * 公共契约用到的数据形状，从**公共契约模块**再导出一次。
- * 目的是让壳层（`electron/`）import 一句 `../src/host.js` 就够，
+ * 目的是让入口和 transport 只依赖 Host 公共导出，
  * 不必知道 `plugins/` 下有哪几个文件——插件的文件布局是内部事。
  */
 export type { HostInput, HostRecord } from './plugins/session-store.js'
@@ -39,7 +39,7 @@ export type { SftpDir, SftpEntry, SftpReadResult, SftpWriteResult } from './plug
 /**
  * Host —— 宿主对外的**公共契约**。
  *
- * 只有这里的成员是可以被壳层（Electron main / IPC）使用的。
+ * 只有这里的成员是可以被 Web Host 装配器和 dispatcher 使用的。
  * 插件树的内部（ctx）放在 internals 下，并且明确标注只给测试与诊断脚本。
  *
  * 这条边界是照 dsh 划的：它对外只导出 `dsh-plugin-desktop/profile-service` 和 `pnpm`
@@ -64,7 +64,7 @@ export interface Host {
    * 远端文件。全部作用在**已打开的会话**上，所以都要 sessionId。
    *
    * 这五个方法就是「SFTP 是一个新能力」的全部证据：能力 = 公共契约上的一个洞。
-   * 加它们的时候，载体层（carrier-ipc / carrier-http）一个字都没改——
+   * 加它们的时候，WebSocket 载体（carrier-http）一个字都没改——
    * 那是这条边界成立的判据。
    */
   sftpList(sessionId: string, path: string): Promise<SftpDir>

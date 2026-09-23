@@ -1,13 +1,12 @@
-import { app, dialog, safeStorage, type BrowserWindow } from 'electron'
+import { app, dialog, ipcMain, protocol, safeStorage, session, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import type { PickedPrivateKey, RendererReadyPayload } from '@pureterm/protocol'
+import { DESKTOP_CHANNELS, type PickedPrivateKey, type RendererReadyPayload } from '@pureterm/protocol'
 import type { CredentialProvider } from '@pureterm/host'
 import { createBootCheck } from '../diagnostics/boot-check.js'
-import { createCompositeBridge, type Carrier } from '@pureterm/transport/carrier'
-import { createHttpCarrier } from '@pureterm/transport/carrier-http'
-import { createIpcCarrier, ipcClientId } from '../carriers/carrier-ipc.js'
+import { normalizeReadyPayload } from '@pureterm/transport/readiness'
+import { authorizeDesktopSocket, DESKTOP_PAGE, serveWebDocument } from '../runtime/web-document.js'
 import { startHostProcess, type DesktopHostProcess } from '../runtime/host-process.js'
 import { createDesktopUpdates } from './updates.js'
 import {
@@ -28,14 +27,16 @@ import { createShellGeneration, LOAD_WATCHDOG_MS, type ElectronShellGeneration }
 import { resolveDesktopPaths } from '../runtime/paths.js'
 
 /*
- * Electron 入口拥有窗口、平台能力、载体和更新协调。
- * Node Host 子进程拥有共享 dispatcher、Cordis Host、SSH/SFTP 与存储。
- * IPC 窗口与本机 HTTP/WS 载体通过同一个子进程代理调用 Host；
- * safeStorage 和原生文件选择通过私有反向 RPC 留在 Electron。
+ * Electron 入口拥有窗口、平台能力、资源协议和更新协调。
+ * Node 子进程运行与独立 Web 相同的 HTTP/WS Host。
+ * SSH/SFTP 业务从所有客户端直接走 WebSocket；私有 RPC 只传平台能力和进程控制。
  * 启动、窗口更替、故障、诊断退出和安装更新都走统一生命周期。
  */
 
-const { rendererDir, rendererHtml, preloadScript, hostEntry } = resolveDesktopPaths()
+const { rendererDir, preloadScript, hostEntry } = resolveDesktopPaths()
+protocol.registerSchemesAsPrivileged([{ scheme: 'pureterm-app', privileges: {
+  standard: true, secure: true, supportFetchAPI: true, corsEnabled: true,
+} }])
 const dataDir = process.env.SSH_CORDIS_DATA_DIR ? resolve(process.env.SSH_CORDIS_DATA_DIR) : join(homedir(), '.ssh-cordis')
 
 const bootCheckEnabled = process.env.SSH_CORDIS_BOOT_CHECK === '1'
@@ -94,7 +95,6 @@ if (profileSwitches.length) {
 let shell: ElectronShellGeneration | null = null
 let host: DesktopHostProcess | null = null
 let hostStarting: Promise<DesktopHostProcess> | undefined
-let carriers: Carrier[] = []
 let disposing = false
 let shutdownTask: Promise<void> | undefined
 let updates: ReturnType<typeof createDesktopUpdates> | undefined
@@ -147,19 +147,12 @@ readiness.onReady((info) => {
 /**
  * 渲染层上报「我真的起来了」。这是闸门唯一的输入源。
  *
- * **只认 IPC 载体的上报**：闸门问的是「这个应用启动成功了吗」，
+ * **只认当前桌面主 frame 的上报**：闸门问的是「这个应用启动成功了吗」，
  * 而应用是那个 Electron 窗口。浏览器客户端（Web 载体）上报的尺寸、主机数是它自己那半边的状态，
  * 拿来解锁「提交启动档案」「跑启动自检截图」都是错的——
  * 一个浏览器标签页不该决定桌面应用算不算启动成功。
  */
-function handleReady(payload: RendererReadyPayload, clientId: string): void {
-  const window = currentWindow()
-  const fromEmbeddedRenderer = !!window && !window.isDestroyed() && clientId === ipcClientId(window.webContents.id)
-  if (!fromEmbeddedRenderer) {
-    console.log(`[main] 忽略来自 ${clientId} 的就绪上报（闸门只认窗口里的渲染层）。`)
-    return
-  }
-
+function handleReady(payload: RendererReadyPayload): void {
   // 先打日志再进闸门：闸门的动作是同步执行的（比如提交启动档案），
   // 顺序反过来的话，「档案已更新」会出现在「收到上报」前面，读日志的人会懵。
   console.log(`[main] 渲染层就绪上报：${JSON.stringify(payload)}`)
@@ -190,17 +183,14 @@ function currentWindow(): BrowserWindow | undefined {
  */
 function startGeneration(): ElectronShellGeneration {
   shell?.release()
-  let clientId: string | undefined
   const generation = createShellGeneration({
-    htmlPath: rendererHtml,
+    pageUrl: DESKTOP_PAGE,
     preloadPath: preloadScript,
     autoHideMenuBar: platform.autoHideMenuBar,
     useWindowControlsOverlay: platform.useWindowControlsOverlay,
     search: process.env.SSH_CORDIS_SMOKE ? 'smoke=1' : '',
     onLoadFailure: (reason) => fallbackToNoSandbox(reason),
-    onRelease: () => { if (clientId) host?.releaseClient(clientId) },
   })
-  clientId = ipcClientId(generation.window.webContents.id)
   shell = generation
   console.log(`[main] 已创建 shell generation #${generation.id}`)
   return generation
@@ -301,11 +291,9 @@ function createCredentials(): CredentialProvider {
  * 但对话框弹在**运行后端这台机器**上（因为它要给的正是这台机器上的路径）。
  */
 async function pickPrivateKey(clientId: string): Promise<PickedPrivateKey | undefined> {
-  const window = currentWindow()
-  // 只有窗口里的渲染层才把对话框挂到窗口上；浏览器客户端没有可挂的窗口，
-  // 这时用无父窗口的对话框（否则一个后台标签页会让模态框把整个窗口锁住）
-  const parent =
-    window && !window.isDestroyed() && clientId === ipcClientId(window.webContents.id) ? window : undefined
+  // The child validates that this WebSocket client remains alive around the dialog.
+  // All clients now use the same carrier; bind the native dialog to an available shell.
+  const parent = currentWindow()
 
   const dialogOptions: Electron.OpenDialogOptions = {
     title: '选择私钥文件',
@@ -332,55 +320,51 @@ async function pickPrivateKey(clientId: string): Promise<PickedPrivateKey | unde
   return { path, encrypted }
 }
 
-// ─────────────────────────── 装配载体 ───────────────────────────
-
-/**
- * 载体在这里按顺序装起来。顺序其实只有一处讲究：
- * **桥要先于宿主存在**，而载体要等 dispatcher（它依赖宿主）才能建。
- * 所以桥拿到的是「取载体列表的函数」而不是列表本身（见 createCompositeBridge）。
- */
-async function installCarriers(currentHost: DesktopHostProcess): Promise<void> {
-  const dispatcher = currentHost.dispatcher
-
-  carriers.push(createIpcCarrier({ dispatcher, getWindow: currentWindow }))
-  console.log('[main] 载体已就绪：ipc（桌面窗口）。')
-
-  if (webCarrierDisabled) {
-    console.log('[main] SSH_CORDIS_NO_WEB_CARRIER=1：本次不启动 Web 载体。')
-    return
+function assertApplicationSender(event: IpcMainEvent | IpcMainInvokeEvent): void {
+  const window = currentWindow()
+  if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) {
+    throw new Error('Rejected Desktop request from an unowned frame')
   }
-
-  try {
-    const web = await createHttpCarrier({
-      onDisconnect: (clientId) => currentHost.releaseClient(clientId),
-      dispatcher,
-      staticDir: rendererDir,
-    })
-    if (disposing) { await web.dispose(); return }
-    carriers.push(web)
-    console.log(
-      [
-        `[main] 载体已就绪：web（浏览器入口 ${web.url}）`,
-        `[main]   只监听 127.0.0.1:${web.port}，token 每次启动重新生成。`,
-        '[main]   拿到这条地址的人就能操作这台机器上的 SSH 会话——别往外发。',
-      ].join('\n'),
-    )
-  } catch (error) {
-    // Web 载体起不来不该影响桌面端：它是并集，不是替代
-    console.error(`[main] Web 载体启动失败（桌面端不受影响）: ${(error as Error).message}`)
+  const url = new URL(event.senderFrame.url)
+  if (url.protocol !== 'pureterm-app:' || url.host !== 'app' || url.pathname !== '/') {
+    throw new Error('Rejected Desktop request from an unexpected document')
   }
+}
+
+/** Only bootstrap and readiness cross renderer IPC; business traffic uses the shared Web Host. */
+function installDesktopBridge(): void {
+  protocol.handle('pureterm-app', request => serveWebDocument(request, rendererDir))
+  ipcMain.handle(DESKTOP_CHANNELS.bootstrap, async event => {
+    assertApplicationSender(event)
+    const backend = await hostStarting
+    assertApplicationSender(event)
+    if (!backend || disposing) throw new Error('Desktop Host is unavailable')
+    const url = new URL('/ws', backend.url)
+    url.protocol = 'ws:'
+    return { webSocketUrl: url.href }
+  })
+  ipcMain.on(DESKTOP_CHANNELS.ready, (event, payload: unknown) => {
+    try { assertApplicationSender(event); handleReady(normalizeReadyPayload(payload)) }
+    catch (error) { console.error('[main] 拒绝就绪上报:', error instanceof Error ? error.message : String(error)) }
+  })
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*'] }, (details, callback) => {
+    const window = currentWindow()
+    callback(authorizeDesktopSocket({ ...details, isMainFrame: !!window && details.frame === window.webContents.mainFrame }, host && window ? {
+      webContentsId: window.webContents.id, hostUrl: host.url, desktopToken: host.desktopToken,
+    } : undefined))
+  })
 }
 
 // ─────────────────────────── 启动 / 退出 ───────────────────────────
 
 async function bootstrap(): Promise<void> {
+  installDesktopBridge()
   hostStarting = startHostProcess({
     entry: hostEntry,
     dataDir,
-    bridge: createCompositeBridge(() => carriers),
     credentials: createCredentials(),
     pickPrivateKey,
-    onReady: handleReady,
+    browserAccess: !webCarrierDisabled,
     onExit: error => {
       console.error('[main] Host 子进程意外退出:', error)
       if (!disposing && !bootCheckEnabled && !process.env.SSH_CORDIS_SMOKE) {
@@ -389,10 +373,12 @@ async function bootstrap(): Promise<void> {
       void exitApplication(1)
     },
   })
+  const generation = startGeneration()
+  bootCheck.arm()
   host = await hostStarting
   if (disposing) return
-  await installCarriers(host)
-  if (disposing) return
+  if (webCarrierDisabled) console.log('[main] 普通浏览器入口已禁用；桌面使用内部 Web Host。')
+  else console.log(`[main] 载体已就绪：web（浏览器入口 ${host.url}）`)
   updates = createDesktopUpdates(() => shutdown(true), async () => {
     // Some platforms report installation failures asynchronously after quitAndInstall.
     // Keep the updater alive until then and restart the current version after the error dialog.
@@ -400,16 +386,13 @@ async function bootstrap(): Promise<void> {
     await exitApplication(1)
   })
   applyApplicationMenu(() => { void updates?.check(true) })
-  const generation = startGeneration()
   console.log(`[main] Host 子进程已就绪 pid=${host.pid} parent=${process.pid}。数据目录：${dataDir}`)
 
   if (app.commandLine.hasSwitch('no-sandbox')) {
     console.warn('[main] 本次以 --no-sandbox 运行：Chromium 进程沙箱已关闭（渲染层隔离仍在）。')
   }
 
-  bootCheck.arm()
-
-  if (process.env.SSH_CORDIS_SMOKE) {
+  if (process.env.SSH_CORDIS_SMOKE === '1') {
     const { runSmokeTest } = await import('../diagnostics/smoke.js')
     await runSmokeTest(generation.window, code => { void exitApplication(code) })
   }
@@ -429,7 +412,7 @@ app.on('window-all-closed', () => {
   if (!disposing && platform.quitOnAllWindowsClosed) app.quit()
 })
 
-// 退出顺序：释放窗口（摘监听器、停看门狗）→ 卸载体 → 卸插件树（关掉所有 SSH 连接）→ 真退出
+// Release the page and bootstrap handlers, then stop the child Web Host before exiting.
 app.on('will-quit', (event) => {
   if (disposing && !host) return
   event.preventDefault()
@@ -443,15 +426,11 @@ function shutdown(preserveUpdater = false): Promise<void> {
   shutdownTask = Promise.resolve().then(async () => {
     shell?.release()
     shell = null
-    const closing = carriers
-    carriers = []
-    for (const carrier of closing) {
-      try {
-        await carrier.dispose()
-      } catch (error) {
-        console.error(`[main] 载体 ${carrier.name} 卸载失败:`, error)
-      }
-    }
+    bootCheck.cancel()
+    ipcMain.removeHandler(DESKTOP_CHANNELS.bootstrap)
+    ipcMain.removeAllListeners(DESKTOP_CHANNELS.ready)
+    session.defaultSession.webRequest.onBeforeSendHeaders(null)
+    protocol.unhandle('pureterm-app')
     try {
       const pending = host ?? await hostStarting?.catch(() => undefined)
       await pending?.dispose()

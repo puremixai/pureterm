@@ -8,8 +8,9 @@
  * 上报本身没有任何约束力，任何想「等应用真能用了再干」的代码都只能自己再判一次。
  * 现在把这件事变成结构：想在就绪后做的事必须注册到闸门上，闸门没开就不会执行。
  *
- * 「就绪」的判定标准是渲染层自己回报 app:renderer-ready 且 ok:true —— 它意味着
- * preload 通了、IPC 能调、xterm 挂上了、主机列表拉回来了。
+ * 「就绪」的判定标准是当前主窗口经最小 Desktop IPC 回报
+ * desktop:renderer-ready 且 ok:true：WebSocket 已连接 Host、xterm 挂上了、
+ * 主机列表拉回来了。
  * 而 did-finish-load 只说明 HTML 解析完了，不足以作为提交依据。
  */
 
@@ -22,7 +23,7 @@ export type { RendererReadyPayload }
  *
  * 为什么必须过这一道：上报会带着 cols/rows 被写进 launch-profile.json，
  * 而它来自渲染层——渲染层可能因为 bug 传了 undefined/字符串，
- * 也可能（走 Web 载体时）来自一个我们没写过的客户端。宁可收窄成 0，
+ * 也可能来自异常的渲染层状态。宁可收窄成 0，
  * 也不要让一个 NaN 混进档案里，那会让「窗口是否正常初始化」这条证据失效。
  */
 export { normalizeReadyPayload } from '@pureterm/transport/readiness'

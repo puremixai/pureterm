@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { app, ipcMain } from 'electron'
 import { mkdirSync } from 'node:fs'
-import { NOTICES } from '@pureterm/protocol'
+import { DESKTOP_CHANNELS } from '@pureterm/protocol'
 
 mkdirSync(process.env.SSH_CORDIS_TEST_USER_DATA, { recursive: true })
 app.setPath('userData', process.env.SSH_CORDIS_TEST_USER_DATA)
@@ -38,7 +38,7 @@ app.on('browser-window-created', (_event, created) => {
   })
 })
 
-ipcMain.on(NOTICES.appReady, (event, payload) => {
+ipcMain.on(DESKTOP_CHANNELS.ready, (event, payload) => {
   if (opening || event.sender.id !== window?.webContents.id) return
   if (!payload?.ok) { fail(new Error(payload?.error ?? 'renderer was not ready')); return }
   opening = true
@@ -48,7 +48,7 @@ ipcMain.on(NOTICES.appReady, (event, payload) => {
       username: process.env.SSH_CORDIS_SMOKE_USER, password: process.env.SSH_CORDIS_SMOKE_PASS,
       acceptUnknownHostKey: true, cols: 100, rows: 30,
     }
-    const session = await window.webContents.executeJavaScript(`window.sshAPI.open(${JSON.stringify(config)})`)
+    const session = await window.webContents.executeJavaScript(`window.__smoke.api.open(${JSON.stringify(config)})`)
     assert.ok(session.sessionId)
     console.log('[RENDERER-CRASH-SESSION] ' + JSON.stringify({ sessionId: session.sessionId }))
     crashRequested = true

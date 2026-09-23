@@ -36,7 +36,7 @@ npm run start:desktop
 | --- | --- |
 | `SSH_CORDIS_DATA_DIR` | 覆盖 Desktop 数据目录 |
 | `SSH_CORDIS_WEB_DATA_DIR` | 覆盖独立 Web 数据目录 |
-| `SSH_CORDIS_NO_WEB_CARRIER=1` | 关闭 Desktop 附带的本机 Web carrier |
+| `SSH_CORDIS_NO_WEB_CARRIER=1` | 仅关闭 Desktop 附带的普通浏览器入口；内部 Web Host 继续运行 |
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | 禁止 Desktop 启动档案读写 |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | 禁止 Electron 自动无沙箱回退 |
 
@@ -50,7 +50,7 @@ npm run start:desktop
 | `apps/web/` | 独立本机 Web 的 Node 入口、HTTP/WS 服务、CLI 和测试 |
 | `packages/protocol/` | 与环境无关的请求、能力、事件和二进制线格式 |
 | `packages/host/` | Cordis Host、SSH/SFTP 服务、主机存储、指纹和凭据接口 |
-| `packages/transport/` | dispatcher、HTTP/WebSocket 载体、客户端身份和就绪校验 |
+| `packages/transport/` | 共享 Web Host 装配、dispatcher、HTTP/WebSocket、客户端身份和就绪校验 |
 | `packages/ui/` | 浏览器 Cordis Client、终端、主机列表、SFTP 面板和浏览器选钥 |
 | `VERSION.txt` | 所有 workspace 共用的源码版本基准 |
 | `scripts/` | 根 workspace 构建、类型、边界、staging、Windows 安装包和 changelog 检查 |
@@ -67,12 +67,12 @@ npm run start:desktop
 - `@pureterm/host` 负责 SSH/SFTP 和存储，但不依赖 Electron、UI 或应用入口。
 - `@pureterm/ui` 只面向浏览器，不导入 Node、Electron 或 Host。
 - `@pureterm/transport` 通过 Host 公共 API 调用，不读取 `Host.internals`。
-- Electron API 只进入 Desktop 的 `electron/app/`、载体、preload 和诊断；`electron/runtime/` 与 `electron/host/` 不导入 Electron。
+- Electron API 只进入 Desktop 的 `electron/app/`、preload 和诊断；`electron/runtime/`、`electron/host/` 与普通载体不导入 Electron。
 - 跨 workspace 引用使用公开 package exports，禁止通过相对路径访问另一包源码。
 
-Desktop 启动独立 Node Host 子进程，通过带版本的私有 RPC 通信。主进程拥有窗口、原生文件选择、safeStorage、更新协调和子进程生命周期；独立 Web 在普通 Node 进程中装配自己的 Host。共享实现不代表共享会话或共享数据文件。
+Desktop 启动独立 Node 模式 Web Host 子进程。`pureterm-app://app/` 窗口通过子进程的回环 WebSocket 处理 SSH/SFTP、主机和 Keychain；私有父子 RPC 负责启动、关闭、系统加密和原生选钥。主进程拥有窗口、safeStorage、更新协调和子进程生命周期；独立 Web 在普通 Node 进程中装配自己的 Web Host。共享实现不代表共享会话或共享数据文件。
 
-Client、载体和 Host 必须提供明确的释放路径。父子 IPC 保留 `Uint8Array`；终端和 SFTP 字节不能提前转成字符串。WebSocket 断开和渲染进程失败时，必须释放该客户端拥有的会话。
+Client、载体和 Host 必须提供明确的释放路径。WebSocket 传输保留终端和 SFTP 字节，不提前转成字符串。WebSocket 断开和渲染进程失败时，必须释放该客户端拥有的会话。
 
 ## 质量检查
 
@@ -101,7 +101,7 @@ npm run verify
 npm run verify:electron
 ```
 
-该命令检查 Desktop boot、IPC、附带 Web carrier、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web 以及共享 Client 作用域生命周期。Electron 显示环境不可用等已识别限制不算通过。
+该命令检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 行为、附带普通浏览器入口、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web 以及共享 Client 作用域生命周期。Electron 显示环境不可用等已识别限制不算通过。
 
 文档-only 修改至少运行 `npm run release:check`、Markdown 相对链接检查和 `git diff --check`。在 PR 中报告实际运行的命令和结果。不要用旧 `dist/`、进程存在或历史通过次数代替成功证据。
 

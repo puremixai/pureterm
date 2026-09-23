@@ -9,8 +9,8 @@ declare module 'cordis' {
 /**
  * 一个已连接的渲染层客户端。
  *
- * `id` 是**载体给的、不透明的**字符串：IPC 载体填 `ipc:5`，WebSocket 载体填 `ws:3`，
- * 测试填什么都行。领域层只把它当句柄转手，不解释、不拆解、不比较大小。
+ * `id` 是**载体给的、不透明的**字符串：WebSocket 载体填 `ws:3`，
+ * 测试可填自己的 id。领域层只把它当句柄转手，不解释、不拆解、不比较大小。
  *
  * 为什么是这个形状：早先这里叫 `webContentsId: number`——Electron 的渲染进程 id
  * 直接进了领域层的公共契约。字面上「插件层不 import electron」是成立的，
@@ -24,7 +24,7 @@ export interface RendererHandle {
 }
 
 /**
- * 载体接缝。壳层实现它：把「谁在说话」映射成一个 RendererHandle。
+ * 载体接缝。WebSocket 载体实现它：把「谁在说话」映射成一个 RendererHandle。
  *
  * 这个接口里**没有任何 Electron 类型**，所以插件树可以脱离 Electron 单测
  * （`tests/smoke-host.mjs` 用的就是这个接口的假实现），

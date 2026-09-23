@@ -5,6 +5,7 @@ import {
   decodeWire,
   encodeWire,
   type HostRecord,
+  type DesktopBridge,
   type KeyRecord,
   type PickedPrivateKey,
   type RuntimeCapabilities,
@@ -34,35 +35,22 @@ export type { SmokeReport }
 
 declare global {
   interface Window {
-    /**
-     * preload 注入的 IPC 载体接口。
-     * **没有它**（用浏览器打开 http://127.0.0.1:… 时）就落到 WebSocket 载体——
-     * 这份产物在两种载体下是同一个文件，区别只在有没有这个全局对象。
-     */
-    sshAPI?: SshApi
+    /** Electron shell coordination only; business operations use WebSocket. */
+    puretermDesktop?: DesktopBridge
     __smoke?: {
+      api: SshApi
+      ready: Promise<import('@pureterm/protocol').RendererReadyPayload>
       run(config: { host: string; port: number; username: string; password: string }): Promise<SmokeReport>
     }
   }
 }
 
-/**
- * 选载体。判断依据只有一条：preload 有没有把 `window.sshAPI` 放上去。
- *
- * 不写成「是不是 Electron」是因为那要嗅 userAgent，而 userAgent 是能骗的、
- * 也会随 Electron 版本变；「preload 注入过没有」是结构性的事实。
- * 两种情况下 app.ts 拿到的是**同一个接口**（shared/protocol.ts 的 SshApi）。
- */
 export function createTransport(): SshApi {
-  const injected = window.sshAPI
-  return injected ?? createWebSocketTransport()
+  return createWebSocketTransport()
 }
 
 // ── WebSocket 载体 ────────────────────────────────────────────────
 //
-// IPC 载体不在这里再包一层：preload 暴露出来的形状就是 SshApi，
-// 多包一层只是多一次转发、多一个可能和 preload 走形的机会。
-
 /**
  * 浏览器里的那份 SshApi，走 `ws://<当前 host>/ws`，协议与桌面端**完全同一个**。
  *
@@ -75,6 +63,7 @@ export function createTransport(): SshApi {
  *    并且通知当前会话已结束——否则界面会停在「已连接」而远端其实已经没了。
  */
 export function createWebSocketTransport(): SshApi {
+  const desktop = window.puretermDesktop
   // Subsequent HTTP requests and the first WebSocket use the HttpOnly session cookie.
   const cleanedUrl = withoutBootstrapToken(window.location.href)
   if (cleanedUrl) window.history.replaceState(window.history.state, '', cleanedUrl)
@@ -106,7 +95,15 @@ export function createWebSocketTransport(): SshApi {
     pending.clear()
   }
 
-  const url = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
+  const browserUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
+
+  const endpoint = async (): Promise<string> => {
+    const bootstrap = await desktop!.bootstrap()
+    const url = bootstrap?.webSocketUrl
+    const match = typeof url === 'string' && /^ws:\/\/127\.0\.0\.1:([1-9]\d{0,4})\/ws$/.exec(url)
+    if (!match || Number(match[1]) > 65535) throw new Error('Desktop bootstrap returned an invalid WebSocket URL.')
+    return url
+  }
 
   function connect(): Promise<WebSocket> {
     if (disposed) return Promise.reject(new Error('客户端已卸载。'))
@@ -116,72 +113,82 @@ export function createWebSocketTransport(): SshApi {
     const generation = ++connectionGeneration
     const isCurrent = (): boolean => !disposed && generation === connectionGeneration
     connecting = new Promise<WebSocket>((resolve, reject) => {
-      let settled = false
-      const ws = new WebSocket(url)
-      openingSocket = ws
       rejectOpening = reject
-      ws.binaryType = 'arraybuffer'
-
-      ws.onopen = () => {
-        if (!isCurrent()) { clearSocketHandlers(ws); ws.close(); return }
-        settled = true
-        openingSocket = null
-        rejectOpening = null
-        socket = ws
-        resolve(ws)
-      }
-
-      ws.onerror = () => {
-        if (!isCurrent() || settled) return
-        settled = true
-        connectionGeneration++
-        connecting = null
-        openingSocket = null
-        rejectOpening = null
-        // Retire the failed handshake before permitting a retry. Its queued close,
-        // message or open callback must never affect the replacement connection.
-        clearSocketHandlers(ws)
-        ws.close()
-        reject(new Error(`连不上本机后端（${url}）。地址或 token 可能已经失效——重启应用后会换新的。`))
-      }
-
-      ws.onclose = (event) => {
+      const begin = (url: string): void => {
         if (!isCurrent()) return
-        connectionGeneration++
-        clearSocketHandlers(ws)
-        const wasCurrent = socket === ws
-        if (wasCurrent) socket = null
-        if (openingSocket === ws) openingSocket = null
-        rejectOpening = null
-        connecting = null
-        const reason = `与后端的连接已断开（${event.code}${event.reason ? ` ${event.reason}` : ''}）。`
-        failAllPending(reason)
-        if (!settled) {
-          settled = true
-          reject(new Error(reason))
-          return
-        }
-        // 断线要让当前会话跟着结束，否则界面会停在「已连接」
-        if (wasCurrent) {
-          for (const listener of disconnectedListeners) listener(reason)
-          const sessions = [...currentSessions]
-          currentSessions.clear()
-          for (const session of sessions) emitClosed(session, reason)
-        }
-      }
+        let settled = false
+        const ws = new WebSocket(url)
+        openingSocket = ws
+        ws.binaryType = 'arraybuffer'
 
-      ws.onmessage = (event) => {
-        if (!isCurrent() || socket !== ws) return
-        if (typeof event.data !== 'string') return
-        let message: unknown
-        try {
-          message = JSON.parse(event.data)
-        } catch {
-          console.error('[transport] 收到不是 JSON 的报文，已忽略。')
-          return
+        ws.onopen = () => {
+          if (!isCurrent()) { clearSocketHandlers(ws); ws.close(); return }
+          settled = true
+          openingSocket = null
+          rejectOpening = null
+          socket = ws
+          resolve(ws)
         }
-        handleInbound(message)
+
+        ws.onerror = () => {
+          if (!isCurrent() || settled) return
+          settled = true
+          connectionGeneration++
+          connecting = null
+          openingSocket = null
+          rejectOpening = null
+          // Retire the failed handshake before permitting a retry. Its queued close,
+          // message or open callback must never affect the replacement connection.
+          clearSocketHandlers(ws)
+          ws.close()
+          reject(new Error(`连不上本机后端（${url}）。地址或 token 可能已经失效——重启应用后会换新的。`))
+        }
+
+        ws.onclose = (event) => {
+          if (!isCurrent()) return
+          connectionGeneration++
+          clearSocketHandlers(ws)
+          const wasCurrent = socket === ws
+          if (wasCurrent) socket = null
+          if (openingSocket === ws) openingSocket = null
+          rejectOpening = null
+          connecting = null
+          const reason = `与后端的连接已断开（${event.code}${event.reason ? ` ${event.reason}` : ''}）。`
+          failAllPending(reason)
+          if (!settled) {
+            settled = true
+            reject(new Error(reason))
+            return
+          }
+          // 断线要让当前会话跟着结束，否则界面会停在「已连接」
+          if (wasCurrent) {
+            for (const listener of disconnectedListeners) listener(reason)
+            const sessions = [...currentSessions]
+            currentSessions.clear()
+            for (const session of sessions) emitClosed(session, reason)
+          }
+        }
+
+        ws.onmessage = (event) => {
+          if (!isCurrent() || socket !== ws) return
+          if (typeof event.data !== 'string') return
+          let message: unknown
+          try {
+            message = JSON.parse(event.data)
+          } catch {
+            console.error('[transport] 收到不是 JSON 的报文，已忽略。')
+            return
+          }
+          handleInbound(message)
+        }
       }
+      if (desktop) void endpoint().then(begin).catch(error => {
+        if (!isCurrent()) return
+        connecting = null
+        rejectOpening = null
+        reject(error)
+      })
+      else begin(browserUrl)
     })
 
     return connecting
@@ -309,7 +316,11 @@ export function createWebSocketTransport(): SshApi {
       remove: (sessionId, path) => call(METHODS.sftpRemove, [sessionId, path]) as Promise<void>,
     },
 
-    signalReady: (payload) => notify(NOTICES.appReady, [payload]),
+    signalReady: (payload) => {
+      if (disposed) return
+      if (desktop) desktop.signalReady(payload)
+      else notify(NOTICES.appReady, [payload])
+    },
     dispose() {
       if (disposed) return
       disposed = true

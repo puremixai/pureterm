@@ -1,18 +1,13 @@
 /**
- * 渲染层 ⇄ 壳：**唯一的**协议定义处。
+ * Shared UI ⇄ Host business protocol and minimal Desktop shell channels.
  *
- * 为什么必须单独一个文件：以前通道名在 `electron/app/main.ts`（`ipcMain.handle('ssh:open', …)`）
- * 和 `electron/carriers/preload.ts`（`ipcRenderer.invoke('ssh:open')`）里各写了一遍字面量。
- * 两处一漂移，症状就是「界面点了没反应」——最难查的一类错，而且换载体时
- * （IPC → WebSocket）还得保证两边一个字都不差。现在名字只定义一次，载体只是搬运工。
+ * Business methods, notices and events use WebSocket in Desktop and standalone
+ * Web. Electron IPC carries only bootstrap and renderer readiness. Keeping both
+ * channel sets here prevents the UI, Host and Desktop shell from drifting.
  *
- * 三条纪律：
- *  1. **这个文件不许 import 任何东西**——Node、Electron、DOM 都不行。
- *     它同时被主进程（tsconfig.main）、渲染层（tsconfig.renderer，`types: []`）和测试引用，
- *     任何一侧的全局对象漏进来都会让另一侧编不过。
- *  2. 名字只在这里定义。载体与业务代码一律用常量，不许再写字面量。
- *  3. 客户端身份是**不透明的字符串** `clientId`，不是 Electron 的 webContents id——
- *     载体负责把「谁在说话」映射成这个 id，领域层只当它是个句柄。
+ * This file has no imports so browser, Node and Electron consumers can share it.
+ * The WebSocket carrier assigns opaque client IDs; Host never interprets a
+ * webContents ID.
  */
 
 /** 请求/响应：客户端发方法 + 参数，服务端回值或抛错。 */
@@ -40,6 +35,12 @@ export const NOTICES = {
   sshClose: 'ssh:close',
   appReady: 'app:renderer-ready',
   appDispose: 'app:dispose-client',
+} as const
+
+/** Minimal Electron shell coordination; business traffic always uses WebSocket. */
+export const DESKTOP_CHANNELS = {
+  bootstrap: 'desktop:bootstrap',
+  ready: 'desktop:renderer-ready',
 } as const
 
 /** 服务端推给客户端的事件。客户端只订阅，不回应。 */
@@ -165,7 +166,7 @@ export interface KeySaveRequest {
  * 单次传输的字节上限。
  *
  * 为什么是 4 MiB：文件内容要过一遍 base64 打标签（膨胀 4/3），再加上 JSON 的壳；
- * 而 WebSocket 载体单条报文的上限是 8 MiB（`electron/carriers/ws-frame.ts` 的 MAX_MESSAGE_BYTES）。
+ * 而 WebSocket 载体单条报文的上限是 8 MiB（`packages/transport/src/ws-frame.ts` 的 MAX_MESSAGE_BYTES）。
  * 4 MiB 的原文约合 5.4 MiB 的报文，留了余量。**这不是随手取的一个「够用」的数**：
  * 越过这条线，Web 载体上会先断在帧解码那一步，报的是「报文过大」而不是「文件太大」，
  * 用户根本查不出来。
@@ -225,13 +226,21 @@ export interface SftpWriteResult {
 
 // ── 渲染层要用的那份 API ──────────────────────────────────────────
 //
-// 放这里而**不是** renderer/transport.ts：preload（跑在 Node 侧、没有 DOM 类型）
-// 也要按它来实现 IPC 载体，而 renderer/ 的文件引用 DOM。放在这个「谁都 import 得到、
-// 自己谁也不 import」的文件里，两边才能共用同一个定义。
+// Shared by the browser UI and the Desktop shell. Business operations use the
+// same WebSocket API in both entry points; the Desktop bridge only bootstraps it.
 
-export type CarrierKind = 'ipc' | 'web'
+export type CarrierKind = 'web'
 
-/** 宿主能力与 IPC/WebSocket 载体无关：Desktop 的浏览器入口也支持系统凭据与原生选文件。 */
+export interface DesktopBootstrap {
+  webSocketUrl: string
+}
+
+export interface DesktopBridge {
+  bootstrap(): Promise<DesktopBootstrap>
+  signalReady(payload: RendererReadyPayload): void
+}
+
+/** 宿主能力与入口无关：Desktop 的浏览器入口也支持系统凭据与原生选文件。 */
 export interface RuntimeCapabilities {
   credentialPersistence: 'encrypted' | 'session'
   privateKeyPicker: 'native' | 'browser'
@@ -249,7 +258,7 @@ export interface SshApi {
   onOpened(listener: (sessionId: string, cols: number, rows: number) => void): () => void
   onData(listener: (sessionId: string, chunk: Uint8Array) => void): () => void
   onClosed(listener: (sessionId: string, reason: string) => void): () => void
-  /** Carrier connection loss, including when no SSH terminal is open. IPC exits with its shell instead. */
+  /** Carrier connection loss, including when no SSH terminal is open. */
   onDisconnected(listener: (reason: string) => void): () => void
   /** Release this client's subscriptions and transport resources. */
   dispose(): void

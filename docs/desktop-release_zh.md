@@ -53,6 +53,8 @@ SSH 使用 ssh2 的 JS 实现，暂不打包 `cpu-features`、`nan` 或 `sshcryp
 
 目前使用 `asar:false`，独立 Node Host 入口和其依赖都是真实文件。Electron 主进程与 Host 子进程共用安装包内的 Electron/Node 运行时，终端用户无需另装 Node.js。
 
+打包界面从 `pureterm-app://app/` 加载。子进程启动与独立 Web 共用的回环 Web Host，最小 preload 只向窗口提供 WebSocket URL。Electron 主进程仅向该窗口的准确 WebSocket 请求注入私有 Desktop bearer token；设置 `SSH_CORDIS_NO_WEB_CARRIER=1` 可关闭附带普通浏览器的 token/cookie 访问，但不关闭 Desktop 窗口。
+
 ## CI 与发布
 
 `.github/workflows/desktop-release.yml` 对 PR、手动运行和 `v*` tag 提供三平台构建：
@@ -124,7 +126,7 @@ tag 构建缺少所需凭据时直接失败，不把未签名应用作为正式�
 
 `packaging.test.mjs` 检查 staging 可在工作区之外的 cwd 运行、嵌套依赖版本保持正确、UI 导出仍可解析、必要 Host 入口和依赖缺失时构建失败，以及链接目录不会导致工作区外写入或遗漏文件。安装包本身仍需真实运行验证。
 
-Windows 本机验收应使用独立安装目录和 `SSH_CORDIS_DATA_DIR`，先确认没有已有 PureTerm 安装，避免覆盖用户环境。安装后从工作区之外启动安装目录中的 `PureTerm.exe`，验证共享 UI、Host 子进程、SSH/SFTP 和进程退出，再卸载此次测试安装。安装成功不能替代对新旧版本之间更新下载、校验和重启安装的验收。
+Windows 本机验收应使用独立安装目录和 `SSH_CORDIS_DATA_DIR`，先确认没有已有 PureTerm 安装，避免覆盖用户环境。安装后从工作区之外启动安装目录中的 `PureTerm.exe`，验证自定义 scheme 界面、子进程 Web Host、WebSocket SSH/SFTP 和进程退出，再卸载此次测试安装。安装成功不能替代对新旧版本之间更新下载、校验和重启安装的验收。
 
 `verify:package:windows` 自动执行上述流程：已有 PureTerm 安装时拒绝覆盖，否则在仓库外的系统临时目录 `pureterm-installed-smoke-*` 安装，使用临时 Chromium/数据目录和本机 SSH/SFTP 夹具，验证系统加密凭据跨进程读写，最后调用本次安装的卸载器并检查登记和进程清理。安装目录与启动 cwd 均位于仓库外，并移除 NODE_PATH，避免工作区依赖掩盖漏打包问题。
 

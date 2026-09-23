@@ -36,7 +36,7 @@ Useful environment variables:
 | --- | --- |
 | `SSH_CORDIS_DATA_DIR` | Override Desktop data directory |
 | `SSH_CORDIS_WEB_DATA_DIR` | Override standalone Web data directory |
-| `SSH_CORDIS_NO_WEB_CARRIER=1` | Disable Desktop’s attached local Web carrier |
+| `SSH_CORDIS_NO_WEB_CARRIER=1` | Disable only Desktop’s attached ordinary-browser entry; its internal Web Host remains active |
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | Disable Desktop launch-profile reads and writes |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | Disable automatic Electron no-sandbox fallback |
 
@@ -50,7 +50,7 @@ Do not commit `.env` files, passwords, private keys, tokens, certificates, or re
 | `apps/web/` | Standalone local Web Node entry, HTTP/WS server, CLI, and tests |
 | `packages/protocol/` | Environment-neutral requests, capabilities, events, and binary wire format |
 | `packages/host/` | Cordis Host, SSH/SFTP services, host storage, fingerprints, and credential interfaces |
-| `packages/transport/` | Dispatcher, HTTP/WebSocket carriers, client identity, and readiness validation |
+| `packages/transport/` | Shared Web Host assembly, dispatcher, HTTP/WebSocket, client identity, and readiness validation |
 | `packages/ui/` | Browser Cordis Client, terminal, host list, SFTP panel, and browser key picker |
 | `VERSION.txt` | Source version baseline shared by all workspaces |
 | `scripts/` | Root workspace build, type, boundary, staging, Windows package, and changelog checks |
@@ -67,12 +67,12 @@ The allowed dependency direction is enforced by `npm run check:boundaries` and `
 - `@pureterm/host` owns SSH/SFTP and storage but does not depend on Electron, UI, or application entry points.
 - `@pureterm/ui` is browser-only and does not import Node, Electron, or Host.
 - `@pureterm/transport` calls the public Host API and never reads `Host.internals`.
-- Electron APIs stay in Desktop `electron/app/`, carriers, preload, and diagnostics. `electron/runtime/` and `electron/host/` have no Electron import.
+- Electron APIs stay in Desktop `electron/app/`, the preload, and diagnostics. `electron/runtime/`, `electron/host/`, and ordinary carriers have no Electron import.
 - Cross-workspace imports use public package exports. Relative imports into another package’s source are prohibited.
 
-Desktop starts an independent Node Host child process and communicates through a versioned private RPC channel. The parent owns the window, native file picker, safeStorage, update coordinator, and child lifecycle. Standalone Web assembles its own Host in an ordinary Node process. Shared code does not mean shared sessions or shared data files.
+Desktop starts an independent Node-mode Web Host child process. The `pureterm-app://app/` window uses the child’s loopback WebSocket for SSH/SFTP, hosts, and Keychain; private parent/child RPC handles startup, shutdown, system encryption, and native key selection. The parent owns the window, safeStorage, update coordinator, and child lifecycle. Standalone Web assembles its own Web Host in an ordinary Node process. Shared code does not mean shared sessions or shared data files.
 
-Client, carriers, and Host must expose explicit disposal paths. Parent/child IPC preserves `Uint8Array`; terminal and SFTP bytes must not be converted to strings prematurely. WebSocket disconnects and renderer failures must release the sessions owned by that client.
+Client, carrier, and Host must expose explicit disposal paths. WebSocket transport preserves terminal and SFTP bytes without converting them to strings prematurely. WebSocket disconnects and renderer failures must release the sessions owned by that client.
 
 ## Quality checks
 
@@ -101,7 +101,7 @@ Changes involving Electron windows, IPC, preload, child processes, update behavi
 npm run verify:electron
 ```
 
-This command verifies Desktop boot, IPC, the attached Web carrier, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, and shared Client scope lifecycle. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
+This command verifies Desktop custom-scheme boot, WebSocket SSH/Keychain behavior, the attached browser entry, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, and shared Client scope lifecycle. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
 
 Documentation-only changes must run `npm run release:check`, a Markdown relative-link check, and `git diff --check`. Report the actual commands and results in the pull request. Do not use an old `dist/` directory, process existence, or a historical pass count as evidence of success.
 

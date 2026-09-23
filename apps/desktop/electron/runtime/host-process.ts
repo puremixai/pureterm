@@ -1,23 +1,21 @@
 import { fork } from 'node:child_process'
-import type { CredentialProvider, RendererBridge } from '@pureterm/host'
-import type { PickedPrivateKey, RendererReadyPayload } from '@pureterm/protocol'
-import type { Dispatcher } from '@pureterm/transport/dispatch'
+import type { CredentialProvider } from '@pureterm/host'
+import type { PickedPrivateKey } from '@pureterm/protocol'
 import { createProcessRpc } from './process-rpc.js'
 
 export interface DesktopHostProcess {
   readonly pid: number
-  readonly dispatcher: Dispatcher
-  releaseClient(clientId: string): void
+  readonly url: string
+  readonly desktopToken: string
   dispose(): Promise<void>
 }
 
 export async function startHostProcess(options: {
   entry: string
   dataDir: string
-  bridge: RendererBridge
   credentials: CredentialProvider
   pickPrivateKey(clientId: string): Promise<PickedPrivateKey | undefined>
-  onReady(payload: RendererReadyPayload, clientId: string): void
+  browserAccess?: boolean
   onExit?(error: Error): void
   execPath?: string
   env?: NodeJS.ProcessEnv
@@ -51,20 +49,8 @@ export async function startHostProcess(options: {
     request(method, args) {
       if (method === 'platform:seal' && typeof args[0] === 'string') return options.credentials.seal(args[0])
       if (method === 'platform:unseal' && typeof args[0] === 'string') return options.credentials.unseal(args[0])
-      if (method === 'platform:pick-key' && typeof args[0] === 'string') {
-        if (!options.bridge.getRenderer(args[0])?.isAlive()) throw new Error('Client is no longer connected')
-        return options.pickPrivateKey(args[0])
-      }
+      if (method === 'platform:pick-key' && typeof args[0] === 'string') return options.pickPrivateKey(args[0])
       throw new Error(`Unknown platform request: ${method}`)
-    },
-    notice(method, args) {
-      const [clientId, event, params] = args
-      if (method === 'client:event' && typeof clientId === 'string' && typeof event === 'string' && Array.isArray(params)) {
-        const renderer = options.bridge.getRenderer(clientId)
-        if (!renderer?.isAlive() || !renderer.send(event, ...params)) rpc.notify('client:gone', [clientId])
-      } else if (method === 'client:ready' && typeof clientId === 'string') {
-        options.onReady(args[1] as RendererReadyPayload, clientId)
-      }
     },
     onError: error => console.error('[host-process]', error),
   })
@@ -105,32 +91,38 @@ export async function startHostProcess(options: {
     })
     return stopping
   }
+  let ready: { pid: number; url: string; desktopToken: string }
   try {
-    const ready = await rpc.call<{ pid: number }>('host:start', [options.dataDir], options.startupTimeoutMs ?? 15_000)
-    if (ready.pid !== child.pid || exited || !child.connected) throw new Error('Invalid Desktop Host handshake')
+    ready = await rpc.call<typeof ready>('host:start', [options.dataDir, options.browserAccess ?? true], options.startupTimeoutMs ?? 15_000)
+    if (ready?.pid !== child.pid || exited || !child.connected ||
+      !isLoopbackWebHostUrl(ready.url, options.browserAccess ?? true) ||
+      !isSecureToken(ready.desktopToken) || new URL(ready.url).searchParams.get('token') === ready.desktopToken) {
+      throw new Error('Invalid Desktop Host handshake')
+    }
     started = true
   } catch (error) {
     await dispose().catch(cleanupError => console.error('[host-process] Startup cleanup failed:', cleanupError))
     throw error
   }
-  const assertClient = (clientId: string): void => {
-    if (stopping || !options.bridge.getRenderer(clientId)?.isAlive()) throw new Error('Client is no longer connected')
-  }
-  return {
-    pid: child.pid!,
-    dispatcher: {
-      call(method, params, clientId) {
-        try { assertClient(clientId) } catch (error) { return Promise.reject(error) }
-        return rpc.call('host:call', [method, params, clientId])
-      },
-      notify(name, params, clientId) {
-        assertClient(clientId)
-        rpc.notify('host:notice', [name, params, clientId])
-      },
-    },
-    releaseClient: clientId => { rpc.notify('client:gone', [clientId]) },
-    dispose,
-  }
+  return { pid: child.pid!, url: ready.url, desktopToken: ready.desktopToken, dispose }
+}
+
+function isLoopbackWebHostUrl(value: unknown, browserAccess: boolean): value is string {
+  if (typeof value !== 'string') return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' && url.hostname === '127.0.0.1' &&
+      Number.isInteger(Number(url.port)) && Number(url.port) > 0 &&
+      url.username === '' && url.password === '' && url.pathname === '/' && url.hash === '' &&
+      (browserAccess
+        ? url.searchParams.size === 1 && isSecureToken(url.searchParams.get('token'))
+        : url.search === '')
+  } catch { return false }
+}
+
+function isSecureToken(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{32,}$/.test(value) &&
+    Buffer.from(value, 'base64url').length >= 24
 }
 
 async function waitForExit(exit: Promise<void>, timeoutMs: number): Promise<boolean> {

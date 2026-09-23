@@ -19,18 +19,18 @@ pureterm/
         app/                       main、shell、平台 API
         runtime/                   启动策略、就绪、档案、重启、资源路径
         host/                      独立 Node Host 入口（无 Electron API）
-        carriers/                  IPC 与 preload
+        carriers/                  最小 preload 启动信息
         diagnostics/               应用内 boot / smoke 钩子
       scripts/                     Electron 启动、构建与诊断工具
       tests/                       Desktop 和协议测试、SSH/SFTP 夹具
     web/
       package.json / tsconfig.json
-      src/                         普通 Node 入口、Host 与 HTTP/WS 装配
+      src/                         普通 Node 入口和独立 Web Host 策略
       tests/                       生命周期、协议及真实浏览器测试
   packages/
     host/src/                      Host 公共接口、services、plugins、凭据策略
     protocol/src/                  通道、数据、事件与二进制线格式
-    transport/src/                 dispatcher、HTTP/WS、载体与就绪报文校验
+    transport/src/                 共享 Web Host、dispatcher、HTTP/WS 与就绪报文校验
     ui/src/                        页面、xterm、文件面板、客户端传输和生成元数据
   docs/
     architecture.md / DEVELOPMENT.md / desktop-release.md
@@ -50,7 +50,7 @@ pureterm/
 | HTTP/WebSocket | 本机端口、静态资源路径、客户端断开回调 |
 | 终端与文件面板 | Desktop 原生选钥 / Web 浏览器选钥、可否记住凭据 |
 
-Desktop 主进程提供 IPC 和原有本机 Web carrier，通过私有父子 IPC 共享独立 Node Host。主进程保留 safeStorage 和原生选钥，子进程通过异步能力调用使用它们。独立 Web 自己创建一个 Host，默认使用另一份数据文件。共享代码不意味着两个应用自动共享会话或凭据。
+Desktop 子进程拥有共享 Web Host 及回环 HTTP/WS 载体。`pureterm-app://app/` 窗口和可选的附带浏览器使用其 WebSocket；私有父子 IPC 只承载生命周期、safeStorage 和原生选钥调用。主进程仅向本应用窗口的准确 WebSocket 请求注入独立 bearer token。独立 Web 使用另一份默认数据文件创建自己的 Web Host。共享代码不意味着两个应用自动共享会话或凭据。
 
 独立 Web 不读写凭据文件、不保存私钥路径。发现指定目录已有 `secrets.json`、加密的 `keychain.json` 密钥库或主机记录含旧密文时，启动会拒绝使用该目录，避免覆盖 Desktop 数据。默认目录分别是 `~/.ssh-cordis/` 和 `~/.ssh-cordis/web/`；自定义时仍应保持数据文件分离。Web Keychain 密钥及主机关联仅存在按客户端隔离的内存中，客户端断开时清除。
 
@@ -61,7 +61,7 @@ Desktop 主进程提供 IPC 和原有本机 Web carrier，通过私有父子 IPC
 - `@pureterm/ui` 只依赖协议及浏览器库，不导入 Node、Electron 或 Host。
 - `@pureterm/transport` 通过公共 Host 接口分派请求，不读取 `Host.internals`。
 - 跨包引用必须经过允许的公开导出，不通过相对路径访问另一包源码。
-- Electron API 限于 Desktop app、IPC、preload 与诊断适配；runtime 为平台策略和普通 Node 进程控制，不导入 Electron；host 入口同样不导入 Electron。
+- Electron API 限于 Desktop app、preload 与诊断适配；runtime、Host 入口和普通载体都不导入 Electron。
 
 根 `scripts/check-boundaries.mjs` 使用 TypeScript AST 检查，并接入 `typecheck`。这些约束保护源码依赖方向，不是运行时隔离机制。
 
@@ -78,11 +78,11 @@ Desktop 主进程提供 IPC 和原有本机 Web carrier，通过私有父子 IPC
 | 共享页面 | `packages/ui/dist/index.html`、`app.js`、`app.css` |
 | 共享 Node 模块 | 对应 `packages/*/dist/` |
 
-运行入口通过包导出定位共享页面，Desktop 按编译模块定位自己的 preload 和 Node Host，不依赖当前工作目录。`npm run verify` 覆盖构建、类型、边界及 Node/协议测试；`npm run verify:electron` 验证 Desktop、独立 Web、更新下载与 Client 插件生命周期。安装包验收另见 `npm run verify:package:windows`。测试代码随仓库保存，不继承历史文档的通过次数。
+运行入口通过包导出定位共享页面，Desktop 通过 `pureterm-app://app/` 提供界面，并按编译模块定位自己的 preload 和 Node Host，不依赖当前工作目录。`npm run verify` 覆盖构建、类型、边界及 Node/协议测试；`npm run verify:electron` 验证 Desktop、独立 Web、更新下载与 Client 插件生命周期。安装包验收另见 `npm run verify:package:windows`。测试代码随仓库保存，不继承历史文档的通过次数。
 
 ## 上游参考与范围
 
-上游依据固定为 deepseek-harness 提交 `0d1f50007f9bca3f52b06e1c3074fa14d5fb0720`。PureTerm 已实现独立 Node Host、Client Cordis 插件树与安装更新机制。按本项目范围采用静态插件组合、私有 Node IPC、GitHub Releases 渠道，不引入上游 Agent、动态 npm 插件管理或多租户。具体发布和签名条件见[发布说明](docs/desktop-release_zh.md)。
+上游参考锁定为 deepseek-harness 提交 `00102833dfaee1da9f48a3a8eae9d34005a75218`。PureTerm 参考其轻量 Desktop 壳，采用子进程 Web Host、Client Cordis 插件树与安装更新机制。按本项目范围采用静态插件组合、WebSocket 业务通信、私有平台/生命周期 IPC 和 GitHub Releases 渠道，不引入上游 Agent、动态 npm 插件管理或多租户。具体发布和签名条件见[发布说明](docs/desktop-release_zh.md)。
 
 上游实际按 `packages/<group>/<package>` 组织，SSH 包位于 `packages/ssh/{ssh,fs-ssh,subprocess-ssh,sandbox-ssh}`；不能从 Service 导出形式推导本项目的 services/plugins 目录规则。上游 Web Client 本身是 Cordis 应用，“不另造 IPC 插件系统”不代表前端没有插件树。
 

@@ -29,7 +29,21 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
       else window.webContents.once('did-finish-load', () => resolve())
     })
 
-    const preloadType = (await window.webContents.executeJavaScript('typeof window.sshAPI')) as string
+    const ready = await window.webContents.executeJavaScript('window.__smoke.ready')
+    if (!ready?.ok) throw new Error(`Renderer initialization failed: ${ready?.error ?? 'missing readiness'}`)
+    const surface = await window.webContents.executeJavaScript(`(async () => ({
+      preloadType: typeof window.puretermDesktop,
+      legacyApiType: typeof window.sshAPI,
+      page: location.origin,
+      bootstrap: await window.puretermDesktop.bootstrap(),
+      carrier: window.__smoke.api.carrier,
+      capabilities: await window.__smoke.api.getCapabilities(),
+    }))()`)
+    const { preloadType } = surface
+    if (surface.legacyApiType !== 'undefined' || surface.page !== 'pureterm-app://app'
+      || Object.keys(surface.bootstrap).join() !== 'webSocketUrl'
+      || !/^ws:\/\/127\.0\.0\.1:\d+\/ws$/.test(surface.bootstrap.webSocketUrl)
+      || surface.carrier !== 'web') throw new Error('Invalid Desktop Web Host boundary')
     const report = (await window.webContents.executeJavaScript(
       `window.__smoke.run(${JSON.stringify(config)})`,
     )) as SmokeReport
@@ -47,7 +61,7 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
 
     if (process.env.SSH_CORDIS_SMOKE_SFTP === '1') {
       const sftpOk = await window.webContents.executeJavaScript(`(async () => {
-        const api = window.sshAPI;
+        const api = window.__smoke.api;
         const config = ${JSON.stringify(config)};
         const record = await api.hosts.save({ ...config, label: 'Installer credential check', rememberPassword: true });
         if (!record.hasSecret) throw new Error('System credential encryption unavailable');
@@ -77,9 +91,9 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
     // Supplied only by the isolated local fixture runner, never by normal startup.
     if (process.env.SSH_CORDIS_SMOKE_KEYCHAIN) {
       const keychainOk = await window.webContents.executeJavaScript(`(async () => {
-        const api = window.sshAPI;
+        const api = window.__smoke.api;
         const config = ${JSON.stringify(config)};
-        const key = await api.keychain.save({ label: 'IPC Keychain check', privateKey: ${JSON.stringify(process.env.SSH_CORDIS_SMOKE_KEYCHAIN)} });
+        const key = await api.keychain.save({ label: 'Web Host Keychain check', privateKey: ${JSON.stringify(process.env.SSH_CORDIS_SMOKE_KEYCHAIN)} });
         if (key.privateKey || key.passphrase || !key.fingerprint) throw new Error('Unsafe Keychain public record');
         const { password, ...connection } = config;
         const host = await api.hosts.save({ ...connection, authMethod: 'privateKey', keyId: key.id });
@@ -93,9 +107,9 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
         }
       })()`)
       if (!keychainOk) throw new Error('Desktop Keychain authentication failed')
-      console.log('[KEYCHAIN-IPC-OK] system-encrypted key authenticated through preload and the Node Host')
+      console.log('[KEYCHAIN-WEB-OK] system-encrypted key authenticated through WebSocket and the Node Host')
     }
-    console.log('[SMOKE] ' + JSON.stringify({ preloadType, ...report }))
+    console.log('[SMOKE] ' + JSON.stringify({ preloadType, page: surface.page, carrier: surface.carrier, ...report }))
     console.log(ok ? '[SMOKE-OK]' : '[SMOKE-FAIL]')
     code = ok ? 0 : 1
   } catch (error) {

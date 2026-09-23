@@ -8,7 +8,7 @@ The project is released under the [MIT License](LICENSE).
 
 The current source version is `0.1.0-alpha.1`, maintained in [VERSION.txt](VERSION.txt) and described in the [development guide](docs/DEVELOPMENT.md).
 
-Both entry points reuse the Host, protocol, transport adapters, and Cordis Client. Desktop starts an independent Node Host child process from Electron; the standalone Web app runs in an ordinary Node process without starting Electron.
+Both entry points reuse the Host, protocol, shared Web Host assembly, and Cordis Client. Desktop starts an independent Node-mode Web Host child process from Electron. Its `pureterm-app://app/` window sends SSH/SFTP, host, and Keychain traffic over a loopback WebSocket; standalone Web runs the same assembly in an ordinary Node process without starting Electron.
 
 ## Getting started
 
@@ -26,7 +26,15 @@ npm run start:desktop
 
 The start commands build the required shared modules and application. Web uses a random loopback port by default; press Ctrl+C to stop it. Desktop stores data in `~/.ssh-cordis/` by default, while standalone Web uses `~/.ssh-cordis/web/`; each location stores host records and trusted SSH host keys for its own entry point.
 
-Desktop can use the operating system credential store for passwords, private-key passphrases, and imported Keychain keys, and can open native private-key file dialogs. Standalone Web persists host information only; credentials and Keychain keys are scoped to the current client session and must be entered or imported again after a refresh. See the [Desktop guide](apps/desktop/README.md) and [local Web guide](apps/web/README.md).
+### Choose how to connect
+
+| Client | How to open it | Host and credential policy |
+| --- | --- | --- |
+| Desktop window | `npm run start:desktop` | Electron starts a Web Host child; credentials and Keychain keys can use system-encrypted storage, with native private-key selection |
+| Browser attached to Desktop | Start Desktop, then open its tokenized URL from the startup log | Shares Desktop's Web Host, saved hosts, encrypted credentials, and native private-key selection; each client owns its SSH sessions |
+| Standalone Web | `npm run start:web`, then open the printed URL | An independent Node Web Host with separate data; credentials and Keychain keys remain in the current client session and must be supplied again after a refresh |
+
+Desktop's attached browser entry is enabled by default. Set `SSH_CORDIS_NO_WEB_CARRIER=1` to disable it; the Desktop window and its internal Web Host continue to work. This setting does not disable the standalone Web command. Keep independent Desktop and Web processes on separate data directories. See the [Desktop guide](apps/desktop/README.md) and [local Web guide](apps/web/README.md).
 
 ## Working with connections
 
@@ -44,13 +52,23 @@ Open sessions and retry credentials live only in the current client; they are no
 - In a host's **Private key** authentication settings, select the saved Keychain entry, save the host, then connect in its own terminal tab. The Host resolves the key ID internally. Direct private-key file selection remains available.
 - Desktop stores a dedicated atomic, system-encrypted `keychain.json` vault with no plaintext private material; unavailable encryption fails the save. Web keeps imported keys and host-key associations only in that client's Host memory and clears them on disconnect/reload. A key used by a saved host cannot be deleted until that host's authentication is changed or the host is removed. Deletion requires confirmation and cannot be undone.
 
+## Architecture and upstream reference
+
+The Desktop architecture follows [deepseek-harness's Desktop implementation at `00102833`](https://github.com/deepseek-ai/deepseek-harness/tree/00102833dfaee1da9f48a3a8eae9d34005a75218/apps/desktop), the reference snapshot synchronized on 2026-09-23. PureTerm adapts the shared Web Host and Electron shell pattern to its SSH/SFTP client.
+
+- `@pureterm/transport/web-host` assembles the Cordis Host, dispatcher, and loopback HTTP/WebSocket carrier for both entry points.
+- Electron serves the shared UI at `pureterm-app://app/` while its Node-mode child starts. The minimal `window.puretermDesktop` bridge provides the WebSocket address after Host readiness and accepts the renderer's readiness report. SSH/SFTP, hosts, and Keychain operations use WebSocket.
+- Electron main owns the window, system encryption, native key picker, and child lifecycle. It injects the Desktop authentication token into the owned window's WebSocket request without exposing that token to the page. Private parent/child RPC carries platform capabilities and startup/shutdown coordination.
+
+For internal integrations, the old `window.sshAPI` and SSH business IPC have been removed. Existing SSH data directories remain unchanged. See the [architecture guide](docs/architecture.md) for process boundaries and lifecycle, and the [changelog](CHANGELOG.md) for migration details.
+
 ## Verification
 
 ```powershell
 # Clean build, type/dependency-boundary checks, Node and local protocol tests
 npm run verify
 
-# Desktop boot / IPC / Web and a real-browser check of standalone Node Web
+# Desktop boot / custom-scheme WebSocket / attached Web and a real-browser check of standalone Node Web
 npm run verify:electron
 ```
 
@@ -60,11 +78,11 @@ Tests use the repository’s local SSH/SFTP fixtures and temporary data director
 
 | Path | Contents |
 | --- | --- |
-| `apps/desktop/` | Electron shell, platform adapters, startup diagnostics, and tests |
+| `apps/desktop/` | Electron shell, Node-mode Web Host child entry, platform adapters, startup diagnostics, and tests |
 | `apps/web/` | Standalone local Node Web entry point and tests |
 | `packages/host/` | Cordis Host, SSH/SFTP, host storage, and credential interfaces |
 | `packages/protocol/` | Transport protocol and shared data structures |
-| `packages/transport/` | Request dispatch, HTTP/WebSocket, and carrier composition |
+| `packages/transport/` | Shared Web Host assembly, request dispatch, and HTTP/WebSocket carrier |
 | `packages/ui/` | Shared terminal, file panel, and browser transport for both entry points |
 | [VERSION.txt](VERSION.txt) | Source version baseline for all workspaces and release tags |
 | [docs/architecture.md](docs/architecture.md) | Current architecture, lifecycle, and data boundaries |
@@ -75,4 +93,4 @@ The repository uses npm workspaces. Shared packages are referenced through publi
 
 English is the default for repository documentation. Chinese translations are maintained as paired `*_zh.md` files, including [README_zh.md](README_zh.md).
 
-Old review documents, the original proposal, and screenshot research material have been removed. The current implementation record is [the remediation plan](docs/superpowers/plans/2026-09-16-desktop-layout-remediation.md).
+Old review documents, the original proposal, and screenshot research material have been removed. The [architecture](docs/architecture.md) describes current behavior; dated plans under `docs/superpowers/` preserve historical decisions.

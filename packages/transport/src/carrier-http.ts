@@ -9,26 +9,23 @@ import type { Dispatcher } from './dispatch.js'
 import { createWsServer, type WsConnection } from './ws-server.js'
 
 /*
- * Web 载体：本机 HTTP + WebSocket，跑的是**同一个协议**（shared/protocol.ts）。
+ * Web 载体：本机 HTTP + WebSocket，使用共享协议。
  *
- * 为什么要有它：渲染层与壳解耦之后，「渲染层」不该再隐含「必须是 Electron 的 BrowserWindow」。
- * 加了它，同一个 `dist/renderer` 产物既能被 Electron 加载（走 IPC 载体），
- * 也能被浏览器加载（走这个载体）——**两条路共用一份协议、一个 dispatcher、一棵插件树**。
- * 解耦是不是真的，判据就是：加这个载体没有改动 `src/` 里的任何一行。
+ * Desktop 子进程和独立 Web 入口都使用它。Desktop 主窗口通过自定义 scheme
+ * 加载共享 UI，再连到这个 WebSocket；普通浏览器通过它的 HTTP 入口加载同一份 UI。
+ * 所有业务请求共用一个 dispatcher 和 Host 插件树。
  *
  * ── 安全约束（每一条都是必须的，不是加固）──────────────────────────
  * 1. **只绑 127.0.0.1**，端口随机（传 0 让系统给）。绝不绑 0.0.0.0——
  *    这是「本机可用」和「局域网里谁都能连」的区别。
- * 2. **token 是必须的，HTML 也要**。早先的想法是「只有 WS 要 token」，那是错的：
- *    本机任何进程 `GET /` 就能把页面（连带页面里的 token）拿走。
- *    现在的流程是——带 `?token=` 打开页面 → 服务端下发 HttpOnly 的 SameSite 会话 cookie
- *    → 之后静态资源与 WS 升级都凭 cookie。token 不进 JS，也不留在地址栏给 Referer 带走。
+ * 2. **所有 HTTP/WS 请求都要认证**。普通浏览器用查询 token 换取 HttpOnly
+ *    SameSite 会话 cookie；Desktop 主进程使用单独的 bearer token。
  * 3. **校验 Origin 与 Host**。Origin 用来挡「别家页面拿你的浏览器当跳板」，
  *    Host 用来挡 DNS rebinding（恶意域名解析到 127.0.0.1）。
  * 4. **CSP + nosniff + no-store**：终端是能显示任意远端文本的地方，别给它多余的权限。
  *
  * ── 它不是「另一条更弱的路」─────────────────────────────────────
- * 同一个 token 才能连上，连上之后能做的事与桌面端完全一样（都走同一个 dispatcher）。
+ * 通过认证后都走同一个 dispatcher。
  * 所以打印这个地址时也要说清楚：拿到地址的人 = 能操作这台机器的 SSH。
  */
 
@@ -40,12 +37,16 @@ const TOKEN_BYTES = 24
 
 export interface HttpCarrierOptions {
   dispatcher: Dispatcher
-  /** 渲染层产物目录（dist/renderer） */
+  /** 共享 UI 产物目录（packages/ui/dist）。 */
   staticDir: string
   /** 端口。默认 0 = 让系统挑一个空闲端口（随机端口本身就是一层保护） */
   port?: number
   /** 兼容显式配置；只接受 127.0.0.1。 */
   host?: string
+  /** Private Desktop credential created in the Host child; Electron main injects it into WS requests. */
+  desktopToken?: string
+  /** Whether the ordinary browser query token and cookie may authenticate. */
+  browserAccess?: boolean
   /** 客户端断开时回收其 SSH 会话，包括正在握手的连接。 */
   onDisconnect?: (clientId: string) => void
   log?: (line: string) => void
@@ -54,7 +55,7 @@ export interface HttpCarrierOptions {
 export interface HttpCarrier extends Carrier {
   readonly port: number
   readonly token: string
-  /** 控制台里给用户打开的那条地址（带 token） */
+  /** 普通浏览器可访问时带查询 token；禁用时只返回 loopback 地址。 */
   readonly url: string
   close(): Promise<void>
 }
@@ -116,6 +117,7 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
   const log = options.log ?? ((line: string): void => console.log(line))
   const staticDir = resolve(options.staticDir)
   const token = randomBytes(TOKEN_BYTES).toString('base64url')
+  const browserAccess = options.browserAccess !== false
   const bindHost = options.host ?? '127.0.0.1'
   if (bindHost !== '127.0.0.1') throw new Error('Web 服务只允许监听 127.0.0.1。')
   const connections = new Map<number, WsConnection>()
@@ -123,17 +125,26 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
 
   // ── 鉴权 ────────────────────────────────────────────────────────
   //
-  // 两条凭据路：查询串里的 `?token=`（初次打开页面 / 没有 cookie 罐的脚本客户端）
-  // 和会话 cookie（页面打开之后的一切）。都按 timing-safe 比较。
+  // 普通浏览器使用查询串 token 或会话 cookie；Desktop 使用单独的 bearer。
+  // Token 值按 timing-safe 比较。
   const queryTokenOk = (url: URL): boolean => {
+    if (!browserAccess) return false
     const fromQuery = url.searchParams.get('token')
     return !!fromQuery && safeEqual(fromQuery, token)
   }
 
   const cookieOk = (req: IncomingMessage): boolean => {
+    if (!browserAccess) return false
     // Browser cookies are shared across ports; Desktop and standalone Web must coexist.
     const fromCookie = readCookie(req.headers.cookie, `${SESSION_COOKIE}-${port}`)
     return !!fromCookie && safeEqual(fromCookie, token)
+  }
+
+  const desktopBearerOk = (req: IncomingMessage): boolean => {
+    if (!options.desktopToken) return false
+    const authorization = req.headers.authorization
+    const match = typeof authorization === 'string' ? /^Bearer (.+)$/i.exec(authorization) : null
+    return !!match && safeEqual(match[1]!, options.desktopToken)
   }
 
   const parseUrl = (req: IncomingMessage): URL | undefined => {
@@ -158,18 +169,14 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
   /*
    * Origin 校验。
    *
-   * 分两种情况，因为「客户端」有两种：
-   * - 浏览器：Origin 一定有，且必须是我们自己的 origin；
-   * - 脚本（冒烟测试用的 Node 内置 WebSocket）：可能不带 Origin，或带一个无意义的值。
-   *
-   * 所以不是「Origin 不对就拒」，而是「Origin 不对就必须另外拿出 token」——
-   * 跨站页面永远拿不到 token，这一条才是真正的门槛。
+   * Browser and Desktop upgrades must come from this local origin. Node clients
+   * may omit Origin, but a supplied foreign Origin is never accepted.
    */
-  const originAcceptable = (req: IncomingMessage, url: URL): boolean => {
+  const originAcceptable = (req: IncomingMessage): boolean => {
     const origin = req.headers.origin
     if (!origin) return true
     if (origin === `http://127.0.0.1:${port}` || origin === `http://localhost:${port}`) return true
-    return queryTokenOk(url)
+    return false
   }
 
   const applyHeaders = (response: ServerResponse): void => {
@@ -194,11 +201,11 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
       }
       const url = parseUrl(req)
       if (!url) return false
-      if (!originAcceptable(req, url)) {
-        log(`[carrier:web] 拒绝了来自 ${String(req.headers.origin)} 的升级请求（Origin 不匹配且没带 token）`)
+      if (!originAcceptable(req)) {
+        log(`[carrier:web] 拒绝了来自 ${String(req.headers.origin)} 的升级请求（Origin 不匹配）`)
         return false
       }
-      if (!queryTokenOk(url) && !cookieOk(req)) return false
+      if (!desktopBearerOk(req) && !queryTokenOk(url) && !cookieOk(req)) return false
       return true
     },
     onOpen: (connection) => {
@@ -295,7 +302,12 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
         deny(response, 400, '请求地址不合法。')
         return
       }
-      if (!queryTokenOk(url) && !cookieOk(req)) {
+      if (!originAcceptable(req)) {
+        deny(response, 403, 'Origin 不匹配。')
+        return
+      }
+      const desktopAuthorized = desktopBearerOk(req)
+      if (!desktopAuthorized && !queryTokenOk(url) && !cookieOk(req)) {
         // 不区分「token 错」和「没带 token」：不给出任何可用于试探的差异
         deny(
           response,
@@ -308,7 +320,7 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
 
       // 用 ?token= 打开时顺手落一个会话 cookie：之后静态资源与 WS 都凭它，
       // token 就不用一直挂在地址栏上（也免得被 Referer 带出去）
-      if (url.searchParams.get('token')) {
+      if (!desktopAuthorized && queryTokenOk(url)) {
         response.setHeader('Set-Cookie', `${SESSION_COOKIE}-${port}=${token}; HttpOnly; SameSite=Strict; Path=/`)
       }
 
@@ -356,7 +368,7 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
 
     port,
     token,
-    url: `http://${bindHost}:${port}/?token=${token}`,
+    url: browserAccess ? `http://${bindHost}:${port}/?token=${token}` : `http://${bindHost}:${port}/`,
 
     getRenderer(clientId: string): RendererHandle | undefined {
       if (!clientId.startsWith(WS_CLIENT_PREFIX)) return undefined

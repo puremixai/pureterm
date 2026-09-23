@@ -11,8 +11,8 @@ declare module 'cordis' {
 /**
  * 开终端的入参 = 协议里的请求 + **载体认定的**客户端身份。
  *
- * `clientId` 由载体填入，渲染层无法自称：IPC 载体填 `event.sender` 映射出的 id，
- * WebSocket 载体填连接 id。领域层只把它当不透明句柄——
+ * `clientId` 由 WebSocket 载体按连接填入，渲染层无法自称。
+ * 领域层只把它当不透明句柄——
  * 早先这里是个 number 的 `webContentsId`（Electron 的渲染进程 id），
  * 那等于把 Electron 的概念写进了领域层，换载体就得改 src/。
  */
@@ -57,7 +57,7 @@ function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
  *
  * 三条纪律：
  * 1. 传字节不传字符串。UTF-8 多字节字符会被 SSH 分包切开，逐块 toString() 必出乱码；
- *    直接发 Buffer（IPC 走结构化克隆变成 Uint8Array），交给 xterm 自带的流式解码器。
+ *    经 WebSocket 字节标签编码传输，UI 解回 Uint8Array 后交给 xterm 的流式解码器。
  * 2. 合并 + 背压。cat 大文件会瞬间产生上万条消息，按 16ms 合并，超过水位就 pause 通道。
  * 3. 每个会话都有出口。连接失败、断线、shell 关闭、渲染层消失，都必须带 reason 通知渲染层。
  */

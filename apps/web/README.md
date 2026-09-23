@@ -2,7 +2,7 @@
 
 [中文版本](README_zh.md)
 
-PureTerm’s local Web entry runs Node on the user’s computer, and a browser connects to that same computer. The Node process manages SSH, SFTP, host information, and trusted host keys. Web and Desktop share `@pureterm/host`, `@pureterm/protocol`, `@pureterm/transport`, and `@pureterm/ui`; the runtime does not require Electron.
+PureTerm’s local Web entry runs Node on the user’s computer, and a browser connects to that same computer. The Node process manages SSH, SFTP, host information, and trusted host keys. Web and Desktop use the same `@pureterm/transport/web-host` assembly with separate data directories and credential policies. Web also shares `@pureterm/host`, `@pureterm/protocol`, and `@pureterm/ui`; its runtime does not require Electron.
 
 Install dependencies at the repository root and start the entry point. The command builds shared modules and the Web entry:
 
@@ -27,6 +27,8 @@ node apps/web/dist/main.js --help
 Set the data directory with `SSH_CORDIS_WEB_DATA_DIR`; `--data-dir` takes precedence. The default is `~/.ssh-cordis/web`, separate from Desktop’s existing data directory so that two independent processes never write the same host or credential files.
 
 Web stores host information and trusted SSH host keys and never creates or reads `secrets.json` or the Desktop `keychain.json` vault. Passwords, private-key passphrases, and private-key content exist only in the current client session and must be supplied again after a refresh. Keychain supports import, paste, editing, search, and host selection using per-client Host memory; keys and host-key associations are cleared on disconnect and never serialized to disk. The browser File API reads private-key content; the browser never exposes the complete local file path to the server. Desktop supports native file selection and system-encrypted credentials and Keychain storage.
+
+This standalone Node service differs from Desktop’s optional attached browser: the attached browser shares Desktop’s child Web Host and encrypted data, while this command starts a separate Host with session-only credentials. `SSH_CORDIS_NO_WEB_CARRIER=1` disables only Desktop’s attached browser access; it does not affect `start:web`.
 
 Every HTTP resource and WebSocket requires the startup token or a session cookie exchanged for it, and validates the local Host header and browser Origin. The entry point has no public listening option and no user accounts or tenant isolation.
 

@@ -1,10 +1,7 @@
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHost } from '@pureterm/host'
-import { createCompositeBridge, type Carrier } from '@pureterm/transport/carrier'
-import { createHttpCarrier } from '@pureterm/transport/carrier-http'
-import { createDispatcher } from '@pureterm/transport/dispatch'
+import { startWebHost } from '@pureterm/transport/web-host'
 
 export interface LocalWebOptions {
   /** 0 lets the OS allocate an available loopback port. */
@@ -28,49 +25,13 @@ export async function startLocalWeb(options: LocalWebOptions = {}): Promise<Loca
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('端口必须是 0 到 65535 之间的整数。')
   const dataDir = resolve(options.dataDir ?? join(homedir(), '.ssh-cordis', 'web'))
   const staticDir = dirname(fileURLToPath(import.meta.resolve('@pureterm/ui/index.html')))
-  const log = options.log === false ? (): void => {} : options.log ?? ((line: string): void => console.log(line))
-  const carriers: Carrier[] = []
-  const host = await createHost({
-    bridge: createCompositeBridge(() => carriers),
+  const webHost = await startWebHost({
+    staticDir,
     hostStoreFile: join(dataDir, 'hosts.json'),
     knownHostsFile: join(dataDir, 'known-hosts.json'),
-    log: options.log === false ? false : log,
+    capabilities: { credentialPersistence: 'session', privateKeyPicker: 'browser' },
+    port,
+    log: options.log,
   })
-
-  try {
-    const dispatcher = createDispatcher({
-      host,
-      capabilities: { credentialPersistence: 'session', privateKeyPicker: 'browser' },
-      pickPrivateKey: async () => undefined,
-      onReady: () => {},
-    })
-    const carrier = await createHttpCarrier({
-      dispatcher,
-      staticDir,
-      port,
-      onDisconnect: (clientId) => host.releaseClient(clientId),
-      log,
-    })
-    carriers.push(carrier)
-    let disposal: Promise<void> | undefined
-    return {
-      url: carrier.url,
-      port: carrier.port,
-      dataDir,
-      dispose() {
-        disposal ??= (async () => {
-          try {
-            await carrier.dispose()
-          } finally {
-            carriers.length = 0
-            await host.dispose()
-          }
-        })()
-        return disposal
-      },
-    }
-  } catch (error) {
-    await host.dispose()
-    throw error
-  }
+  return { url: webHost.url, port: webHost.port, dataDir, dispose: () => webHost.dispose() }
 }

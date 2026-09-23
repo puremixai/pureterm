@@ -1,5 +1,4 @@
 import { BrowserWindow, type WebContents } from 'electron'
-import { pathToFileURL } from 'node:url'
 
 /*
  * ElectronShellGeneration —— 一代窗口。
@@ -24,13 +23,13 @@ import { pathToFileURL } from 'node:url'
 export const LOAD_WATCHDOG_MS = 20_000
 
 export interface ShellGenerationOptions {
-  htmlPath: string
+  pageUrl: string
   preloadPath: string
   /** Windows/Linux 保留菜单快捷键，但默认不让菜单栏占据内容高度。 */
   autoHideMenuBar: boolean
   /** Windows/Linux 隐藏原生标题栏后叠回系统窗口控制按钮。 */
   useWindowControlsOverlay: boolean
-  /** 传给 loadFile 的 query，例如 'smoke=1' */
+  /** Page query, for example 'smoke=1' in isolated diagnostics. */
   search?: string
   /** 页面没能起来（超时 / 加载失败 / 渲染进程崩溃）。只在「还没加载完」时触发。 */
   onLoadFailure(reason: string): void
@@ -114,7 +113,7 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
 
   // 导航限制：终端输出里的链接、拖进来的本地 HTML 文件，都不许把这个窗口导航走。
   // 只允许停在渲染层自己的那份 HTML 上（带 query 也算同一份）。
-  const allowedUrl = pathToFileURL(options.htmlPath)
+  const allowedUrl = new URL(options.pageUrl)
   on(window.webContents, 'will-navigate', (event: Electron.Event, url: string) => {
     let target: URL | undefined
     try {
@@ -122,7 +121,7 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
     } catch {
       target = undefined
     }
-    const samePage = !!target && target.protocol === allowedUrl.protocol && target.pathname === allowedUrl.pathname
+    const samePage = !!target && target.protocol === allowedUrl.protocol && target.host === allowedUrl.host && target.pathname === allowedUrl.pathname && !target.username && !target.password
     if (samePage) return
     event.preventDefault()
     console.warn(`[shell#${id}] 已拦截窗口导航：${url}`)
@@ -190,11 +189,13 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
   }
 
   const search = options.search ?? ''
-  void window.loadFile(options.htmlPath, search ? { search } : undefined).catch((error: unknown) => {
-    // loadFile 自己失败（路径不对之类）也必须走同一条出口，别让它变成未处理拒绝
+  const page = new URL(options.pageUrl)
+  page.search = search
+  void window.loadURL(page.href).catch((error: unknown) => {
+    // Route synchronous resource/protocol load failures through the same lifecycle.
     const message = error instanceof Error ? error.message : String(error)
-    console.error(`[shell#${id}] loadFile 失败：${message}`)
-    if (!loaded && !released) options.onLoadFailure(`loadFile 失败：${message}`)
+    console.error(`[shell#${id}] loadURL 失败：${message}`)
+    if (!loaded && !released) options.onLoadFailure(`loadURL 失败：${message}`)
   })
 
   return {

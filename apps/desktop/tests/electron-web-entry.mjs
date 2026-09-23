@@ -1,61 +1,53 @@
-// Real Chromium without preload loads the same built renderer over the production
-// authenticated HTTP/WS carrier and runs the renderer's existing SSH smoke hook.
+// Real Chromium without preload attaches to the Desktop child Web Host and runs
+// the renderer's SSH smoke hook over the production authenticated HTTP/WS carrier.
 import assert from 'node:assert/strict'
 import { app, BrowserWindow, safeStorage } from 'electron'
 import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHost } from '@pureterm/host'
-import { createCompositeBridge } from '@pureterm/transport/carrier'
-import { createDispatcher } from '@pureterm/transport/dispatch'
-import { createHttpCarrier } from '@pureterm/transport/carrier-http'
+import { startHostProcess } from '../dist/electron/runtime/host-process.js'
 
 const dataDir = process.env.SSH_CORDIS_DATA_DIR
 mkdirSync(process.env.SSH_CORDIS_TEST_USER_DATA, { recursive: true })
 app.setPath('userData', process.env.SSH_CORDIS_TEST_USER_DATA)
-let host
-let carrier
+// Keep Electron alive while the child Host finishes its bounded shutdown.
+app.on('window-all-closed', () => {})
+let hostProcess
 let window
 let code = 1
 let readyTimer
 async function main() {
 try {
   await app.whenReady()
-  const carriers = []
-  host = await createHost({
-    hostStoreFile: join(dataDir, 'hosts.json'), knownHostsFile: join(dataDir, 'known_hosts.json'),
-    bridge: createCompositeBridge(() => carriers),
+  hostProcess = await startHostProcess({
+    entry: fileURLToPath(new URL('../dist/electron/host/entry.js', import.meta.url)),
+    dataDir,
     credentials: { persistent: true,
-      seal: (plain) => safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(plain).toString('base64') : undefined,
-      unseal: (sealed) => safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(sealed, 'base64')) : undefined },
+      seal: plain => safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(plain).toString('base64') : undefined,
+      unseal: sealed => safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(sealed, 'base64')) : undefined },
+    pickPrivateKey: async () => undefined,
   })
-  let acceptReady
-  let rejectReady
-  const ready = new Promise((resolve, reject) => { acceptReady = resolve; rejectReady = reject })
-  // Attach a handler immediately so an early page failure cannot become unhandled.
-  void ready.catch(() => {})
-  const dispatcher = createDispatcher({ host, capabilities: { credentialPersistence: 'encrypted', privateKeyPicker: 'native' }, pickPrivateKey: async () => undefined, onReady: (payload, clientId) => {
-    if (!payload.ok) { rejectReady(new Error(payload.error ?? 'web renderer did not initialize')); return }
-    try {
-      assert.match(clientId, /^ws:/)
-      assert.ok(payload.cols > 0 && payload.rows > 0)
-      assert.equal(payload.hosts, 0)
-      console.log('[WEB-READY] ' + JSON.stringify(payload))
-      acceptReady(payload)
-    } catch (error) { rejectReady(error) }
-  } })
-  carrier = await createHttpCarrier({ dispatcher, onDisconnect: (id) => host.releaseClient(id),
-    staticDir: fileURLToPath(new URL('.', import.meta.resolve('@pureterm/ui/index.html'))) })
-  carriers.push(carrier)
+  assert.ok(hostProcess.pid > 0 && hostProcess.pid !== process.pid)
+  const address = new URL(hostProcess.url)
+  assert.equal(address.hostname, '127.0.0.1')
+  assert.ok(address.searchParams.has('token'), 'browser URL needs a separate attached-client token')
+  assert.notEqual(address.searchParams.get('token'), hostProcess.desktopToken)
+  console.log('[WEB-HOST] ' + JSON.stringify({ pid: hostProcess.pid, parent: process.pid }))
+
   window = new BrowserWindow({ show: false, width: 1120, height: 740, focusable: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } })
-  const url = new URL(carrier.url)
-  url.searchParams.set('smoke', '1')
-  readyTimer = setTimeout(() => rejectReady(new Error('web renderer-ready timed out')), 15_000)
-  await window.loadURL(url.href)
-  await ready
+  address.searchParams.set('smoke', '1')
+  await window.loadURL(address.href)
+  const ready = await Promise.race([
+    window.webContents.executeJavaScript('window.__smoke?.ready'),
+    new Promise((_, reject) => { readyTimer = setTimeout(() => reject(new Error('web renderer-ready timed out')), 15_000) }),
+  ])
   clearTimeout(readyTimer)
-  assert.equal(await window.webContents.executeJavaScript('typeof window.sshAPI'), 'undefined', 'Web test accidentally used IPC preload')
+  assert.equal(ready?.ok, true, ready?.error ?? 'missing renderer readiness')
+  assert.ok(ready.cols > 0 && ready.rows > 0)
+  assert.equal(ready.hosts, 0)
+  console.log('[WEB-READY] ' + JSON.stringify(ready))
+  assert.equal(await window.webContents.executeJavaScript('typeof window.puretermDesktop'), 'undefined', 'attached browser unexpectedly received Desktop preload')
+  assert.equal(await window.webContents.executeJavaScript('typeof window.sshAPI'), 'undefined', 'attached browser unexpectedly received SSH IPC')
   assert.equal(await window.webContents.executeJavaScript('document.getElementById("remember").checked && !document.getElementById("remember").disabled'), true)
   assert.equal(await window.webContents.executeJavaScript('document.getElementById("credential-hint").hidden'), true)
   const config = { host: process.env.SSH_CORDIS_SMOKE_HOST, port: Number(process.env.SSH_CORDIS_SMOKE_PORT),
@@ -76,11 +68,10 @@ try {
   clearTimeout(readyTimer)
   try {
     window?.destroy()
-    await carrier?.dispose()
-    await host?.dispose()
+    await hostProcess?.dispose()
   } catch (error) { code = 1; console.error('[WEB-SMOKE-FAIL] cleanup', error) }
   console.log(code === 0 ? '[WEB-SMOKE-OK]' : '[WEB-SMOKE-FAIL]')
-  app.exit(code)
+  setTimeout(() => app.exit(code), 300)
 }
 }
 void main()

@@ -2,7 +2,7 @@
 
 [English version](README.md)
 
-Electron SSH / SFTP 客户端，支持密码或私钥认证、保存主机、终端交互和基本远端文件操作。Electron 启动独立 Node Host 子进程；默认提供 IPC 窗口和本机浏览器入口，两者共享子进程中的 Host。系统加密与原生选钥仍由主进程提供。
+Electron SSH / SFTP 客户端，支持密码或私钥认证、保存主机、终端交互和基本远端文件操作。Electron 启动独立 Node 模式 Web Host 子进程；`pureterm-app://app/` 窗口与可选的本机浏览器共用子进程的 WebSocket。系统加密与原生选钥仍由主进程提供。
 
 业务、协议、HTTP/WS 与界面已抽到根 workspace 的共享包。无需启动 Electron 的独立入口见[本机 Web](../web/README_zh.md)。[仓库入口](../../README_zh.md) · [架构](../../docs/architecture_zh.md) · [目录决策](../../LAYOUT-PROPOSAL_zh.md)
 
@@ -35,14 +35,14 @@ npm run start:desktop
 | `known_hosts.json` | 已信任 SSH 主机指纹；密钥改变时拒绝连接 |
 | `launch-profile.json` | renderer 就绪后提交的启动配置 |
 
-Desktop 的 HTTP carrier 只监听 `127.0.0.1`，启动日志提供带 token 的本机地址。token 每次启动重新生成；浏览器与桌面共享主机记录、系统加密凭据和原生私钥选择能力。
+Desktop 内部 Web Host 始终只监听 `127.0.0.1`。Host 启动期间，应用窗口已通过 `pureterm-app://app/` 加载界面文件。最小的 `window.puretermDesktop` preload API 等待 Host 就绪后提供回环 WebSocket URL，并上报渲染层就绪；SSH、SFTP、主机和 Keychain 操作走 WebSocket，不走 Electron 业务 IPC。Electron 主进程仅向该窗口的准确 WebSocket 请求注入独立 bearer token，不向页面暴露。启用附带浏览器访问时，启动日志提供另一条带 token 的本机地址，浏览器可换取会话 cookie。附带浏览器和 Desktop 窗口共享 Host 进程、加密存储与原生选钥能力；各客户端分别拥有自己的 SSH 会话。
 
-独立 `npm run start:web` 使用自己的 Node Host，默认数据在 `~/.ssh-cordis/web/`，只保存主机和指纹记录，浏览器选钥不依赖 Electron，密码和私钥仅用于当前页面。不要把两个独立进程指向同一份数据文件。
+独立 `npm run start:web` 使用另一套 Node Web Host，默认数据在 `~/.ssh-cordis/web/`，只保存主机和指纹记录，浏览器选钥不依赖 Electron，密码和私钥仅用于当前页面。它不共享 Desktop 会话或数据文件，`SSH_CORDIS_NO_WEB_CARRIER=1` 也不会关闭它。不要把两个独立进程指向同一份数据文件。
 
 | 环境变量 | 作用 |
 | --- | --- |
 | `SSH_CORDIS_DATA_DIR` | 指定 Desktop 数据目录 |
-| `SSH_CORDIS_NO_WEB_CARRIER=1` | 关闭 Desktop 本次附带 Web 入口 |
+| `SSH_CORDIS_NO_WEB_CARRIER=1` | 仅关闭 Desktop 本次附带的普通浏览器入口；内部 Web Host 和 Desktop 窗口继续工作 |
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | 禁止读写启动档案 |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | 禁止自动无沙箱回退及对应档案回填 |
 
@@ -54,12 +54,13 @@ Desktop 的 HTTP carrier 只监听 `127.0.0.1`，启动日志提供带 token 的
 | --- | --- |
 | `electron/app/` | main、shell、平台 API、系统凭据和原生选钥 |
 | `electron/runtime/` | 平台策略、就绪、档案、重启及资源路径 |
-| `electron/carriers/` | IPC 与 preload |
+| `electron/host/` | 独立 Node 模式 Web Host 子进程入口 |
+| `electron/carriers/` | 最小 preload WebSocket 启动信息与就绪上报 |
 | `electron/diagnostics/` | 应用进程中的 boot/smoke 钩子 |
 | `scripts/`、`tests/` | Desktop 构建启动、诊断、测试与本机协议夹具 |
 | `../../packages/{host,protocol,transport,ui}/` | 共享业务、协议、传输与界面 |
 
-根 `npm run build:desktop` 构建共享包和 Desktop，生成 `dist/electron/app/main.js` 与 `dist/electron/carriers/preload.cjs`。界面产物位于 `../../packages/ui/dist/`，通过包导出解析，不再复制到 Desktop dist。
+根 `npm run build:desktop` 构建共享包和 Desktop，生成 `dist/electron/app/main.js`、`dist/electron/host/entry.js` 与 `dist/electron/carriers/preload.cjs`。界面产物位于 `../../packages/ui/dist/`，通过包导出解析，不再复制到 Desktop dist。
 
 根 `npm run typecheck` 检查各 workspace，并运行 ESM 扩展名和依赖边界检查。Host 不依赖 Electron；UI 不导入 Node 或 Host；壳通过公共包导出访问业务，不读取 `Host.internals`。
 
@@ -72,14 +73,14 @@ npm run verify
 npm run verify:electron
 ```
 
-`verify` 包含全部构建、类型与依赖约束，以及无需窗口的 Host 子进程、更新协调、UI、Web、SSH/SFTP/HTTP/WS 测试。根 `verify:electron` 检查 Desktop boot、IPC、Desktop Web、渲染崩溃、更新下载、独立 Node Web 和共享 Client 生命周期。
+`verify` 包含全部构建、类型与依赖约束，以及无需窗口的 Host 子进程、更新协调、UI、Web、SSH/SFTP/HTTP/WS 测试。根 `verify:electron` 检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 操作、附带 Desktop Web、渲染崩溃、更新下载、独立 Node Web 和共享 Client 生命周期。
 
 Desktop 的定向命令可在根使用 `npm run <命令> --workspace=@pureterm/desktop`：
 
 | 命令 | 范围 |
 | --- | --- |
 | `boot` | 启动真实 Desktop，等待 renderer-ready 与 boot 结果 |
-| `smoke:electron` | 真实 preload、IPC 和终端字节流 |
+| `smoke:electron` | 真实自定义 scheme 界面、最小 preload、WebSocket 和终端字节流 |
 | `smoke:web` | Desktop Web 载体中的真实页面与终端 |
 | `smoke:node` | 使用已构建产物运行平台、档案、Host、SFTP、carrier 和 runner 检查 |
 | `smoke:profile` | 启动档案持久化、无效数据与就绪门控，不启动两次真实应用 |
@@ -93,4 +94,4 @@ Electron 验证使用受控窗口与临时用户目录，关闭自动无沙箱�
 
 ## 当前范围
 
-已提供独立 Desktop Host、共享 Cordis Client、安装包构建与 GitHub Releases 更新。菜单“帮助 → 检查更新”可手动检查；下载完成后确认重启才会关闭 SSH 并安装，开发版不联网检查。安装、签名与发布配置见[发布说明](../../docs/desktop-release_zh.md)。当前没有端口转发、多标签页、用户账号或多用户隔离。历史整改与测试说明见[上一轮方案](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation_zh.md)，其中旧路径与通过次数按当时基线理解。
+已提供独立 Desktop Web Host、共享 Cordis Client、终端标签、安装包构建与 GitHub Releases 更新。菜单“帮助 → 检查更新”可手动检查；下载完成后确认重启才会关闭 SSH 并安装，开发版不联网检查。安装、签名与发布配置见[发布说明](../../docs/desktop-release_zh.md)。当前不提供端口转发、用户账号或多用户隔离。历史整改与测试说明见[上一轮方案](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation_zh.md)，其中旧路径与通过次数按当时基线理解。

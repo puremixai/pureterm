@@ -8,8 +8,9 @@ import type { RendererReadyPayload } from '../runtime/readiness.js'
  * launcher-private：这是壳层自己用的工具，不属于任何公共契约（对应 dsh 里
  * desktopRuntime / desktopPnpmBootstrap 那类「启动器内部细节，不导出」的东西）。
  *
- * 判据是渲染层的 app:renderer-ready，不是 did-finish-load —— 后者只说明 HTML 解析完了，
- * 前者说明 preload 通了、IPC 能调、xterm 挂上了、主机列表拉回来了。
+ * 判据是主窗口经最小 Desktop IPC 上报的 desktop:renderer-ready，
+ * 不是 did-finish-load。就绪上报意味着 WebSocket 已连接 Host、
+ * xterm 挂上了、主机列表拉回来了；页面加载只说明 HTML 解析完成。
  */
 
 export interface BootCheckOptions {

@@ -1,14 +1,13 @@
-import { join } from 'node:path'
-import { createHost, type Host } from '@pureterm/host'
-import { createDispatcher, type Dispatcher } from '@pureterm/transport/dispatch'
+import { randomBytes } from 'node:crypto'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { startWebHost, type WebHost } from '@pureterm/transport/web-host'
 import { createProcessRpc } from '../runtime/process-rpc.js'
 
 if (!process.send) throw new Error('Desktop Host must be launched with a private IPC channel')
-let host: Host | undefined
-let dispatcher: Dispatcher | undefined
+let host: WebHost | undefined
 let starting: Promise<void> | undefined
 let stopping: Promise<void> | undefined
-const clients = new Set<string>()
 const rpc = createProcessRpc({
   channel: {
     send(message, callback) {
@@ -21,58 +20,40 @@ const rpc = createProcessRpc({
     if (method === 'host:shutdown') { await shutdown(); return true }
     if (stopping) throw new Error('Desktop Host is stopping')
     if (method === 'host:start') {
-      if (starting || typeof args[0] !== 'string') throw new Error('Invalid Host initialization')
+      if (starting || typeof args[0] !== 'string' || typeof args[1] !== 'boolean') throw new Error('Invalid Host initialization')
       const dataDir = args[0]
+      const browserAccess = args[1]
+      const desktopToken = randomBytes(24).toString('base64url')
       starting = (async () => {
-        host = await createHost({
-          bridge: { getRenderer(id) {
-            if (!clients.has(id)) return undefined
-            return { id, isAlive: () => clients.has(id) && process.connected && !stopping,
-              send: (event, ...params) => clients.has(id) && rpc.notify('client:event', [id, event, params]) }
-          } },
-          credentials: { persistent: true,
+        host = await startWebHost({
+          staticDir: dirname(fileURLToPath(import.meta.resolve('@pureterm/ui/index.html'))),
+          hostStoreFile: join(dataDir, 'hosts.json'),
+          knownHostsFile: join(dataDir, 'known_hosts.json'),
+          credentials: {
+            persistent: true,
             seal: plain => rpc.call<string | undefined>('platform:seal', [plain]),
-            unseal: sealed => rpc.call<string | undefined>('platform:unseal', [sealed]) },
-          hostStoreFile: join(dataDir, 'hosts.json'), knownHostsFile: join(dataDir, 'known_hosts.json'),
-        })
-        dispatcher = createDispatcher({ host,
+            unseal: sealed => rpc.call<string | undefined>('platform:unseal', [sealed]),
+          },
           capabilities: { credentialPersistence: 'encrypted', privateKeyPicker: 'native' },
+          desktopToken,
+          browserAccess,
           pickPrivateKey: id => rpc.call('platform:pick-key', [id]),
-          onReady: (payload, id) => { rpc.notify('client:ready', [id, payload]) },
+          onReady: () => {},
+          log: false,
         })
       })()
       await starting
-      return { pid: process.pid }
-    }
-    if (method === 'host:call') {
-      const [name, params, id] = parseCall(args)
-      clients.add(id)
-      return dispatcher!.call(name, params, id)
+      return { pid: process.pid, url: host!.url, desktopToken }
     }
     throw new Error(`Unknown Host request: ${method}`)
   },
-  notice(method, args) {
-    if (method === 'client:gone' && typeof args[0] === 'string') {
-      clients.delete(args[0]); host?.releaseClient(args[0])
-    } else if (method === 'host:notice' && !stopping) {
-      const [name, params, id] = parseCall(args)
-      clients.add(id)
-      dispatcher!.notify(name, params, id)
-    }
-  },
   onError: error => console.error('[host]', error.message),
 })
-
-function parseCall(args: unknown[]): [string, unknown[], string] {
-  if (!dispatcher || typeof args[0] !== 'string' || !Array.isArray(args[1]) || typeof args[2] !== 'string') throw new Error('Invalid Host call')
-  return [args[0], args[1], args[2]]
-}
 
 function shutdown(): Promise<void> {
   if (stopping) return stopping
   stopping = Promise.resolve().then(async () => {
     await starting?.catch(() => {})
-    clients.clear()
     await host?.dispose()
     // The reply must flush before disconnecting; parent also bounds this shutdown.
     setTimeout(() => { rpc.close(); if (process.connected) process.disconnect?.(); process.exit(0) }, 20)

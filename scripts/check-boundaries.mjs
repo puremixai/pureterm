@@ -17,7 +17,7 @@ function sourceFiles(directory) {
 
 function isElectronAdapter(file) {
   return file.startsWith('apps/desktop/electron/app/') || file.startsWith('apps/desktop/electron/diagnostics/')
-    || ['apps/desktop/electron/carriers/carrier-ipc.ts', 'apps/desktop/electron/carriers/preload.ts'].includes(file)
+    || file === 'apps/desktop/electron/carriers/preload.ts'
 }
 
 /** Check both type and value imports: a type must not leak a forbidden runtime's concepts. */
@@ -85,8 +85,8 @@ export function checkBoundaries(root) {
         'packages/host/src': ['@pureterm/protocol'],
         'packages/ui/src': ['@pureterm/protocol'],
         'packages/transport/src': ['@pureterm/protocol', '@pureterm/host'],
-        'apps/web/src': ['@pureterm/protocol', '@pureterm/host', '@pureterm/ui/index.html', '@pureterm/transport/carrier', '@pureterm/transport/carrier-http', '@pureterm/transport/dispatch'],
-        'apps/desktop/electron': ['@pureterm/protocol', '@pureterm/host', '@pureterm/ui/index.html', '@pureterm/transport/carrier', '@pureterm/transport/carrier-http', '@pureterm/transport/dispatch', '@pureterm/transport/readiness'],
+        'apps/web/src': ['@pureterm/protocol', '@pureterm/host', '@pureterm/ui/index.html', '@pureterm/transport/web-host'],
+        'apps/desktop/electron': ['@pureterm/protocol', '@pureterm/host', '@pureterm/ui/index.html', '@pureterm/transport/web-host', '@pureterm/transport/readiness'],
       }
       if (specifier.startsWith('@pureterm/') && !workspaceImports[area]?.includes(specifier)) {
         fail(node, 'Package dependency must use an allowed public export.')

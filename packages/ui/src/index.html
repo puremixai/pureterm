@@ -3,12 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <!--
-      这份 HTML 会被两条路加载，所以 CSP 要同时说清两边的事：
-        - Electron 里走 file://，只加载本地文件；
-        - 浏览器里由本机载体（electron/carrier-http.ts）经 HTTP 提供，WebSocket 走同一个源。
-      `connect-src` 里的 ws://127.0.0.1:* 只为后者存在：Web 载体的端口是随机的，
-      而 `'self'` 对 ws: 的支持在各浏览器上并不一致，所以显式写一个通配端口最稳。
-      file:// 下这一条不起作用，也不会造成任何放宽。
+      Desktop 从 pureterm-app://app/ 加载打包资源，独立 Web 从回环 HTTP 加载。
+      两个入口均连接随机回环端口的 WebSocket；桌面认证由主进程注入。
       style-src 需要 'unsafe-inline'：xterm 运行时会创建 <style> 注入主题/视口样式。
       script-src 保持最严（只有 'self'），这才是 XSS 的真正门槛。
     -->
