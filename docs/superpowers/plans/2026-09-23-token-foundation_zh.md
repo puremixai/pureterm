@@ -46,6 +46,19 @@ spec 列了六个提交。提交 1–2 在这里。提交 3–5（chrome、hosts
 
 两件小事并进任务 5：它目前只把 `font-size` 字面量转成 `--fs-*`，却把六份硬编码的 `"Cascadia Mono", Consolas, monospace`（散在五个分片加 `terminal-view.ts:21`）留在原地，而 `--font-mono` 与 `--font-term` 无人使用 —— 把 `font-family` 也纳入清扫。另外给每个分片加上 `keychain.css:1` 那样的单行职责头注释，八个分片里现在只有两个有。
 
+## 任务 5 在执行中发现的修正
+
+任务 5 以 `9ef25b8` 落地。它的指令里有五条不成立，其中第一条逼出了一个计划未预期的结构变化：
+
+- **`@fontsource-variable/inter` 不提供按字重或按子集切分的文件。** `5.3.0` 只有 `index.css`、`standard.css`、`wght.css`、`opsz.css` 及其斜体变体，而每一个都声明全部七个子集。Step 4 要求的 `…/latin-400.css` 引入方式不可能实现；改引入 `wght.css` 会产出 218,520 字节的希腊文、西里尔文和越南文字形，而本页面永远渲染不到它们。
+- **于是字面改为在第十个分片 `styles/fonts.css` 里本地声明**，它是唯一允许把字体族名当字面量写的地方。该文件针对包内的 `inter-latin-wght-normal.woff2` 与 `inter-latin-ext-wght-normal.woff2` 声明两条 `@font-face`，产出合计 133,324 字节。有一条测试拴住这个对应关系：声明的族名必须等于 `--font-ui` 的首项 —— 因为若只引入包自带的 CSS 而名字不匹配，就会一边交付 130 KiB 字体、一边继续静默渲染 Segoe UI Variable Text。描述符用 `format('woff2')` 而非上游遗留的 `format('woff2-variations')`，字重轴由 `font-weight: 100 900` 提供；包里族名是 `Inter Variable`，这里刻意叫 `Inter`，因为不为这件事去改 `tokens.css`。
+- **staging 会跳过 `@pureterm/ui` 的依赖**，所以 1.82 MiB 的包目录不会进安装包 —— 字体的 OFL 许可文本也就不会。因此必须有一段 `/*!` 归属块，因为 esbuild 保留 `/*!` 而丢弃普通注释。
+- **`--font-term` 与 `terminal-view.ts` 里那段字面量从来不是逐字节相同**，早前的任务书说错了：任务 1 的加固是给 token **加上** `"Sarasa Mono SC"` 与 `"Microsoft YaHei Mono"`，而字面量本来就有。两者作为族列表相同，这才使 `read('--font-term')` 是保值的替换。该字面量的位置也从 `:21` 移到了 `:43`。
+- **计划把硬编码等宽栈数少了：是七处，不是六处。** 第七处是 `terminal.css` 里 `#session-address` 的 `Consolas, monospace`，也一并清扫了。
+- **`--font-mono` 首选项 `"JetBrains Mono"` 并未打包**，所以外壳等宽实际解析到机器上的 JetBrains Mono、Cascadia Mono 或 Consolas 之一。这是字体栈的正常行为而非缺陷，但它确实意味着 `--font-mono` 与 `--font-term` 目前只差在 CJK 回退上。两个名字都保留 —— 一个是外壳等宽、一个是终端等宽 —— 并记录它们今天取值相同。是否打包 JetBrains Mono 是一个后续决策，且附带体积代价。
+
+一个供任务 6 记录而非修复的已知缺口：`#keychain-fingerprint` 是没有 `font-family` 的 `<code>`，因此它走 UA 等宽而不是 `--font-mono`。
+
 ## 转交给计划二的事项
 
 任务 3 以 `d893346` 落地，并由 `8e7541d` 加固。`packages/ui/src/styles/legacy.css` 现在是那张登记表：100 条声明，其中 96 条是颜色，由一条声明数棘轮和一条引用活性检查（带一个条目的白名单）守着。配色翻转必须处理四件事，其中三件没有任何代码会警告：

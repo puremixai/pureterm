@@ -46,7 +46,22 @@ Three further decisions changed:
 
 Two smaller things to fold into Task 5: it currently converts `font-size` literals onto `--fs-*` but leaves six copies of the hard-coded `"Cascadia Mono", Consolas, monospace` stack across five partials plus `terminal-view.ts:21` while `--font-mono` and `--font-term` sit unused — include `font-family` in the sweep. And give each partial the one-line responsibility header that `keychain.css:1` has; only two of eight have one.
 
+## Task 5 corrections found during execution
+
+Task 5 shipped as `9ef25b8`. Five things its instructions asserted turned out to be untrue, and the first forced a structural change the plan did not anticipate:
+
+- **`@fontsource-variable/inter` exposes no per-weight or per-subset file.** `5.3.0` ships `index.css`, `standard.css`, `wght.css`, `opsz.css` and their italic variants, and every one of them declares all seven subsets. `packages/ui/src/style.css` importing `…/latin-400.css` as Step 4 specified is not possible, and importing `wght.css` instead would emit 218,520 bytes of Greek, Cyrillic and Vietnamese that this page can never render.
+- **So the faces are declared locally in a tenth partial, `styles/fonts.css`**, which is the only place a font family name may appear as a literal. It declares two `@font-face` rules against the package's `inter-latin-wght-normal.woff2` and `inter-latin-ext-wght-normal.woff2`, and emits 133,324 bytes total. A test pins the tie: the declared family must equal the first entry of `--font-ui`, because importing a package CSS without that name matching would ship 130 KiB of font and silently keep rendering Segoe UI Variable Text. The descriptor is `format('woff2')`, not upstream's legacy `format('woff2-variations')`, and the weight axis comes from `font-family: 100 900` — the family name is `Inter Variable` in the package and `Inter` here, deliberately, since `tokens.css` was not to be edited for it.
+- **Staging skips `@pureterm/ui`'s dependencies**, so the 1.82 MiB package directory never reaches an installer — and neither would the font's OFL licence text. A `/*!` attribution block is therefore required, because esbuild keeps `/*!` and drops ordinary comments.
+- **`--font-term` was never byte-identical to the literal in `terminal-view.ts`**, as an earlier brief claimed: Task 1's hardening *added* the `"Sarasa Mono SC"` and `"Microsoft YaHei Mono"` fallbacks to the token, and the literal already had them. They are identical as family lists, which is what makes `read('--font-term')` value-preserving. The literal's position moved from `:21` to `:43`.
+- **The plan undercounted the hard-coded mono stacks: there were seven, not six.** A seventh, `Consolas, monospace` at `terminal.css`'s `#session-address`, was swept too.
+- **`--font-mono` leads with `"JetBrains Mono"`, which is not bundled**, so shell monospace resolves to whichever of JetBrains Mono, Cascadia Mono or Consolas a given machine has. That is ordinary font-stack behaviour rather than a defect, but it does mean `--font-mono` and `--font-term` currently differ only by the CJK fallbacks. Keep both names — one is shell monospace and one is the terminal's — and record that they coincide today. Bundling JetBrains Mono is a later decision with a size cost attached.
+
+One known gap for Task 6 to note rather than fix: `#keychain-fingerprint` is a `<code>` element with no authored `font-family`, so it resolves through the UA monospace instead of `--font-mono`.
+
 ## Carry forward into Plan 2
+
+
 
 Task 3 landed as `d893346` and was hardened by `8e7541d`. `packages/ui/src/styles/legacy.css` is now the register: 100 declarations, 96 of them colour, guarded by a declaration-count ratchet and a reference liveness check with a one-entry allowlist. Four things must be handled by the palette flip, and nothing in the code warns about three of them:
 
