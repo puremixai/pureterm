@@ -18,7 +18,7 @@
 .keychain-card.active { border-color: var(--accent-strong); }
 .keychain-card-main { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 14px; padding: 13px 8px 13px 15px; border: 0; background: transparent; text-align: left; }
 .keychain-card-main:hover:not(:disabled) { background: transparent; }
-.keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 58px; height: 58px; border-radius: 15px; color: white; background: var(--legacy-key-avatar); font-size: 29px; }
+.keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 58px; height: 58px; border-radius: 15px; color: var(--legacy-on-solid); background: var(--legacy-key-avatar); font-size: 29px; }
 .keychain-card .host-content { gap: 5px; }
 .keychain-card-sub { color: var(--text-muted); font-size: 12px; font-weight: 400; }
 .keychain-card-edit { flex: 0 0 auto; min-width: 32px; margin-right: 10px; opacity: 0; }

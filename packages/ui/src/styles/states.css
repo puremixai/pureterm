@@ -19,7 +19,7 @@
 .failure-copy { flex: 0 0 auto; min-height: 45px; padding: 0 15px; font-size: 13px; }
 .failure-copy i { margin-right: 5px; }
 .failure-route { display: flex; align-items: center; margin: 40px 0 42px; }
-.failure-route-node { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border-radius: 50%; background: var(--legacy-danger-node); color: white; font-size: 17px; }
+.failure-route-node { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border-radius: 50%; background: var(--legacy-danger-node); color: var(--legacy-on-solid); font-size: 17px; }
 .failure-route-line { flex: 1 1 auto; height: 4px; background: var(--legacy-danger-node); }
 .failure-shell > h2 { margin: 0 0 34px; color: var(--legacy-danger-title); font-size: 17px; font-weight: 750; text-align: center; }
 .failure-log { overflow: hidden; padding: 18px 24px; border-radius: 18px; background: var(--legacy-surface-log); box-shadow: var(--legacy-shadow-log); }

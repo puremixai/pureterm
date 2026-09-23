@@ -23,7 +23,7 @@
 .drawer-section + .drawer-section { padding-top: 2px; }
 .drawer-section h2 { margin: 0 0 14px; color: var(--text-strong); font-size: 16px; font-weight: 750; letter-spacing: -0.01em; }
 .address-control { display: flex; align-items: center; gap: 14px; min-height: 153px; padding: 20px 21px 20px 22px; border-radius: 15px; background: var(--legacy-surface-block); }
-.connection-type { display: grid; flex: 0 0 auto; width: 55px; height: 55px; place-items: center; border-radius: 13px; background: var(--legacy-address-avatar); color: white; font-size: 28px; }
+.connection-type { display: grid; flex: 0 0 auto; width: 55px; height: 55px; place-items: center; border-radius: 13px; background: var(--legacy-address-avatar); color: var(--legacy-on-solid); font-size: 28px; }
 .address-control input { flex: 1 1 auto; height: 55px; background: var(--legacy-surface-input); font-size: 16px; }
 .address-control input:focus { border-color: var(--accent-strong); box-shadow: none; }
 .drawer-placeholder { display: flex; align-items: center; gap: 9px; min-height: 54px; margin-top: 12px; padding: 0 14px; border: 1px solid var(--legacy-line-mid); border-radius: 15px; background: var(--legacy-field-inset); color: var(--text-faint); }
