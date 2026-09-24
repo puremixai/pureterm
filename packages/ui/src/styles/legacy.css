@@ -1,18 +1,17 @@
-/* Legacy alias / debt register — the pre-redesign palette, named by role. The
-   colour entries are Plan 2's deletion list, gone with one `git rm` and one
-   manifest line; the four geometry/motion entries are not. --radius-sm,
-   --radius-md, --radius-lg and --motion-standard have 22 references and no
-   other declaration, so the flip commit re-homes them in tokens.css first.
+/* Legacy alias / debt register — the pre-redesign palette, named by role.
+   Every entry here is colour, so deleting this file is the whole job: one
+   `git rm` plus one manifest line. Geometry and motion do not live here:
+   --r-1 to --r-4, --r-full and the --t steps with --ease are in tokens.css.
    Watch the parallel names: the entries here are LIVE, and the new ramp's
-   --line, --line-soft and --line-strong are PENDING with zero call sites, so
+   --line, --line-soft and --line-strong are still mostly PENDING, so
    --line-strong and --legacy-line-strong are two different values that a blind
    s/--legacy-// rename would collapse into one. Pair them by measured value,
    never by name. */
 :root {
   /* Original surface, text and accent aliases, moved verbatim out of
      tokens.css. Do NOT rename: every var(--nav), var(--topbar),
-     var(--text-strong), var(--accent), var(--warning), var(--radius-*),
-     var(--motion-standard) in the partials keeps resolving through these. */
+     var(--text-strong), var(--accent), var(--warning) in the partials keeps
+     resolving through these. */
   --topbar: #121426;
   --nav: #272b40;
   --main: #1d2033;
@@ -31,11 +30,6 @@
   --legacy-ok: #7bd6af;
   --legacy-err: #ff929e;
   --warning: #f2c86f;
-  /* Geometry and motion, not colour: the flip re-homes these four, see header. */
-  --radius-sm: 7px;
-  --radius-md: 10px;
-  --radius-lg: 15px;
-  --motion-standard: cubic-bezier(0.32, 0.72, 0, 1);
 
   /* Role-named entries so no partial hard-codes a colour, grouped the way the
      palette is used rather than alphabetically. */

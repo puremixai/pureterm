@@ -8,7 +8,7 @@
 .shortcuts-dialog dd { margin: 0; color: var(--text-muted); }
 .shortcuts-dialog p { color: var(--text-muted); line-height: 1.7; }
 
-.empty { margin: 12px; padding: 20px 18px; border: 1px dashed var(--legacy-line-strong); border-radius: var(--radius-lg); color: var(--text-muted); font-size: var(--fs-ui); line-height: 1.75; }
+.empty { margin: 12px; padding: 20px 18px; border: 1px dashed var(--legacy-line-strong); border-radius: var(--r-4); color: var(--text-muted); font-size: var(--fs-ui); line-height: 1.75; }
 
 .connection-failure { position: absolute; inset: 0; z-index: 12; display: flex; min-width: 0; min-height: 0; overflow: auto; background: var(--topbar); }
 .connection-failure[hidden] { display: none !important; }

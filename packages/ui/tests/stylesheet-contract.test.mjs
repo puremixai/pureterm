@@ -16,7 +16,15 @@ const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(/
 // legacy.css is exempt from the rule above, so "reference an existing entry,
 // do not add one" has to be a number rather than prose: a fresh line there
 // hides from every other check. Plan 2 shrinks it as the palette flips.
-const LEGACY_DECLARATIONS = 100
+//
+// 96, not 100: --radius-sm, --radius-md, --radius-lg and --motion-standard were
+// never colour and have left the register for tokens.css, so they must not come
+// back. The whole file is now colour debt, and deleting it is one `git rm`.
+const LEGACY_DECLARATIONS = 96
+
+// The four non-colour names, so a re-declaration in the register fails by name
+// rather than by a confusing count.
+const NOT_COLOUR_DEBT = ['--radius-sm', '--radius-md', '--radius-lg', '--motion-standard']
 
 // Holdovers the plan keeps verbatim even though no partial reads them:
 // --legacy-surface-sunken's #1c2033 is routed to --legacy-surface-tab-session
@@ -128,6 +136,10 @@ test('the legacy register holds exactly its measured declarations', async () => 
     `styles/legacy.css declares ${declared.length} entries, not ${LEGACY_DECLARATIONS}; the register is a deletion list, not a place to add colours`)
   assert.equal((source.match(/;/g) || []).length, LEGACY_DECLARATIONS,
     'every semicolon in styles/legacy.css must close a register entry; nothing else may be declared there')
+  for (const name of NOT_COLOUR_DEBT) {
+    assert.ok(!declared.includes(name),
+      `${name} is geometry or motion, not colour debt: it belongs in styles/tokens.css, not the deletion list`)
+  }
 })
 
 test('every legacy entry is read by a partial, or named in the allowlist', async () => {

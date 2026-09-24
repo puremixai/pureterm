@@ -46,7 +46,7 @@
 .field > span { color: var(--text-muted); font-size: var(--fs-micro); font-weight: 600; }
 .credentials-section > .field,
 .auth-field { margin-bottom: 12px; }
-input, select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--legacy-line-field); border-radius: 14px; outline: none; background: var(--legacy-surface-field); color: var(--text-strong); font-size: var(--fs-em); transition: border-color 180ms var(--motion-standard), background-color 180ms var(--motion-standard), box-shadow 180ms var(--motion-standard); }
+input, select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--legacy-line-field); border-radius: 14px; outline: none; background: var(--legacy-surface-field); color: var(--text-strong); font-size: var(--fs-em); transition: border-color 180ms var(--ease), background-color 180ms var(--ease), box-shadow 180ms var(--ease); }
 input::placeholder { color: var(--text-faint); }
 input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--legacy-line-strong); background: var(--field-hover); }
 input:focus, select:focus { border-color: var(--legacy-tint-accent-focus); background: var(--field-hover); box-shadow: 0 0 0 3px var(--legacy-tint-accent); }

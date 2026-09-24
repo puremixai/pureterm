@@ -40,13 +40,13 @@ button {
   min-height: 38px;
   padding: 0 13px;
   border: 1px solid var(--legacy-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--r-3);
   background: var(--card);
   color: var(--text);
   cursor: pointer;
   font-size: var(--fs-ui);
   font-weight: 600;
-  transition: background-color 180ms var(--motion-standard), border-color 180ms var(--motion-standard), color 180ms var(--motion-standard), transform 180ms var(--motion-standard);
+  transition: background-color 180ms var(--ease), border-color 180ms var(--ease), color 180ms var(--ease), transform 180ms var(--ease);
 }
 
 button:hover:not(:disabled) { border-color: var(--legacy-line-strong); background: var(--card-hover); color: var(--text-strong); }
@@ -57,7 +57,7 @@ button.ghost { border-color: transparent; background: transparent; color: var(--
 button.ghost:hover:not(:disabled) { border-color: var(--legacy-line); background: var(--card); color: var(--text-strong); }
 button.primary { border-color: transparent; background: var(--accent-strong); color: var(--legacy-on-accent); font-weight: 700; }
 button.primary:hover:not(:disabled) { border-color: transparent; background: var(--legacy-accent-hover); color: var(--legacy-on-accent-hover); }
-button.small { min-height: 30px; padding: 0 10px; border-radius: var(--radius-sm); font-size: var(--fs-meta); }
+button.small { min-height: 30px; padding: 0 10px; border-radius: var(--r-2); font-size: var(--fs-meta); }
 
 [hidden] { display: none !important; }
 
