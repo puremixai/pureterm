@@ -36,11 +36,8 @@
 
   /* Surfaces. */
   --legacy-surface-sunken: #1c2033;
-  --legacy-surface-field: #25293d;
-  --legacy-surface-block: #30344a;
   --legacy-surface-control: #3b425e;
   --legacy-surface-tool: #393e56;
-  --legacy-surface-input: #262a40;
   --legacy-surface-log: #2a2e44;
   --legacy-surface-secondary: #2d3147;
   --legacy-surface-bar: #1a1e30;
@@ -52,7 +49,6 @@
   --legacy-log-glyph: #bab3d0;
   --legacy-on-solid: #ffffff;
   --legacy-key-avatar: #075a87;
-  --legacy-address-avatar: #086ba7;
   /* Scrollbars. */
   --legacy-scroll-thumb: #454b67;
   --legacy-scroll-thumb-strong: #4b5069;
@@ -60,24 +56,16 @@
      three-step ramp has already taken --legacy-line-hair and
      --legacy-line-strong, so what remains is what still has a call site.
      `--legacy-line` at .085 is the value the new --line replaces. */
-  --legacy-line-faint: rgba(222, 226, 255, 0.05);
-  --legacy-line-edge: rgba(222, 226, 255, 0.08);
   --legacy-line: rgba(222, 226, 255, 0.085);
-  --legacy-line-mid: rgba(222, 226, 255, 0.12);
-  --legacy-line-field: rgba(222, 226, 255, 0.13);
   --legacy-line-strong: rgba(222, 226, 255, 0.17);
   /* Overlays and row hovers. */
   --legacy-row-hover: rgba(222, 226, 255, 0.055);
   /* Translucent tints, then the two insets they sit beside. */
-  --legacy-tint-accent: rgba(93, 157, 255, 0.13);
-  --legacy-tint-accent-focus: rgba(167, 196, 255, 0.7);
   --legacy-tint-warn: rgba(242, 200, 111, 0.1);
   --legacy-tint-warn-line: rgba(242, 200, 111, 0.28);
-  --legacy-field-inset: rgba(23, 26, 43, 0.22);
   /* Shadows: the call sites wrote a whole box-shadow as one literal, so each
      entry carries its offsets and blur as well as its colour. */
   --legacy-shadow-log: 0 14px 32px rgba(7, 8, 18, 0.14);
-  --legacy-shadow-drawer: -24px 0 42px rgba(7, 8, 18, 0.24);
   --legacy-shadow-sheet: 0 -12px 28px rgba(0, 0, 0, 0.18);
   --legacy-shadow-editor: -20px 0 40px rgba(8, 10, 27, 0.33);
   --legacy-shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.53);
