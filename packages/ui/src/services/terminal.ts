@@ -2,6 +2,7 @@ import { Service, type Context } from 'cordis'
 import type { TerminalOpenRequest, TerminalOpenResult } from '@pureterm/protocol'
 import { ClientScope, cleanError, DomListeners } from '../client-runtime.js'
 import { createTerminalView, type TerminalFactory, type TerminalView } from '../terminal-view.js'
+import { diagnose, stageLabel, type Failure } from '../failure-diagnostics.js'
 
 export type TabState = 'connecting' | 'connected' | 'disconnected' | 'failed'
 export interface TerminalTab {
@@ -16,6 +17,8 @@ export interface TerminalTab {
   logs: string[]
   /** 终端与文件表的比例（0-1）。跟着会话走：null = 用 CSS 里的默认模板。 */
   split: number | null
+  /** 失败分诊结果：null = 还没失败，或失败的原因认不出来。 */
+  failure: Failure | null
 }
 interface OwnedTab extends TerminalTab {
   button: HTMLButtonElement
@@ -204,7 +207,7 @@ export class ClientTerminal extends Service {
     pane.container.setAttribute('aria-labelledby', id)
     const listeners = new DomListeners()
     const tab: OwnedTab = { id, title, request: { ...request }, ...pane, button, label, strip, listeners,
-      sessionId: null, state: 'connecting', message: '正在连接…', logs: [], attempt: 0, split: null,
+      sessionId: null, state: 'connecting', message: '正在连接…', logs: [], attempt: 0, split: null, failure: null,
       release: () => { listeners.clear(); data.dispose(); resize.dispose(); pane.terminal.dispose(); pane.container.remove(); strip.remove() },
     }
     const data = pane.terminal.onData(value => { if (tab.sessionId) this.ctx.clientTransport.api.input(tab.sessionId, value) })
@@ -274,12 +277,41 @@ export class ClientTerminal extends Service {
       view.element('failure-title').textContent = active.title
       view.element('failure-endpoint').textContent = `SSH ${active.request.host}:${active.request.port ?? 22}`
       view.element('failure-avatar').textContent = active.request.authMethod === 'privateKey' ? 'KEY' : 'SSH'
+      const failure = active.failure
+      const shell = view.element('connection-failure')
+      // breakAt 是**节点**下标（0..3），不是七个阶段的下标；七折四在 NODE_OF 里做。
+      // breakAt === 4 的意思是四个格子全都过了（认证之后才失败），不是有第 5 个格子。
+      shell.classList.toggle('route-collapsed', !failure || failure.breakAt < 0)
+      const drawn = failure && failure.breakAt >= 0
+      for (const [index, node] of [...shell.querySelectorAll<HTMLElement>('.failure-route-node')].entries()) {
+        node.classList.toggle('is-passed', !!drawn && index < failure!.breakAt)
+        node.classList.toggle('is-failed', !!drawn && index === failure!.breakAt)
+      }
+      for (const [index, line] of [...shell.querySelectorAll<HTMLElement>('.failure-route-line')].entries()) {
+        line.classList.toggle('is-break', !!drawn && index === failure!.breakAt - 1)
+        line.classList.toggle('is-through', !!drawn && index < failure!.breakAt - 1)
+      }
+      // 阶段再用文字说一遍：路线是 aria-hidden 的，屏幕 reader 和色觉障碍用户
+      // 都不该只靠一个红点理解这句话。
+      view.element('failure-stage').textContent = failure?.stage ? `失败在「${stageLabel(failure.stage)}」这一步` : ''
+      view.element('failure-suggestion').textContent = failure?.suggestion ?? ''
       const log = view.element('failure-log')
       log.replaceChildren()
       for (const [index, entry] of active.logs.entries()) {
         const row = view.document.createElement('div')
         row.className = 'failure-log-entry' + (index === active.logs.length - 1 ? ' is-error' : '')
-        row.textContent = entry
+        // 行号是单独的节点并且 user-select: none —— 复制日志不该把「1 2 3」一起带走。
+        const number = view.document.createElement('span')
+        number.className = 'failure-log-no'
+        number.setAttribute('aria-hidden', 'true')
+        number.textContent = String(index + 1)
+        const text = view.document.createElement('span')
+        text.textContent = entry
+        const mark = view.document.createElement('i')
+        // 最后一行是真正的失败，其余是过程记录：图标不一样，才不用读字也知道哪行是要看的。
+        mark.className = index === active.logs.length - 1 ? 'ti ti-alert-circle' : 'ti ti-chevron-right'
+        mark.setAttribute('aria-hidden', 'true')
+        row.append(number, mark, text)
         log.append(row)
       }
       view.element('failure-copy').textContent = '复制日志'
@@ -325,6 +357,9 @@ export class ClientTerminal extends Service {
       tab.sessionId = result.sessionId
       tab.state = 'connected'
       tab.message = '已连接'
+      // 连上了就把上一次的路线清掉：留着它，下一次失败之前用户看到的仍是一张
+      // 「死在认证」的图，而那台服务器刚刚连上。
+      tab.failure = null
       this.bySession.set(result.sessionId, tab)
       for (const chunk of early?.chunks ?? []) tab.terminal.write(chunk)
       if (early?.closed !== undefined) this.ended(tab, early.closed)
@@ -337,6 +372,7 @@ export class ClientTerminal extends Service {
         tab.state = 'failed'
         tab.message = '连接失败'
         tab.logs.push(cleanError(error))
+        tab.failure = diagnose(cleanError(error))
         this.changed(tab)
       }
       return undefined

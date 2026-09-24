@@ -208,14 +208,22 @@
                 <button type="button" id="failure-copy" class="failure-copy"><i class="ti ti-copy" aria-hidden="true"></i> Copy logs</button>
               </div>
 
+              <!-- 四个节点是画出来的静态骨架：阶段为空时整条收起，而不是留一排灰点。
+                   七步折到四格的那张表在 failure-diagnostics.ts 的 NODE_OF 里。 -->
               <div class="failure-route" aria-hidden="true">
-                <span class="failure-route-node"><i class="ti ti-plug-x"></i></span>
+                <span class="failure-route-node" data-stage="local"><i class="ti ti-device-laptop"></i></span>
                 <span class="failure-route-line"></span>
-                <span class="failure-route-node"><i class="ti ti-terminal-2"></i></span>
+                <span class="failure-route-node" data-stage="tcp"><i class="ti ti-plug"></i></span>
+                <span class="failure-route-line"></span>
+                <span class="failure-route-node" data-stage="keyexchange"><i class="ti ti-key"></i></span>
+                <span class="failure-route-line"></span>
+                <span class="failure-route-node" data-stage="auth"><i class="ti ti-login-2"></i></span>
               </div>
+              <p id="failure-stage" class="failure-stage"></p>
 
-              <h2>Connection failed with connection log:</h2>
+              <h2 id="failure-title-log">Connection failed with connection log:</h2>
               <div id="failure-log" class="failure-log" role="log" aria-live="polite"></div>
+              <p id="failure-suggestion" class="failure-suggestion"></p>
               <div class="failure-actions">
                 <button type="button" id="failure-close" class="failure-secondary">Close</button>
                 <button type="button" id="failure-edit" class="failure-secondary">Edit host</button>

@@ -14,23 +14,48 @@
 .failure-shell { width: min(100%, 650px); margin: auto; padding: 58px 20px 34px; }
 .failure-head { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
 .failure-host { display: flex; align-items: center; min-width: 0; gap: 15px; }
-.failure-host .host-avatar { width: 60px; height: 60px; }
+/* 58px and the card radius, same as the two library cards: 60px was a third
+   avatar size and it inherited the 20px table chip's --r-1 corner. */
+.failure-host .host-avatar { width: 58px; height: 58px; border-radius: var(--r-4); }
 .failure-host h1 { margin: 0 0 5px; overflow: hidden; color: var(--tx-1); font-size: 18px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .failure-host p { margin: 0; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); }
 .failure-copy { flex: 0 0 auto; min-height: 45px; padding: 0 15px; font-size: var(--fs-ui); }
 .failure-copy i { margin-right: 5px; }
-.failure-route { display: flex; align-items: center; margin: 40px 0 42px; }
-/* The route states which stage failed with an accent colour on a tinted node,
-   not a filled red disc: a solid block reads as an alarm, and every node was
-   red regardless of where the connection died. */
-.failure-route-node { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border-radius: 999px; background: var(--err-bg); color: var(--err); font-size: 17px; }
-.failure-route-line { flex: 1 1 auto; height: 4px; background: var(--err); }
+.failure-route { display: flex; align-items: center; margin: 40px 0 14px; }
+/* Unclassified: the route says nothing true, so it says nothing at all and the
+   page degrades to the log block. */
+.route-collapsed .failure-route, .route-collapsed .failure-stage { display: none; }
+/* Four nodes, and only one of them is red. Every node used to be --err, so the
+   strip said "failure" in four places and "here" in none: what carries the
+   information is the break in the link, and that needs the nodes either side of
+   it to stay neutral. --r-full rather than 999px, which is the same circle and
+   is on the ladder. */
+.failure-route-node { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-full); background: var(--c-surface); color: var(--tx-3); font-size: 17px; }
+.failure-route-node.is-passed { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
+.failure-route-node.is-failed { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
+.failure-route-line { flex: 1 1 auto; height: 2px; background: var(--line); }
+.failure-route-line.is-through { background: var(--ok-line); }
+.failure-route-line.is-break { height: 0; background: none; border-top: 2px dashed var(--err); }
+.failure-stage { margin: 0 0 30px; color: var(--tx-2); font-size: var(--fs-meta); text-align: center; }
+.failure-suggestion { margin: 20px 0 0; padding: 11px 13px; border-left: 2px solid var(--ac); background: var(--ac-bg); color: var(--tx-2); font-size: var(--fs-meta); line-height: 1.6; }
+.failure-suggestion:empty { display: none; }
 .failure-shell > h2 { margin: 0 0 34px; color: var(--err); font-size: 17px; font-weight: 700; text-align: center; }
 .failure-log { overflow: hidden; padding: 18px 24px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--c-inset); }
-.failure-log-entry { display: flex; align-items: flex-start; gap: 10px; color: var(--tx-1); font-size: var(--fs-em); line-height: 1.55; }
+.failure-log { font-family: var(--font-mono); font-size: var(--fs-meta); line-height: 1.65; }
+/* The gutter is its own node with user-select: none, so "Copy logs" carries the
+   log and not the numbers; the block is mono because every line of it is
+   machine output. */
+.failure-log-entry { display: grid; grid-template-columns: 2.5ch 16px minmax(0, 1fr); gap: 10px; color: var(--tx-1); font-size: var(--fs-em); line-height: 1.55; }
+/* --tx-2, not --tx-3: the block's ground is --c-inset and the muted step is
+   4.16:1 on it, which is under the floor for text at this size. */
+.failure-log-no { color: var(--tx-2); font-variant-numeric: tabular-nums; text-align: right; user-select: none; }
 .failure-log-entry + .failure-log-entry { margin-top: 10px; }
-.failure-log-entry i { flex: 0 0 auto; margin-top: 2px; color: var(--tx-3); font-size: 18px; }
-.failure-log-entry.is-error i { color: var(--err); }
+.failure-log-entry i { flex: 0 0 auto; color: var(--tx-2); font-size: 16px; }
+/* The whole failing line takes --err, not just its marker: 5.09:1 on this ground
+   in the light group and 5.90:1 in the dark one, so the tint can carry text and
+   the eye lands on the right row. The rule used to paint an <i> that the log
+   never built, which is why no error line had ever been coloured. */
+.failure-log-entry.is-error, .failure-log-entry.is-error i { color: var(--err); }
 .failure-log-entry span { min-width: 0; overflow-wrap: anywhere; }
 .failure-actions { display: flex; justify-content: flex-end; gap: 14px; margin-top: 66px; }
 .failure-actions button { min-width: 108px; min-height: 53px; border-radius: var(--r-4); font-size: var(--fs-em); }

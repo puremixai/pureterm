@@ -35,6 +35,18 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(css, /@container \(max-width: 259px\)[\s\S]{0,240}minmax\(0, 1fr\) 24px/, 'the file columns must give up before they overflow the pane')
   assert.match(css, /:has\(#sftp-hint:not\(\[hidden\]\)\) #sftp-columns/, 'the file header must leave with an empty directory')
   assert.match(css, /\.file-row \.file-main \{ min-height: 0/, 'a file row must not be floored by the button inside it')
+  // The failure route: four nodes, one of them red, and the break on the link
+  // leading into it. Guarded as text because the DOM is static markup here and a
+  // deleted state class would only show up as a page that points nowhere.
+  assert.match(html, /class="failure-route"[^>]*aria-hidden="true"/, 'the route is decoration alongside the words, not a second announcement')
+  assert.equal((html.match(/data-stage=/g) || []).length, 4, 'the route draws exactly four nodes')
+  assert.match(css, /\.failure-route-node\.is-failed/, 'the route must be able to mark one node')
+  assert.match(css, /\.failure-route-line\.is-break/, 'and break the link where it died')
+  assert.doesNotMatch(css, /\.failure-route-node\s*\{[^}]*var\(--err\)/, 'no node may be red just for existing')
+  assert.match(css, /\.failure-host \.host-avatar\s*\{[^}]*var\(--r-4\)/, 'a 58px avatar does not take the 20px chip corner')
+  assert.doesNotMatch(css, /border-radius:\s*999px/, '--r-full exists; do not re-invent it')
+  assert.match(css, /\.failure-log-no\s*\{[^}]*user-select:\s*none/, 'line numbers must not ride along into a pasted log')
+  assert.match(css, /\.failure-log\s*\{[^}]*var\(--font-mono\)/, 'the log is machine output and should look like it')
   // A card is the same row with its columns folded away — all but the address,
   // which is the one thing a name cannot stand in for.
   assert.match(css, /\.card-view \.host-row \.host-cell \{ display: none/, 'a card must not repeat the table columns')

@@ -373,7 +373,8 @@ async function runChecks() {
 
     const failures = fixture()
     const attempts: TerminalOpenRequest[] = []
-    failures.api.open = async request => { attempts.push({ ...request }); throw new Error('fixture connection refused') }
+    // 照抄 ssh2 真正的措辞：这一句要能分诊到 TCP，而不是靠兜底路径显示。
+    failures.api.open = async request => { attempts.push({ ...request }); throw new Error('connect ECONNREFUSED ::1:22') }
     client = createClient({ api: failures.api, terminalFactory: failures.terminalFactory })
     assert((await client.ready).ok, 'failure client failed readiness')
     fill(); click('connect'); await tick()
@@ -382,6 +383,28 @@ async function runChecks() {
     click('host-new'); fill(); input('host').value = 'unrelated.example'
     client.context.clientTerminal.select(failedId); click('failure-retry'); await tick()
     assert(attempts.length === 2 && attempts[1]!.host === 'localhost' && client.context.clientTerminal.tabs.length === 1, 'retry must use the failed tab snapshot and reuse its tab')
+    // 路线要说的是「死在哪一格」：四格里只有一格是红的，它左边全绿，连接线在断点处断开。
+    const failPage = input('connection-failure')
+    const nodes = [...failPage.querySelectorAll<HTMLElement>('.failure-route-node')]
+    assert(nodes.length === 4, `the route draws four nodes, not ${nodes.length}`)
+    assert(!failPage.classList.contains('route-collapsed'), 'a classified failure must draw the route')
+    assert(nodes.filter(n => n.classList.contains('is-failed')).map(n => n.dataset.stage).join() === 'tcp', 'ECONNREFUSED must fail the TCP node')
+    assert(nodes[0]!.classList.contains('is-passed') && !nodes[2]!.classList.contains('is-passed'), 'what got through is marked through, what never ran is not')
+    const lines = [...failPage.querySelectorAll<HTMLElement>('.failure-route-line')]
+    // 断开的是**通向左边那一格已通、向右进入失败格**的那根线：TCP 失败时第 0 根就断，
+    // 后面两根什么都还没走，既不是实线也不是断线。
+    assert(lines.length === 3, `four nodes are joined by three links, not ${lines.length}`)
+    assert(lines[0]!.classList.contains('is-break'), 'the link entering the failed node is the broken one')
+    assert(!lines[1]!.classList.contains('is-break') && !lines[1]!.classList.contains('is-through'), 'a link to a stage that never ran claims nothing')
+    assert(input('failure-stage').textContent!.includes('TCP'), 'the stage is also stated in words, since the route is aria-hidden')
+    assert(input('failure-suggestion').textContent!.includes('sshd'), 'and the page says what to do next')
+    assert(failPage.querySelectorAll('.failure-log-no').length === failPage.querySelectorAll('.failure-log-entry').length, 'every log line has a gutter number')
+    // 认不出来就整条收起，而不是留一排含义不明的灰点。
+    failures.api.open = async request => { attempts.push({ ...request }); throw new Error('a failure nobody has categorised') }
+    client.context.clientTerminal.select(failedId); click('failure-retry'); await tick()
+    assert(failPage.classList.contains('route-collapsed'), 'an unclassifiable failure must collapse the route')
+    assert(nodes.every(n => !n.classList.contains('is-failed') && !n.classList.contains('is-passed')), 'collapsed means no node claims anything')
+    assert(input('failure-stage').textContent === '' && input('failure-suggestion').textContent === '', 'and the two text lines go quiet with it')
     click('failure-edit')
     assert(input('host').value === 'localhost' && !input('connection-workspace').hidden, 'Edit host used an unrelated form')
     await client.dispose()

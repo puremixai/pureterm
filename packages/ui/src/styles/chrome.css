@@ -142,7 +142,9 @@
 .session-tab .app-tab { min-width: 0; flex: 1 1 auto; border: 0; padding: 0 10px 0 13px; background: transparent; font-size: var(--fs-ui); }
 .session-tab.is-active .app-tab { color: var(--tx-1); }
 .tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tab-state-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 999px; background: var(--idle); }
+/* --r-full, not a private 999px: the token is 999px already, so this is the same
+   circle, and the ladder is the reason a second one cannot be written. */
+.tab-state-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: var(--r-full); background: var(--idle); }
 .session-tab[data-state="connected"] .tab-state-dot { background: var(--ok); }
 .session-tab[data-state="connecting"] .tab-state-dot { background: var(--warn); }
 .session-tab[data-state="failed"] .tab-state-dot { background: var(--err); }
