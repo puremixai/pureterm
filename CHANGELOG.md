@@ -29,7 +29,14 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 - Resolve every interface colour through a token. The system lives in `packages/ui/src/styles/tokens.css`, which carries a dark and a light group, and no other file in the stylesheet may name a colour. Text, accent and status colours are measured against the surfaces they paint on and held to WCAG AA, including status labels on their own tint; the translucent fill, border and scrim steps carry the triplet of the colour they tint, asserted per theme.
 - Render the interface in the neutral graphite palette. The pre-redesign blue-purple surfaces, the `#a7c4ff` accent and the translucent hairlines are gone, along with the guarded register that held them: six graphite steps carry depth, one accent carries state, and separation comes from hairlines instead of from shadows. The light group is complete and under test, but still unreachable — the control that writes it ships with the chrome rebuild.
 - Sync the colours that live outside the stylesheet with the ramp they must match. The Electron window background, its caption-button symbols, the overlay title-bar colour and the page's `theme-color` were four hand-copied values of one retired colour; they now follow `--c-chrome` and `--tx-3` and a test fails when they drift.
+- Rebuild the application chrome: the navigation sidebar becomes a 52px icon rail, the top bar drops from 76px to 40px and now carries the brand mark, the session tabs and two new switches, and a 24px status bar reports connection state, endpoint, terminal size and version. The desktop window's title-bar overlay follows the new height.
+- Add a theme switch and a row-density switch. The light theme is now reachable in the running app, and both choices are remembered. Because the page's Content-Security-Policy forbids an inline pre-paint script, a stored light theme applies one frame after start.
 - Keep this section updated while work is merged after `0.1.0-alpha.1`.
+
+### Fixed
+
+- The status bar shows only fields the backend actually reports. Negotiated cipher, remote host key type and session uptime are absent rather than approximated; exposing them needs a protocol change.
+- Delete the chrome styles that named nothing: the navigation toggle and its collapsed state, the window-control rules with no matching markup, the update pill, and a shell state class that no code ever added.
 
 ### Security
 
