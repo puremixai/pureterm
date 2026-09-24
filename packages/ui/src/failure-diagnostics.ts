@@ -60,9 +60,14 @@ const KNOWN: Array<{ test: RegExp; stage: Stage; title: string; suggestion: stri
   { test: /连接被重置|Socket closed|ECONNRESET/, stage: 'tcp', title: '连接被中断', suggestion: '对端或中间设备掐断了连接；隔几秒重试一次看看是否稳定。' },
   { test: /握手完成前|送出 SSH 横幅之前|Connection lost before handshake/, stage: 'handshake', title: '握手前就被断开', suggestion: '这一步与密钥无关。最常见的原因是这个端口上跑的不是 SSH 服务。' },
   { test: /主机密钥已改变|主机密钥校验失败|Host verification failed|Host key verification failed/, stage: 'keyexchange', title: '主机密钥与记录不符', suggestion: '可能是中间人攻击。确认服务器确实重装或换过密钥之后，再清除本地记录。' },
+  // TOFU：这不是「密钥不对」，是「还没信过它」。策略要求显式确认时宿主就是这么拒的，
+  // 所以它归在密钥交换那一格，建议是给确认而不是换密钥。
+  { test: /首次连接该主机|当前策略要求显式确认/, stage: 'keyexchange', title: '要先确认这台主机', suggestion: '核对指纹与机房记录一致后，允许该主机密钥再连一次。' },
   { test: /Unable to negotiate|no matching|invalid algorithm|kex identities/, stage: 'keyexchange', title: '算法协商不上', suggestion: '双方没有共同的密钥交换或加密算法；通常需要升级服务端的 OpenSSH。' },
   { test: /认证失败|Permission denied|All configured authentication methods failed/, stage: 'auth', title: '认证被拒', suggestion: '用户名与密码/私钥的配对不对。注意很多服务器禁止 root 用密码登录。' },
   { test: /口令|passphrase|Cannot parse privateKey|privateKey|Decryption failed|Unsupported key format|私钥无法解析|不是可识别的私钥|读不到私钥文件/, stage: 'auth', title: '私钥用不了', suggestion: '加密私钥要给口令；格式不支持或读不到就重新选一份 OpenSSH 格式的私钥。' },
+  // 会话已经没了：登录、密钥交换全都在它之前成功过，所以四个格子都该是绿的。
+  { test: /会话不存在或已关闭/, stage: 'session', title: '会话已经结束', suggestion: '重新连接即可；这个标签页里的凭据还在。' },
   { test: /SFTP 子系统|Unable to start subsystem|establishing SFTP session|Channel open failure/, stage: 'session', title: 'SFTP 开不起来', suggestion: '登录本身是好的，终端可以继续用；sshd_config 里的 Subsystem sftp 可能被关掉了。' },
 ]
 
