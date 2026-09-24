@@ -8,7 +8,7 @@ declare module 'cordis' { interface Context { clientHosts: ClientHosts } }
 
 /** Host metadata, credential form and native/browser key selection belong to one feature scope. */
 export class ClientHosts extends Service {
-  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientKeychain']
+  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientKeychain', 'clientToasts']
   readonly scope: ClientScope
   readonly ready: Promise<void>
   private readonly list: HostListView
@@ -71,7 +71,7 @@ export class ClientHosts extends Service {
     this.scope.listen(view.element('host-save'), 'click', () => {
       void this.save().then(record => {
         if (!this.scope.alive) return
-        if (record) view.status(`已保存「${record.label}」`, 'ok')
+        if (record) { view.status('', 'ok'); this.ctx.clientToasts.notify({ title: '已保存主机', detail: record.label }) }
         else { view.status('保存前请先把主机地址和用户名填上', 'err'); this.input(this.input('host').value.trim() ? 'user' : 'host').focus() }
       }).catch(error => { if (this.scope.alive) view.status(cleanError(error), 'err') })
     })
@@ -338,7 +338,7 @@ export class ClientHosts extends Service {
       if (this.editingId === id) { this.editingId = null; this.clearForm() }
       if (this.selectedId === id) this.selectedId = null
       await this.refresh(this.editingId)
-      if (this.scope.alive) view.status(`已删除「${label}」`)
+      if (this.scope.alive) this.ctx.clientToasts.notify({ title: '已删除主机', detail: label })
     } catch (error) { if (this.scope.alive) view.status(cleanError(error), 'err') }
   }
 
@@ -363,7 +363,12 @@ export class ClientHosts extends Service {
     this.pendingForms.delete(revision)
     this.updateButtons()
     if (!result || !this.scope.alive || revision !== this.formRevision || !saveRequest || !this.input('remember').checked) return
-    try { await this.save(saveRequest, revision) } catch (error) { if (this.scope.alive) this.ctx.clientView.status(`已连接，但保存主机失败：${cleanError(error)}`, 'err') }
+    try { await this.save(saveRequest, revision) } catch (error) {
+      if (!this.scope.alive) return
+      // 两轨都要：内联那行说明「这次没存上」，通知保证离开表单之后仍然看得见。
+      this.ctx.clientView.status(`已连接，但保存主机失败：${cleanError(error)}`, 'err')
+      this.ctx.clientToasts.notify({ title: '已连接，但保存失败', detail: cleanError(error), kind: 'err' })
+    }
   }
 
   private clearBrowserKey(): void {

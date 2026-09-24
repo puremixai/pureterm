@@ -245,6 +245,9 @@
         <span class="status-sep" aria-hidden="true">│</span>
         <span id="status-version" class="status-item status-value">—</span>
       </footer>
+      <!-- 事件通知的挂载点。aria-live 在这里而不是每条上：一条新通知是「加入」
+           一个已经存在的区域，播报由这个区域负责。 -->
+      <div id="toasts" class="toasts" aria-live="polite"></div>
     </div>
     <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
       <h2 id="shortcuts-title">工作区快捷键</h2>

@@ -8,7 +8,18 @@
 .shortcuts-dialog dd { margin: 0; color: var(--tx-3); }
 .shortcuts-dialog p { color: var(--tx-3); line-height: 1.7; }
 
-.empty { margin: 12px; padding: 20px 18px; border: 1px dashed var(--line-strong); border-radius: var(--r-4); color: var(--tx-3); font-size: var(--fs-ui); line-height: 1.75; }
+/* 右下角，用 --status-h 把自己从状态栏下面让开，而不是抄一个 38px ——
+   状态栏改高度那一天，抄的那个数字只会安静地飘在栏上面。 */
+.toasts { position: fixed; right: var(--s-4); bottom: calc(var(--status-h) + var(--s-3)); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2); pointer-events: none; }
+.toast { display: flex; gap: 9px; align-items: flex-start; width: 274px; max-width: calc(100vw - 32px); padding: 10px 11px; border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--c-raised); box-shadow: var(--shadow-pop); pointer-events: auto; cursor: pointer; animation: toast-in var(--t-2) var(--ease); }
+.toast-bar { flex: 0 0 auto; align-self: stretch; width: 2px; border-radius: 1px; background: var(--ok); }
+.toast.is-err .toast-bar { background: var(--err); }
+.toast-title { display: block; color: var(--tx-1); font-size: var(--fs-meta); font-weight: 500; }
+.toast-detail { display: block; margin-top: 2px; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); white-space: nowrap; text-overflow: ellipsis; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+ padding: 20px 18px; border: 1px dashed var(--line-strong); border-radius: var(--r-4); color: var(--tx-3); font-size: var(--fs-ui); line-height: 1.75; }
 
 .connection-failure { position: absolute; inset: 0; z-index: 12; display: flex; min-width: 0; min-height: 0; overflow: auto; background: var(--c-canvas); }
 .failure-shell { width: min(100%, 650px); margin: auto; padding: 58px 20px 34px; }

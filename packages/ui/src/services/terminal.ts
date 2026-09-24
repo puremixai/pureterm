@@ -49,7 +49,7 @@ declare module 'cordis' {
 
 /** Each tab owns one terminal and one SSH session. Hosts is a persistent, separate page. */
 export class ClientTerminal extends Service {
-  static inject = ['clientView', 'clientTransport']
+  static inject = ['clientView', 'clientTransport', 'clientToasts']
   readonly scope: ClientScope
   private readonly owned = new Map<string, OwnedTab>()
   private readonly bySession = new Map<string, OwnedTab>()
@@ -360,6 +360,10 @@ export class ClientTerminal extends Service {
       // 连上了就把上一次的路线清掉：留着它，下一次失败之前用户看到的仍是一张
       // 「死在认证」的图，而那台服务器刚刚连上。
       tab.failure = null
+      // 后台标签连上了用户是看不见的：这一条正是原来表单里 #status 会漏掉的那种。
+      if (tab.id !== this.activeId) {
+        this.ctx.clientToasts.notify({ title: '已连接', detail: `${tab.request.username}@${tab.request.host}` })
+      }
       this.bySession.set(result.sessionId, tab)
       for (const chunk of early?.chunks ?? []) tab.terminal.write(chunk)
       if (early?.closed !== undefined) this.ended(tab, early.closed)

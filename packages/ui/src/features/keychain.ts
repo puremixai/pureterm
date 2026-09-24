@@ -6,7 +6,7 @@ declare module 'cordis' { interface Context { clientKeychain: ClientKeychain } }
 
 /** Write-only private material; navigation and terminal tabs never own the saved secrets. */
 export class ClientKeychain extends Service {
-  static inject = ['clientView', 'clientTransport', 'clientTerminal']
+  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientToasts']
   readonly ready: Promise<void>
   private readonly scope: ClientScope
   private readonly cards = new DomListeners()
@@ -295,7 +295,8 @@ export class ClientKeychain extends Service {
       this.setBusy(false)
       this.keys = [...this.keys.filter(key => key.id !== saved.id), saved]
       this.edit(saved)
-      this.status('密钥已保存，可在主机认证设置中选择。', 'ok')
+      this.status('', 'ok')
+      this.ctx.clientToasts.notify({ title: '密钥已保存', detail: '可在主机的认证设置里选用' })
       this.ctx.emit('client/keychain-change')
       await this.refresh()
     } catch (error) { if (this.scope.alive && revision === this.revision) this.status(cleanError(error), 'err') }

@@ -7,13 +7,14 @@ import { ClientHosts } from './features/hosts.js'
 import { ClientKeychain } from './features/keychain.js'
 import { ClientSftp } from './features/sftp.js'
 import { ClientChrome } from './services/chrome.js'
+import { ClientToasts } from './services/toasts.js'
 import { ClientApplication } from './features/readiness.js'
 import type { TerminalFactory } from './terminal-view.js'
 
 export interface ClientOptions { document?: Document; api?: SshApi; terminalFactory?: TerminalFactory }
 export interface Client {
   readonly context: Context
-  readonly scopes: Readonly<Record<'view' | 'transport' | 'terminal' | 'keychain' | 'hosts' | 'sftp' | 'chrome' | 'application', Fiber>>
+  readonly scopes: Readonly<Record<'view' | 'toasts' | 'transport' | 'terminal' | 'keychain' | 'hosts' | 'sftp' | 'chrome' | 'application', Fiber>>
   readonly ready: Promise<RendererReadyPayload>
   dispose(): Promise<void>
 }
@@ -31,6 +32,8 @@ export function createClient(options: ClientOptions = {}): Client {
   const stopped = new Promise<RendererReadyPayload>(resolve => { settleStopped = resolve })
   const scopes = {
     view: context.plugin(ClientView, { document }),
+    // 通知要排在所有会 notify 的服务之前：挂载循环是按这里的成绩单依次 await 的。
+    toasts: context.plugin(ClientToasts),
     transport: context.plugin(ClientTransport, { api: options.api }),
     terminal: context.plugin(ClientTerminal, { terminalFactory: options.terminalFactory }),
     keychain: context.plugin(ClientKeychain),
