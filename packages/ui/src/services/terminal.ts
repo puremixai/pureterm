@@ -226,7 +226,6 @@ export class ClientTerminal extends Service {
     const active = this.active
     const app = view.element('app')
     app.classList.toggle('session-mode', !!active)
-    app.classList.remove('failure-mode')
     view.element('hosts-panel').hidden = !!active || this.libraryPage !== 'hosts'
     view.element('keychain-panel').hidden = !!active || this.libraryPage !== 'keychain'
     view.element('nav-hosts').classList.toggle('active', this.libraryPage === 'hosts')

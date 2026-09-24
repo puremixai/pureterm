@@ -47,11 +47,6 @@ export class ClientHosts extends Service {
     this.scope.listen(view.element('host-new'), 'click', () => this.startNew())
     this.scope.listen(view.element('connection-close'), 'click', () => this.closeWorkspace())
     for (const id of ['workspace-home', 'nav-hosts']) this.scope.listen(view.element(id), 'click', () => { ctx.clientTerminal.select(null); this.closeWorkspace() })
-    this.scope.listen(view.element('nav-toggle'), 'click', () => {
-      if (ctx.clientTerminal.active) ctx.clientTerminal.select(null)
-      const collapsed = view.element('app').classList.toggle('nav-collapsed')
-      view.element('nav-toggle').setAttribute('aria-expanded', String(!collapsed))
-    })
     this.scope.listen(view.element('host-view-toggle'), 'click', () => {
       const list = view.element('host-list').classList.toggle('list-view')
       view.element('host-view-toggle').setAttribute('aria-pressed', String(list))
