@@ -81,7 +81,7 @@
 .app-tab {
   display: flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 28px;
   gap: 9px;
   padding: 0 17px;
   border-radius: var(--r-4);
@@ -101,8 +101,8 @@
    than by two different tints, which is how the old palette read as a skin. */
 .primary-nav { display: flex; min-height: 0; flex: none; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--c-chrome); border-right: 1px solid var(--line); }
 .nav-divider { width: 20px; height: 1px; margin: 6px 0; background: var(--line); }
-.nav-item { position: relative; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border-color: transparent; border-radius: var(--r-2); background: transparent; color: var(--tx-4); font-size: 18px; line-height: 1; }
-.nav-item:hover:not(:disabled) { color: var(--tx-2); border-color: transparent; background: var(--c-raised); }
+.nav-item { position: relative; display: grid; width: 34px; min-height: 34px; height: 34px; place-items: center; padding: 0; border-color: transparent; border-radius: var(--r-2); background: transparent; color: var(--tx-3); font-size: 18px; line-height: 1; }
+.nav-item:hover:not(:disabled) { color: var(--tx-1); border-color: transparent; background: var(--c-raised); }
 .nav-item.active { color: var(--ac); background: var(--ac-bg); }
 /* The active marker sits outside the button box, on the hairline, because a
    34px square cannot carry a 2px inset without moving its icon off centre. */
@@ -132,7 +132,7 @@
 .topbar-leading { flex: 1 1 auto; overflow: hidden; }
 .topbar-actions { flex: 0 0 auto; margin-left: 14px; }
 .workspace-switcher { flex: 0 0 auto; min-width: 148px; }
-.workspace-tabs { display: flex; align-items: center; gap: 7px; min-width: 0; overflow-x: auto; padding: 4px 2px; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+.workspace-tabs { display: flex; align-items: center; gap: 7px; min-width: 0; overflow-x: auto; padding: 0 2px; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
 .workspace-tabs > .app-tab { flex: 0 0 auto; border-color: transparent; background: transparent; }
 .workspace-tabs > .app-tab.is-active { background: var(--c-control); }
 .session-tab { flex: 0 0 auto; display: flex; align-items: center; width: clamp(150px, 17vw, 250px); min-width: 0; border: 1px solid transparent; border-radius: var(--r-4); background: var(--c-canvas); }
@@ -173,7 +173,9 @@
   padding: 0 10px;
   background: var(--c-chrome);
   border-top: 1px solid var(--line);
-  color: var(--tx-3);
+  /* --tx-2, not --tx-3: the muted step on this ground measures 4.23:1 in the
+     light group, under the floor an 11px label needs. See the legality matrix. */
+  color: var(--tx-2);
   font-size: var(--fs-micro);
   line-height: 1;
 }

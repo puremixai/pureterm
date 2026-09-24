@@ -1069,3 +1069,22 @@ measured pair, and do not silently change a value that fourteen tests assert.
   session uptime. Until it lands, those slots stay absent.
 - Installer icons (`.ico`, `.icns`). The favicon is inline SVG; a Windows icon file is a binary
   asset that needs its own generation step and its own verification on the target platform.
+
+---
+
+## What execution found
+
+Tasks 1-8 landed as written, one commit each: `bfaf9f7` geometry tokens, `d2c4c97` grid and overlay, `1e6a49d` icon rail, `7e72732` dead chrome, `1e51501` mark, favicon and status bar shell, `149c0fa` status fields, `33b939f` the two switches, `a07ce0e` the documents. Two deviations, both recorded in their commit messages: the 820px block also lost a `.workspace-switcher` width the later block already overrode, and the 620px rule hiding `.topbar-actions .icon-button` was deleted a task early because the switches land in that container and must stay reachable.
+
+**Task 9 found four things, and all four were fixed rather than filed.**
+
+- The tab strip was 52px tall inside the new 40px bar: `.app-tab { min-height: 44px }` plus `.workspace-tabs { padding: 4px 2px }` summed past the bar's own bottom hairline. Measured as `y: -6.3, height: 52`. Tabs are now 28px with zero vertical padding.
+- `.nav-item { height: 34px }` rendered 38px tall, because `base.css` gives every `button` a `min-height: 38px` and a bare `height` loses to it. Naming `min-height` alongside `height` is the fix, and the trap is worth the sentence because the same pair of properties will bite the next sized control.
+- `.status-bar` text was `--tx-3` on `--c-chrome`, which the legality table in `docs/design-system.md` already marks at 4.23:1 in the light group — under the floor an 11px label needs. It is now `--tx-2`, measured at 10.20:1 dark and 7.70:1 light on the live page.
+- The rail icons were `--tx-4` on `--c-chrome`: 2.79:1 dark, 2.28:1 light, under the 3:1 non-text floor — and the labels are gone, so the icon is the only affordance there is. Now `--tx-3` (4.99 / 4.23) with `--tx-1` on hover.
+
+A new guard, `the top bar contents fit the height the bar is given`, reads `--chrome-h` and compares `.app-tab` and `.nav-item` against it, so neither can outgrow the bar again without a failure.
+
+**The measurement caveat, because it changes what can be trusted.** The in-app browser surface was hidden for all but one pass, and Chromium does not advance transitions on a hidden page. Reading a transitioned property straight after flipping `data-theme` returns the pre-transition value: `.host-row` and `.nav-item` looked as though they never recolour at all, which is an artifact of the harness and not a defect. Only non-transitioned declarations are measurable this way — grid boxes, the rail width, the status bar's own ground and text. So the rail icon ratios above are cited from the documented matrix rather than measured, and **the light theme has still not been seen by a human eye**.
+
+Not checked, still owed: a real SSH session and with it the terminal seam; the SFTP sheet open; the desktop window at 100% and 125%; whether the tab strip and the window controls collide at the narrowest width the window allows. `npm run verify` and `npm run verify:electron` both pass (exit 0, 7 renderer suites), and 53 UI guards pass with the fit assertion included.

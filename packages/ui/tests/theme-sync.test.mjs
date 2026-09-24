@@ -67,6 +67,21 @@ test('the overlay height agrees with the top bar the CSS draws', () => {
   assert.equal(pixel('--status-h'), '24', 'the status row is a design decision, not a leftover')
 })
 
+// The tab strip and the rail items live inside a bar whose height is fixed by
+// the overlay, so anything taller is painted over the hairline. base.css gives
+// every button min-height: 38px, which a bare `height` loses to — that is the
+// trap this reads, and why the rail item names min-height as well as height.
+test('the top bar contents fit the height the bar is given', () => {
+  const bar = Number(pixel('--chrome-h'))
+  const tab = /\.app-tab\s*\{[^}]*min-height:\s*(\d+)px/.exec(chrome)
+  const item = /\.nav-item\s*\{[^}]*min-height:\s*(\d+)px/.exec(chrome)
+  const strip = /\.workspace-tabs\s*\{[^}]*padding:\s*([^;]+);/.exec(chrome)
+  assert.ok(tab && item, '.app-tab and .nav-item must each set min-height; height alone loses to base.css')
+  assert.ok(Number(tab[1]) <= bar, `.app-tab is ${tab[1]}px tall inside a ${bar}px bar`)
+  assert.ok(Number(item[1]) <= bar, `.nav-item is ${item[1]}px tall inside a ${bar}px bar`)
+  assert.match(strip[1], /^0 \d/, 'the tab strip must not add vertical padding inside a fixed-height bar')
+})
+
 // The mark is drawn twice: once as the 18px glyph in the top bar, where CSS owns
 // the colour, and once as a favicon, where a data: URI cannot read a custom
 // property. Two copies of one glyph is the exact debt this system exists to
