@@ -3,7 +3,7 @@ import test from 'node:test'
 // The reader, the colour maths and the comment-stripping live in token-source.mjs
 // so that terminal-theme.test.mjs can tie the ANSI palette to the same values
 // without keeping a second copy of either.
-import { DARK, LIGHT, block, hex, luminance, names, ratio, token, triplet } from './token-source.mjs'
+import { DARK, LIGHT, block, contrastOnTint, hex, luminance, names, ratio, token, triplet } from './token-source.mjs'
 
 function contrast(selector, foreground, background) {
   return ratio(triplet(token(selector, foreground)), triplet(token(selector, background)))
@@ -11,12 +11,27 @@ function contrast(selector, foreground, background) {
 
 const THEMES = [DARK, LIGHT]
 
+// The translucent steps the graphite ramp needs. Each is a colour its theme
+// group owns at an alpha, so the register's own shape applies: a step present
+// in one group only, or carrying a hex body instead of the triplet of the
+// colour it tints, is the failure this ramp is most likely to acquire.
+const TINT_TOKENS = [
+  '--overlay-soft', '--overlay-hover', '--overlay-press',
+  '--ac-line', '--ac-focus',
+  '--ok-bg', '--ok-line', '--warn-bg', '--warn-line', '--err-bg', '--err-line',
+  '--scrim',
+]
+
 const THEME_TOKENS = [
   '--c-inset', '--c-canvas', '--c-chrome', '--c-surface', '--c-raised', '--c-control',
   '--line', '--line-soft', '--line-strong',
   '--tx-1', '--tx-2', '--tx-3', '--tx-4',
   '--ac', '--ac-hi', '--ac-bg', '--ac-fg',
   '--ok', '--warn', '--err', '--idle',
+  // The translucent steps: a colour group like any other, because the ground
+  // and the text on it are chosen per theme, so both groups must carry both.
+  ...TINT_TOKENS,
+  '--scroll-thumb', '--scroll-thumb-strong',
 ]
 
 // Terminal colours are the one group that stays dark in both themes, so the
@@ -27,7 +42,7 @@ const TERM_TOKENS = ['--term-bg', '--term-fg', '--term-cursor', '--term-selectio
 // same element, so the light group inherits them. Repeating them would
 // recreate the hand-synced duplicate debt this plan exists to remove.
 const GLOBAL_TOKENS = [
-  '--r-1', '--r-2', '--r-3', '--r-full',
+  '--r-1', '--r-2', '--r-3', '--r-4', '--r-full',
   '--s-1', '--s-2', '--s-3', '--s-4', '--s-5', '--s-6',
   '--row-h', '--row-h-compact',
   '--z-drawer', '--z-popover', '--z-toast', '--z-dialog',
@@ -151,3 +166,61 @@ test('--term-cursor carries the accent triplet rather than a hand-copy of it', (
       `${selector} --term-cursor must carry the dark --ac triplet`)
   }
 })
+
+test('every translucent step carries the triplet of the colour it tints', () => {
+  const parents = {
+    '--ac-line': '--ac', '--ac-focus': '--ac',
+    '--ok-bg': '--ok', '--ok-line': '--ok',
+    '--warn-bg': '--warn', '--warn-line': '--warn',
+    '--err-bg': '--err', '--err-line': '--err',
+  }
+  for (const [tint, parent] of Object.entries(parents)) {
+    for (const selector of THEMES) {
+      assert.deepEqual(triplet(token(selector, tint)), triplet(token(selector, parent)),
+        `${selector} ${tint} must be ${parent} at an alpha`)
+    }
+  }
+})
+
+test('translucent steps exist in both theme groups', () => {
+  for (const selector of THEMES) {
+    for (const name of TINT_TOKENS) assert.ok(names(block(selector)).includes(name), `${selector} is missing ${name}`)
+  }
+})
+
+// `token()` anchors its lookup at the start of a line while `names()` scans the
+// whole block, so a second declaration on one line is counted as declared and
+// cannot be read back. That is not hypothetical: editing this file by hand
+// produces exactly that shape, and the failures it causes name the wrong token.
+test('each theme block declares one token per line', () => {
+  for (const selector of THEMES) {
+    const offenders = block(selector)
+      .split('\n')
+      .map((line, offset) => [offset + 1, line])
+      .filter(([, line]) => (line.match(/--[a-z0-9-]+\s*:/g) ?? []).length > 1)
+    assert.deepEqual(offenders, [],
+      `${selector} carries two declarations on one line (offsets within the block):\n` +
+      offenders.map(([n, l]) => `  ${n}: ${l.trim()}`).join('\n'))
+  }
+})
+
+// Status labels never paint on a bare surface: `.tag.saved`, `#status.ok`,
+// `.keychain-message.err` and `#sftp-hint.ok` all sit on their own tint. The
+// bare-ground ratios measured above are therefore the optimistic case, and the
+// first light palette passed them while failing in practice.
+test('status colours clear AA on their own tint, not only on a bare surface', () => {
+  for (const selector of THEMES) {
+    for (const [colour, tint] of [['--ok', '--ok-bg'], ['--warn', '--warn-bg'], ['--err', '--err-bg']]) {
+      for (const ground of ['--c-surface', '--c-canvas']) {
+        const got = contrastOnTint(token(selector, colour), token(selector, tint), token(selector, ground))
+        assert.ok(got >= 4.5,
+          `${selector} ${colour} on ${tint} over ${ground} is ${got.toFixed(2)}:1, needs 4.5:1`)
+      }
+    }
+  }
+})
+
+// --ac on --ac-bg is deliberately absent above: it measures 4.08:1 in the light
+// theme, and darkening the accent that far to buy a pair nothing paints would
+// cost the primary button its contrast headroom. Accent-coloured text on an
+// accent-tinted ground is therefore forbidden, not merely unproven.

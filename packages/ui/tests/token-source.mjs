@@ -76,6 +76,19 @@ export function ratio(foreground, background) {
   return (a + 0.05) / (b + 0.05)
 }
 
+// CSS blends translucent colours in sRGB, not in linear light, so a tint must be
+// composited per channel before it can be measured. Comparing a status colour
+// against the bare ground instead would certify a pair the user never sees.
+export function composite(colour, alpha, ground) {
+  return colour.map((byte, i) => Math.round(byte * alpha + ground[i] * (1 - alpha)))
+}
+
+// The contrast a foreground actually gets when it sits on `tint` over `ground`.
+export function contrastOnTint(foreground, tint, ground) {
+  const rgb = triplet(tint)
+  return ratio(triplet(foreground), composite(rgb, rgba(tint).alpha, triplet(ground)))
+}
+
 export function token(selector, name) {
   const match = new RegExp(`^[ \\t]*${escapeRe(name)}\\s*:\\s*([^;]+);`, 'm').exec(block(selector))
   if (!match) throw new Error(`missing ${name} in ${selector}`)

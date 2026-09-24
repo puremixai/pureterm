@@ -42,6 +42,25 @@
   --err: #f2555a;
   --idle: #8b919b;
 
+  /* Translucent steps. Dark values are white-or-accent at an alpha; light
+     values flip to black-or-accent because white-on-white does not exist.
+     Each one must carry the triplet of the colour it tints, which
+     design-tokens.test.mjs measures. */
+  --overlay-soft: rgba(255, 255, 255, 0.03);
+  --overlay-hover: rgba(255, 255, 255, 0.06);
+  --overlay-press: rgba(255, 255, 255, 0.09);
+  --ac-line: rgba(90, 174, 255, 0.42);
+  --ac-focus: rgba(90, 174, 255, 0.55);
+  --ok-bg: rgba(78, 194, 127, 0.12);
+  --ok-line: rgba(78, 194, 127, 0.3);
+  --warn-bg: rgba(224, 168, 60, 0.12);
+  --warn-line: rgba(224, 168, 60, 0.32);
+  --err-bg: rgba(242, 85, 90, 0.12);
+  --err-line: rgba(242, 85, 90, 0.32);
+  --scrim: rgba(0, 0, 0, 0.62);
+  --scroll-thumb: #33383f;
+  --scroll-thumb-strong: #444a53;
+
   /* Terminal keeps one dark group in both themes. A light shell over a
      dark canvas is the point, not an oversight. */
   --term-bg: #08090a;
@@ -52,6 +71,7 @@
   --r-1: 3px;
   --r-2: 5px;
   --r-3: 8px;
+  --r-4: 12px;
   --r-full: 999px;
   --s-1: 4px;
   --s-2: 8px;
@@ -104,10 +124,30 @@
   --ac-hi: #1a5fcd;
   --ac-bg: rgba(31, 111, 235, 0.1);
   --ac-fg: #ffffff;
-  --ok: #1a7f4b;
-  --warn: #9a6a0a;
-  --err: #c2363b;
+  --ok: #187747;
+  --warn: #8c6009;
+  --err: #b83237;
   --idle: #7e8590;
+
+  /* Flipped to black-or-accent: a white overlay on a white ground is nothing.
+     The status triplets are darker than the first light draft because status
+     labels paint themselves on their own tint: --ok at the original #1a7f4b
+     measured 4.39:1 on --ok-bg over --c-surface, under AA before any ground
+     was even considered. */
+  --overlay-soft: rgba(0, 0, 0, 0.03);
+  --overlay-hover: rgba(0, 0, 0, 0.055);
+  --overlay-press: rgba(0, 0, 0, 0.08);
+  --ac-line: rgba(31, 111, 235, 0.42);
+  --ac-focus: rgba(31, 111, 235, 0.35);
+  --ok-bg: rgba(24, 119, 71, 0.1);
+  --ok-line: rgba(24, 119, 71, 0.28);
+  --warn-bg: rgba(140, 96, 9, 0.1);
+  --warn-line: rgba(140, 96, 9, 0.3);
+  --err-bg: rgba(184, 50, 55, 0.1);
+  --err-line: rgba(184, 50, 55, 0.3);
+  --scrim: rgba(20, 24, 30, 0.38);
+  --scroll-thumb: #c9ced5;
+  --scroll-thumb-strong: #aab1ba;
 
   /* Identical to dark on purpose; asserted by design-tokens.test.mjs. */
   --term-bg: #08090a;
