@@ -45,6 +45,7 @@ export class ClientHosts extends Service {
     this.scope.listen(view.element('toolbar'), 'submit', event => { event.preventDefault(); void this.connect() })
     this.scope.listen(view.element('connect'), 'click', () => void this.connect())
     this.scope.listen(view.element('host-new'), 'click', () => this.startNew())
+    this.scope.listen(view.element('hosts-retry'), 'click', () => { void this.refresh().catch(() => {}) })
     this.scope.listen(view.element('connection-close'), 'click', () => this.closeWorkspace())
     for (const id of ['workspace-home', 'nav-hosts']) this.scope.listen(view.element(id), 'click', () => { ctx.clientTerminal.select(null); this.closeWorkspace() })
     this.scope.listen(view.element('host-view-toggle'), 'click', () => {
@@ -114,10 +115,19 @@ export class ClientHosts extends Service {
   private auth(): AuthMethod { return this.input('auth').value === 'privateKey' ? 'privateKey' : 'password' }
 
   private async initialize(): Promise<void> {
+    // 列表在飞的时候占住行高，而不是先空一下再长出来。
+    this.renderSkeleton()
     this.capabilities = await this.ctx.clientTransport.capabilities
     if (!this.scope.alive) return
     this.input('remember').checked = this.capabilities.credentialPersistence === 'encrypted'
     this.ctx.clientView.element('credential-hint').hidden = this.capabilities.credentialPersistence !== 'session'
+    // 能力关着不是失败：这台机器上「密码留空也能连」这件事不成立，得常驻说一句，
+    // 而不是等用户每次保存都撞上一次。
+    const degraded = this.input('hosts-degraded')
+    degraded.hidden = this.capabilities.credentialPersistence === 'encrypted'
+    degraded.textContent = this.capabilities.credentialPersistence === 'session'
+      ? '本机 Web 不保存凭据：主机列表会留下，密码与私钥口令只在这个页面里有效。'
+      : '这台机器上的凭据存储不可用，主机可以连，但每次都要重填凭据。'
     this.syncAuth()
     await this.ctx.clientKeychain.ready
     if (!this.scope.alive) return
@@ -231,9 +241,43 @@ export class ClientHosts extends Service {
     mode.classList.toggle('editing', !!record)
   }
 
+  /** 骨架行用 .skeleton-row 而不是 .host-row：占位符不该满足真行的断言，
+   *  否则行的形状改坏了也测不出来。 */
+  private renderSkeleton(count = 5): void {
+    const view = this.ctx.clientView
+    const list = view.element('host-list')
+    list.textContent = ''
+    view.element('hosts-empty').hidden = true
+    for (let index = 0; index < count; index += 1) {
+      const item = view.document.createElement('li')
+      item.className = 'skeleton-row'
+      item.setAttribute('aria-hidden', 'true')
+      const bar = view.document.createElement('span')
+      bar.className = `skeleton-bar w${(index % 3) + 1}`
+      item.append(bar)
+      list.append(item)
+    }
+  }
+
+  private setListError(title: string, detail: string): void {
+    const block = this.ctx.clientView.element('hosts-error')
+    block.hidden = false
+    block.querySelector<HTMLElement>('.list-error-title')!.textContent = title
+    block.querySelector<HTMLElement>('.list-error-detail')!.textContent = detail
+  }
+
   private async refresh(keepId?: string | null, formRevision = this.formRevision): Promise<void> {
     const listRevision = ++this.listRevision
-    const hosts = await this.ctx.clientTransport.api.hosts.list()
+    let hosts: HostRecord[]
+    this.ctx.clientView.element('hosts-error').hidden = true
+    try {
+      hosts = await this.ctx.clientTransport.api.hosts.list()
+    } catch (error) {
+      // 「后端不可用」和「这一次操作失败了」是两件事：前者要求重连或重启，后者
+      // 只要再试一次。混成一句红字，用户两种都无从下手。
+      this.setListError('主机列表读不出来，后端可能已经断开。', cleanError(error))
+      throw error
+    }
     if (!this.scope.alive || listRevision !== this.listRevision) return
     this.hosts = hosts
     // Keychain 的「关联主机」列要这份计数；它不能反过来注入本 feature，

@@ -270,6 +270,37 @@ test('no partial hard-codes a font stack', async () => {
 // block — rather than asserting a matrix of combinations nobody draws, which
 // would pass while the one real case vanished. What motivated it: a toolbar
 // separator on a --c-chrome ground measured 1.017:1 in the light theme.
+// esbuild tolerates a declaration that lost its selector: it emits it, the
+// browser drops it, and the rule is simply gone with every guard still green.
+// This one had its selector eaten by an editing slip and 60 tests passed over it.
+test('every partial is a parseable block structure', async () => {
+  const { names, texts } = await readPartials()
+  const broken = []
+  for (const [name, text] of names.map((n, i) => [n, texts[i]])) {
+    if (name === 'fonts') continue
+    const source = withoutComments(text)
+    const open = (source.match(/\{/g) || []).length
+    const close = (source.match(/\}/g) || []).length
+    if (open !== close) broken.push(`  styles/${name}.css: ${open} 左花括号 vs ${close} 右花括号`)
+    // 这条规则只管一种具体的坏法：选择器没了、声明裸露在块外。本代码库每条规则都
+    // 写成一行（选择器、`{`、声明、`}` 同一行），所以判据必须是「这一行开始时不在
+    // 任何块内，行里又没有 `{`，却带着一条声明」—— 按行内花括号计数会把整行规则
+    // 误判成块外声明，第一版就是这么错的。
+    let depth = 0
+    const newline = String.fromCharCode(10)
+    for (const [index, line] of source.split(newline).entries()) {
+      const outside = depth === 0
+      for (const ch of line) { if (ch === '{') depth += 1; else if (ch === '}') depth = Math.max(0, depth - 1) }
+      const body = line.trim()
+      if (outside && !line.includes('{') && body !== '' && /[;}]$/.test(body) && body.includes(':')) {
+        broken.push(`  styles/${name}.css:${index + 1}: 块外的声明 -> ${body.slice(0, 46)}`)
+      }
+    }
+  }
+  const joiner = String.fromCharCode(10)
+  assert.deepEqual(broken, [], `这些行不在任何规则里，esbuild 会原样发出去，浏览器直接丢弃：${joiner}${broken.join(joiner)}`)
+})
+
 test('every hairline stays perceptible against the ground it is drawn on', async () => {
   const { names, texts } = await readPartials()
   // Keyed per rule, not per pair: keying by pair hid every rule after the first
