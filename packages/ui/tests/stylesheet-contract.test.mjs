@@ -20,7 +20,7 @@ const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(/
 // Measured after each flipped partial, never remembered by hand: it started at
 // 100 and only falls, because the liveness test below names whatever a flip
 // orphans. Update it from the test output, not from a count you did mentally.
-const LEGACY_DECLARATIONS = 42
+const LEGACY_DECLARATIONS = 37
 
 // The four non-colour names, so a re-declaration in the register fails by name
 // rather than by a confusing count.

@@ -36,8 +36,6 @@
 
   /* Surfaces. */
   --legacy-surface-sunken: #1c2033;
-  --legacy-surface-control: #3b425e;
-  --legacy-surface-tool: #393e56;
   --legacy-surface-log: #2a2e44;
   --legacy-surface-secondary: #2d3147;
   --legacy-surface-bar: #1a1e30;
@@ -48,10 +46,8 @@
   /* Glyphs, legends, avatars and inverted marks. */
   --legacy-log-glyph: #bab3d0;
   --legacy-on-solid: #ffffff;
-  --legacy-key-avatar: #075a87;
   /* Scrollbars. */
   --legacy-scroll-thumb: #454b67;
-  --legacy-scroll-thumb-strong: #4b5069;
   /* Hairlines. Seven steps when this register was written; the flip's
      three-step ramp has already taken --legacy-line-hair and
      --legacy-line-strong, so what remains is what still has a call site.
@@ -67,7 +63,6 @@
      entry carries its offsets and blur as well as its colour. */
   --legacy-shadow-log: 0 14px 32px rgba(7, 8, 18, 0.14);
   --legacy-shadow-sheet: 0 -12px 28px rgba(0, 0, 0, 0.18);
-  --legacy-shadow-editor: -20px 0 40px rgba(8, 10, 27, 0.33);
   --legacy-shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.53);
   /* Modal backdrop. */
   --legacy-backdrop: rgba(7, 9, 22, 0.6);
