@@ -24,6 +24,10 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(html, /id="failure-log"/)
   assert.match(html, /class="drawer-scroll"/)
   assert.match(html, /class="primary drawer-connect"/)
+  assert.match(html, /id="host-columns"[^>]*class="host-columns"/, 'the hosts table needs a header row to sit above the rows')
+  assert.match(html, /id="keychain-columns"[^>]*class="host-columns"/, 'the key table shares that header shape')
+  assert.match(css, /\.host-columns,\s*\.host-row \{[^}]*minmax\(0,1\.5fr\)/, 'the header and the rows must share one column template')
+  assert.match(css, /#keychain-columns,\s*\.keychain-card \{[^}]*minmax\(0,1\.2fr\)/, 'the key table must share its template the same way')
   assert.match(html, /class="ti ti-server-2"/)
   assert.match(manifest, /@import\s+"@tabler\/icons-webfont\/dist\/tabler-icons\.min\.css"/)
 
