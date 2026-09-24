@@ -61,7 +61,7 @@ services/plugins 保留原有业务分类，并不等于 Service/function plugin
 
 根构建脚本先构建共享包，再构建指定入口，清理对应项目的 `dist/`。共享界面只生成一份 `packages/ui/dist/{index.html,app.js,app.css}`。两个入口通过 `@pureterm/ui/index.html` 的包导出定位界面。Desktop 通过安全的 `pureterm-app://app/` scheme 提供这些文件，并根据编译模块位置找到 `dist/electron/carriers/preload.cjs`。独立 Web 入口为 `apps/web/dist/main.js`。这些定位不依赖启动时 cwd。
 
-界面自身的布局以[设计 Token 与样式表布局](design-system_zh.md)为权威：样式表里的颜色取值全部住在两个受守卫的文件中 —— `packages/ui/src/styles/tokens.css` 是体系本身，`packages/ui/src/styles/legacy.css` 是作为受守卫删除登记簿保留的改版前色板；而 `packages/ui/src/style.css` 只是覆盖按职责切分、消费这些取值的各分片的 `@import` 清单。
+界面自身的布局以[设计 Token 与样式表布局](design-system_zh.md)为权威：样式表里的颜色取值全部住在一个文件里 —— `packages/ui/src/styles/tokens.css`，它同时持有两套主题组；而 `packages/ui/src/style.css` 只是覆盖按职责切分的各分片的 `@import` 清单，那些分片的颜色一律透过 token 解析。
 
 ## 生命周期
 

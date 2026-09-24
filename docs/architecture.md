@@ -61,7 +61,7 @@ The root `package.json` declares workspaces and the root `package-lock.json` is 
 
 Root build scripts build shared packages first, then the selected entry, and clean the corresponding `dist/`. The shared UI produces one `packages/ui/dist/{index.html,app.js,app.css}`. Both entries locate it through the `@pureterm/ui/index.html` package export. Desktop serves those files through the secure `pureterm-app://app/` scheme and locates `dist/electron/carriers/preload.cjs` by compiled module location. The standalone Web entry is `apps/web/dist/main.js`. None of these paths depend on the launch cwd.
 
-For the UI's own layout, [design tokens and stylesheet layout](design-system.md) is the authority: every colour value in the stylesheet lives in one of two guarded files — `packages/ui/src/styles/tokens.css`, the system itself, and `packages/ui/src/styles/legacy.css`, the pre-redesign palette kept as a guarded deletion register — and `packages/ui/src/style.css` is only an `@import` manifest over the role-based partials that consume them.
+For the UI's own layout, [design tokens and stylesheet layout](design-system.md) is the authority: every colour value in the stylesheet lives in one file, `packages/ui/src/styles/tokens.css`, which holds both theme groups, and `packages/ui/src/style.css` is only an `@import` manifest over the role-based partials that resolve colour through those tokens.
 
 ## Lifecycle
 
