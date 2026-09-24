@@ -79,6 +79,14 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* The 820 block that used to narrow #toolbar is gone: a docked column is always
    the width of its track, so there is no width left to clamp. */
+/* Below the same width the key editor gives up its dock, the connection editor
+   has to give up too — the two are one object in two forms, and a drawer on one
+   screen plus a column on the other would read as two different apps. */
+@media (max-width: 900px) {
+  #main,
+  .app-shell.inspector-open #main { grid-template-columns: minmax(0, 1fr); }
+  .connection-workspace { position: absolute; inset: 0; z-index: 6; }
+}
 @media (max-width: 620px) {
   .credential-row { display: flex; align-items: stretch; }
   .credential-row .field { flex: 1 1 100%; }

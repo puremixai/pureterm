@@ -25,19 +25,31 @@
 .keychain-card.active { border-color: var(--ac); }
 .keychain-card-main { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 14px; padding: 0; border: 0; background: transparent; text-align: left; }
 .keychain-card-main:hover:not(:disabled) { background: transparent; }
-.keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 58px; height: 58px; border-radius: var(--r-4); color: var(--tx-1); background: var(--c-control); font-size: 29px; }
+/* The row's box owns the height — see hosts.css, where the same floor on every
+   button made the compact density do nothing. */
+.keychain-list:not(.card-view) .keychain-card-main { min-height: 0; }
+/* The tile follows the row it sits in. These two rules were written when the
+   card was the only shape, so after the table became the default every keychain
+   row came out 59px tall next to a 39px host row. The icon needs 26px where the
+   hosts table's "SSH" chip gets by with 20px, and the card keeps the 58px
+   square at the card radius. */
+.keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 26px; height: 26px; border-radius: var(--r-2); color: var(--tx-1); background: var(--c-control); font-size: 16px; }
 .keychain-card .host-content { gap: 5px; }
-.keychain-card-sub { color: var(--tx-3); font-size: var(--fs-meta); font-weight: 400; }
+/* In the table the type is a column, so a "Type ed25519" line under the name
+   says it twice and makes the row two lines tall next to a one-line host row.
+   The card has no columns, so there it is the name's only companion. */
+.keychain-card-sub { display: none; color: var(--tx-3); font-size: var(--fs-meta); font-weight: 400; }
+.keychain-list.card-view .keychain-card-sub { display: block; }
 .keychain-card-edit { flex: 0 0 auto; min-width: 32px; margin-right: 10px; opacity: 0; }
 .keychain-card:hover .keychain-card-edit, .keychain-card:focus-within .keychain-card-edit, .keychain-card.active .keychain-card-edit { opacity: 1; }
 .keychain-list.card-view { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .keychain-list.card-view .keychain-card { grid-template-columns: minmax(0, 1fr); align-items: flex-start; min-height: 91px; padding: 0; }
-.keychain-list.card-view .keychain-card-main { padding: 13px 8px 13px 15px; }
+.keychain-list.card-view .keychain-card-main { padding: 15px 12px 15px 16px; }
 .keychain-list.card-view .keychain-card .host-cell { display: none; }
 /* A card keeps the fingerprint: type and dates are noise, the print is what you
    match against the server. */
 .keychain-list.card-view .keychain-card .host-cell.mono { display: block; order: 2; color: var(--tx-3); font-size: var(--fs-micro); }
-.keychain-list.card-view .keychain-avatar { width: 40px; height: 40px; font-size: 24px; border-radius: var(--r-3); }
+.keychain-list.card-view .keychain-avatar { width: 58px; height: 58px; font-size: 29px; border-radius: var(--r-4); }
 #keychain-view[aria-pressed="true"] { background: var(--c-control); }
 .keychain-empty { display: grid; justify-items: center; max-width: 450px; margin: 65px auto; text-align: center; color: var(--tx-3); }
 .keychain-empty > i { display: grid; place-items: center; width: 72px; height: 72px; margin-bottom: 18px; border-radius: var(--r-4); background: var(--c-surface); color: var(--ac); font-size: 34px; }

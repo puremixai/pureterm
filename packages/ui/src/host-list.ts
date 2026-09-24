@@ -54,15 +54,15 @@ function cell(className: string, text: string, title?: string): HTMLSpanElement 
 /**
  * 认证列要说的是「这台机器能不能连上」：凭据在密钥库里，还是在本机一个文件路径上。
  * 算法名不在 HostRecord 上，只在 KeyRecord.type 上，所以传进来的密钥清单可能查不到
- * ——查不到就退化成 `key · keychain`，而不是编一个算法名。
+ * ——查不到就只说「密钥库」，而不是编一个算法名。
  */
 function authFor(record: HostRecord, keys: readonly KeyRecord[]): { text: string; kind: 'keychain' | 'file' | 'password' } {
-  if (record.authMethod !== 'privateKey') return { text: 'password', kind: 'password' }
+  if (record.authMethod !== 'privateKey') return { text: '密码', kind: 'password' }
   if (record.keyId) {
     const type = keys.find(key => key.id === record.keyId)?.type?.toLowerCase()
-    return { text: type ? `${type} · keychain` : 'key · keychain', kind: 'keychain' }
+    return { text: type ? `密钥库 · ${type}` : '密钥库', kind: 'keychain' }
   }
-  return { text: 'private key · 本机文件', kind: 'file' }
+  return { text: '本机文件', kind: 'file' }
 }
 
 /** updatedAt 是保存时间，不是连接时间 —— 后端没有最后连接时间，列名也就叫「更新」。 */

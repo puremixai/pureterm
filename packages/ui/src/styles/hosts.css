@@ -4,7 +4,17 @@
    drift apart by a fourth value nobody noticed. */
 .host-columns,
 .host-row { display: grid; grid-template-columns: minmax(0,1.5fr) 1.2fr .9fr 1fr 1fr 24px; align-items: center; gap: 12px; padding: 0 10px; }
-.host-columns { height: 26px; padding: 0 10px; color: var(--tx-4); font-size: var(--fs-micro); letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid var(--line-soft); }
+/* The transparent side borders make the header's border box the same width as a
+   row's, so the fr units resolve identically and the labels sit over their
+   columns instead of drifting a few pixels along the line. */
+/* --tx-3, not --tx-4: the fourth rung is 2.25:1 to 2.92:1 and is only ever
+   allowed on placeholders. A column header is real text a user has to read. */
+.host-columns { height: 26px; border: 1px solid transparent; border-bottom-color: var(--line-soft); color: var(--tx-3); font-size: var(--fs-micro); letter-spacing: .06em; text-transform: uppercase; }
+/* A header over an empty table frames nothing, so the header leaves with the
+   rows. Both screens already toggle the empty element's hidden attribute during
+   render, which makes it the state rather than a second copy of the count. */
+#hosts-body:has(#hosts-empty:not([hidden])) #host-columns,
+.keychain-content:has(#keychain-empty:not([hidden])) #keychain-columns { display: none; }
 .host-cell { min-width: 0; overflow: hidden; color: var(--tx-2); font-size: var(--fs-meta); text-overflow: ellipsis; white-space: nowrap; }
 .host-cell.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .host-cell.when { color: var(--tx-3); }
@@ -14,7 +24,12 @@
 #host-view-toggle[aria-pressed="true"] { background: var(--c-control); }
 
 /* Hosts dashboard */
-#main { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--c-canvas); }
+/* The workspace column is the grid that docks the editor: every library page,
+   the connection form included, is a child of #main, so #main is the only
+   element that can give the editor a track. An override on .app-body would add
+   a third empty column and leave the form below the fold inside the second. */
+#main { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--c-canvas); }
+.app-shell.inspector-open #main { grid-template-columns: minmax(0, 1fr) var(--insp-w); }
 #hosts-panel { display: flex; min-width: 0; min-height: 0; height: 100%; flex-direction: column; overflow: auto; padding: 14px 16px 28px; background: var(--c-canvas); scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
 .host-search-row { display: flex; align-items: center; gap: 0; min-height: 55px; margin: 0 0 26px; padding: 0 8px 0 14px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--c-surface); }
 .search-control { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 10px; }
@@ -39,8 +54,8 @@
 .section-kicker { color: var(--tx-3); font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
 .hosts-heading h1 { margin: 0; color: var(--tx-1); font-size: 23px; font-weight: 700; letter-spacing: -0.02em; }
 .host-count { padding-bottom: 4px; color: var(--tx-3); font-size: var(--fs-meta); }
-#hosts-body { flex: 1 1 auto; min-height: 0; }
-#host-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; margin: 0; padding: 0 12px; list-style: none; }
+#hosts-body { flex: 1 1 auto; min-height: 0; padding: 0 12px; }
+#host-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; margin: 0; padding: 0; list-style: none; }
 /* A card keeps the address: the columns are gone, but a name with no target
    under it is not a card, it is a label. */
 #host-list.card-view { grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 16px; }
@@ -48,7 +63,10 @@
 #host-list.card-view .host-main { padding: 15px 12px 15px 16px; border-radius: var(--r-4); }
 #host-list.card-view .host-row .host-cell { display: none; }
 #host-list.card-view .host-row .host-cell.mono { display: block; order: 2; padding: 0 12px 0 16px; color: var(--tx-3); font-size: var(--fs-micro); }
-#host-list.card-view .host-avatar { width: 59px; height: 59px; }
+/* Same square and same corner as a keychain card's avatar: 58px is a --r-4
+   radius, and inheriting the list chip's --r-1 here left two card languages
+   side by side with different corners. */
+#host-list.card-view .host-avatar { width: 58px; height: 58px; border-radius: var(--r-4); }
 #host-list.card-view .host-content { gap: 6px; }
 
 /* Dark separates with hairlines, not elevation, so the row's only rest-state
@@ -59,7 +77,11 @@
 .host-row.active { border-color: var(--ac-line); background: var(--ac-bg); }
 .host-main { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 14px; padding: 0; border: 0; border-radius: var(--r-2); background: transparent; color: var(--tx-2); cursor: pointer; text-align: left; user-select: none; }
 .host-main:hover:not(:disabled) { border-color: transparent; background: transparent; }
-.host-avatar { display: grid; flex: 0 0 auto; width: 59px; height: 59px; place-items: center; border-radius: var(--r-4); background: var(--c-control); color: var(--tx-1); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
+/* In a table the row's box owns the height, not the button inside it: base.css
+   floors every button at 38px, which is exactly --row-h, so the compact density
+   changed the token and nothing else. */
+#host-list:not(.card-view) .host-main { min-height: 0; }
+.host-avatar { display: grid; flex: 0 0 auto; width: 20px; height: 20px; place-items: center; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-1); font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.02em; }
 .host-content { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 6px; }
 .host-top { display: flex; align-items: center; min-width: 0; max-width: 100%; gap: 6px; }
 .host-label { overflow: hidden; color: var(--tx-1); font-size: var(--fs-h2); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -98,6 +120,6 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); backgro
   .dashboard-toolbar { margin-bottom: 20px; }
   .dashboard-actions { max-width: 100%; flex-wrap: wrap; }
   .hosts-heading { margin-right: 6px; margin-left: 6px; }
-  #host-list { padding: 0 6px; }
+  #hosts-body { padding: 0 6px; }
   #host-list.card-view { gap: 11px; }
 }

@@ -96,10 +96,8 @@
 .app-tab-mark { color: var(--tx-2); font-size: 8px; }
 
 .app-body { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); min-height: 0; overflow: hidden; }
-/* The editor is a track, not a layer: when it opens the list narrows instead of
-   being covered, so no rule anywhere has to know the editor's width in order to
-   push content out of its way. */
-.app-shell.inspector-open .app-body { grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--insp-w); }
+/* The editor's track is not here: .app-body holds the rail and one workspace
+   column, and the column itself docks the editor (hosts.css, #main). */
 
 /* The rail and the top bar are one ground, so they separate by hairline rather
    than by two different tints, which is how the old palette read as a skin. */

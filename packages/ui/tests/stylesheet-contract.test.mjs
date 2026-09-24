@@ -214,6 +214,32 @@ test('base.css pins the icon font to the weight it actually has', async () => {
   assert.match(rule[1], /-webkit-font-smoothing:\s*antialiased\s*;/, 'icons must match the body smoothing')
 })
 
+// --tx-4 is the weakest rung the ramp owns — 2.25:1 on the darkest ground and
+// 2.18:1 on the lightest — so it fails AA wherever a reader has to read it. A
+// placeholder is the only sanctioned use: it names a field whose label is
+// already on screen and it disappears on the first keystroke. The column header
+// this catches was real text at 2.88:1.
+test('the weakest text rung is only ever drawn on a placeholder', async () => {
+  const { names, texts } = await readPartials()
+  const offenders = []
+  // Rule-by-rule rather than line-by-line: the selector lives before the brace,
+  // and a media block's prelude cannot match because the selector class excludes
+  // a second brace.
+  const RULE = /([^{}]+)\{([^{}]*)\}/g
+  for (const [name, text] of names.map((n, i) => [n, texts[i]])) {
+    const source = censusSource(text)
+    for (const match of source.matchAll(RULE)) {
+      const [, selector, body] = match
+      if (/[:\s]color\s*:[^;]*var\(--tx-4\)/.test(body) && !selector.includes('::placeholder')) {
+        const line = source.slice(0, match.index).split('\n').length
+        offenders.push(`  styles/${name}.css:${line}: "${selector.trim()}"`)
+      }
+    }
+  }
+  assert.equal(offenders.length, 0,
+    `--tx-4 is below AA as text; use --tx-3, or make the rule a ::placeholder:\n\n${offenders.join('\n')}`)
+})
+
 test('no partial hard-codes a font stack', async () => {
   const { names, texts } = await readPartials()
   const RESOLVES = /var\(--font-(?:ui|mono|term)\)/

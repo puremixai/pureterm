@@ -250,6 +250,15 @@ async function runChecks() {
     assert(input('host-list').classList.contains('card-view') && input('host-view-toggle').getAttribute('aria-pressed') === 'true', 'the toggle must move the hosts list to card view and report it')
     click('host-view-toggle')
     assert(!input('host-list').classList.contains('card-view') && input('host-view-toggle').getAttribute('aria-pressed') === 'false', 'and return the list to the table')
+    // The table is the whole point of the screen, so its shape is asserted rather
+    // than eyeballed: six grid children per row, and the 认证 column in the same
+    // language as the header it sits under. Only the DOM is checked here — this
+    // harness strips the stylesheet, so the card view's display rules live in
+    // visual-contract.test.mjs instead.
+    const columns = document.querySelector('.host-row')!
+    assert(columns.children.length === 6, `a host row is the header's six tracks, not ${columns.children.length}`)
+    assert(columns.querySelector('.host-cell.auth')!.textContent === '密码', 'the auth column must name the method in the UI language')
+    assert(columns.querySelector('.host-cell.when')!.textContent === '从未', 'a host that was never updated must say so rather than print an empty date')
     click('shortcuts-open')
     assert((input('shortcuts-dialog') as unknown as HTMLDialogElement).open, 'shortcuts action must open its help dialog')
     click('shortcuts-close')
