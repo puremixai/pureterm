@@ -36,15 +36,10 @@
 
   /* Surfaces. */
   --legacy-surface-sunken: #1c2033;
-  --legacy-surface-active: #323852;
   --legacy-surface-field: #25293d;
   --legacy-surface-block: #30344a;
-  --legacy-surface-block-alt: #3b4057;
   --legacy-surface-control: #3b425e;
   --legacy-surface-tool: #393e56;
-  --legacy-surface-tool-add: #3c4159;
-  --legacy-surface-action: #3f435a;
-  --legacy-surface-action-hover: #4a506b;
   --legacy-surface-input: #262a40;
   --legacy-surface-log: #2a2e44;
   --legacy-surface-secondary: #2d3147;
@@ -55,53 +50,32 @@
   --legacy-danger-log: #ff8a91;
   /* Glyphs, legends, avatars and inverted marks. */
   --legacy-log-glyph: #bab3d0;
-  --legacy-strong-on-dark: #e7e9f4;
-  --legacy-placeholder-strong: #adb2c7;
   --legacy-on-solid: #ffffff;
   --legacy-key-avatar: #075a87;
   --legacy-address-avatar: #086ba7;
-  /* Host-avatar tones. */
-  --legacy-tone-0: #f15b29;
-  --legacy-tone-1: #096da9;
-  --legacy-tone-2: #efad18;
-  --legacy-tone-2-fg: #fff8da;
-  --legacy-tone-3: #4b4d61;
   /* Scrollbars. */
   --legacy-scroll-thumb: #454b67;
   --legacy-scroll-thumb-strong: #4b5069;
-  /* Hairlines, faintest to strongest, gathered into one group on purpose: the
-     last two used to sit up among the surface aliases, which is how a seven-step
-     ladder comes to read as two unrelated pairs. All seven are live.
+  /* Hairlines. Seven steps when this register was written; the flip's
+     three-step ramp has already taken --legacy-line-hair and
+     --legacy-line-strong, so what remains is what still has a call site.
      `--legacy-line` at .085 is the value the new --line replaces. */
   --legacy-line-faint: rgba(222, 226, 255, 0.05);
-  --legacy-line-hair: rgba(222, 226, 255, 0.07);
   --legacy-line-edge: rgba(222, 226, 255, 0.08);
   --legacy-line: rgba(222, 226, 255, 0.085);
   --legacy-line-mid: rgba(222, 226, 255, 0.12);
   --legacy-line-field: rgba(222, 226, 255, 0.13);
   --legacy-line-strong: rgba(222, 226, 255, 0.17);
   /* Overlays and row hovers. */
-  --legacy-overlay-hover: rgba(255, 255, 255, 0.07);
-  --legacy-overlay-hover-strong: rgba(255, 255, 255, 0.08);
   --legacy-row-hover: rgba(222, 226, 255, 0.055);
   /* Translucent tints, then the two insets they sit beside. */
   --legacy-tint-accent: rgba(93, 157, 255, 0.13);
-  --legacy-tint-accent-line: rgba(167, 196, 255, 0.12);
-  --legacy-tint-accent-line-strong: rgba(167, 196, 255, 0.42);
   --legacy-tint-accent-focus: rgba(167, 196, 255, 0.7);
-  --legacy-tint-ok: rgba(123, 214, 175, 0.1);
-  --legacy-tint-ok-line: rgba(123, 214, 175, 0.25);
-  --legacy-tint-err: rgba(255, 146, 158, 0.1);
-  --legacy-tint-err-line: rgba(255, 146, 158, 0.25);
   --legacy-tint-warn: rgba(242, 200, 111, 0.1);
   --legacy-tint-warn-line: rgba(242, 200, 111, 0.28);
-  --legacy-mini-bg: rgba(20, 23, 42, 0.55);
   --legacy-field-inset: rgba(23, 26, 43, 0.22);
   /* Shadows: the call sites wrote a whole box-shadow as one literal, so each
      entry carries its offsets and blur as well as its colour. */
-  --legacy-shadow-sm: 0 8px 20px rgba(7, 8, 18, 0.08);
-  --legacy-shadow-card: 0 8px 18px rgba(8, 9, 22, 0.08);
-  --legacy-shadow-card-hover: 0 12px 24px rgba(8, 9, 22, 0.16);
   --legacy-shadow-log: 0 14px 32px rgba(7, 8, 18, 0.14);
   --legacy-shadow-drawer: -24px 0 42px rgba(7, 8, 18, 0.24);
   --legacy-shadow-sheet: 0 -12px 28px rgba(0, 0, 0, 0.18);

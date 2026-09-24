@@ -17,12 +17,10 @@ const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(/
 // do not add one" has to be a number rather than prose: a fresh line there
 // hides from every other check. Plan 2 shrinks it as the palette flips.
 //
-// 79, from 100: the four non-colour entries left for tokens.css, and each
-// flipped partial has orphaned the register lines it retired -- three accent
-// legends after `button.primary`, then fourteen chrome grounds. The liveness
-// test names them, so nothing has to be remembered, and the count only ever
-// falls.
-const LEGACY_DECLARATIONS = 79
+// Measured after each flipped partial, never remembered by hand: it started at
+// 100 and only falls, because the liveness test below names whatever a flip
+// orphans. Update it from the test output, not from a count you did mentally.
+const LEGACY_DECLARATIONS = 54
 
 // The four non-colour names, so a re-declaration in the register fails by name
 // rather than by a confusing count.
