@@ -115,6 +115,7 @@
 ## Hosts 工作区
 
 页头一行是标题、计数元信息、搜索（带 `Ctrl K` 提示）、主操作和视图开关。默认视图是在既有 `<ul>` 上的五列网格：Name（头像加标签）、Address、User、Auth、Last connected。Auth 列区分 `keychain` 与本地文件并显示算法，因为这正是决定一台主机能不能用的事实。卡片视图仍作为开关保留。
+  - **2026-09-24 执行时更正：** 第五列是 **更新（Updated）**，不是「Last connected」。`HostRecord` 带的是 `updatedAt`，由会话存储库在保存时写入；协议与 Host 里根本没有任何最后连接时间。要加一个是 `@pureterm/protocol` 的改动，需要自己的计划。
 
 选中态是 `--ac-bg` 加左缘 2px accent 条；hover 只把行提升一级表面。`ssh-dss` 这类旧材质或已变更的主机指纹用 `--warn` 文字加图标，绝不用大面积填充。
 
@@ -127,6 +128,7 @@
 ## Keychain 工作区
 
 沿用表格加 Inspector 的模式。列表上方常驻一条横幅，写明加密提供方与"不以明文落盘"的保证，因为 `#keychain-policy` 现在是个没人会看到的空文本节点。列为 Name、Type、SHA256 指纹、Host count、Created。Inspector 里私钥以只读 mono 块呈现并带有效性徽章，单独一行说明私钥与口令在重新编辑时永不回显，保留拖拽导入目标，并提供公钥的复制与下载。
+  - **2026-09-24 执行时更正：** `#keychain-policy` 并不是一个隐形的空节点 —— `features/keychain.ts` 在能力解析后会用两句话之一写入它。它仍被提升为横幅，因为标题下面一行小字，和一条用户看得见的保证，不是同一件事。
 
 ## 终端与 SFTP
 

@@ -114,7 +114,8 @@ Weights reduce from `400/600/650/700/750/800` to `400/500/600/700`; values such 
 
 ## Hosts workspace
 
-Header row is title, count metadata, search (with a `Ctrl K` hint), primary action and the view toggle. The default view is a five-column grid over the existing `<ul>`: Name (avatar plus label), Address, User, Auth, Last connected. The Auth column distinguishes `keychain` from a local file and shows the algorithm, because that is the fact that decides whether a host is usable. Card view remains a toggle.
+Header row is title, count metadata, search (with a `Ctrl K` hint), primary action and the view toggle. The default view is a five-column grid over the existing `<ul>`: Name (avatar plus label), Address, User, Auth, Last connected.
+  - **Corrected 2026-09-24, at execution:** the fifth column is **Updated**, not "Last connected". `HostRecord` carries `updatedAt`, which the session store writes on save, and no last-connection timestamp exists anywhere in the protocol or the Host. Adding one is a `@pureterm/protocol` change with its own plan. The Auth column distinguishes `keychain` from a local file and shows the algorithm, because that is the fact that decides whether a host is usable. Card view remains a toggle.
 
 Selection is `--ac-bg` plus a 2px accent bar on the left edge; hover raises the row one surface step. Legacy or risky material such as a `ssh-dss` key or a changed host fingerprint uses `--warn` text and an icon, never a filled block.
 
@@ -126,7 +127,8 @@ Address and port become two fields in one row with a live resolved target beneat
 
 ## Keychain workspace
 
-Same table plus Inspector pattern. A persistent banner above the list states the encryption provider and the never-plaintext guarantee, because `#keychain-policy` is currently an empty text node that no user ever sees. Columns are Name, Type, SHA256 fingerprint, Host count, Created. The Inspector shows the PEM body in a read-only mono block with a validity badge, states in its own line that private key and passphrase are never echoed back on re-edit, keeps the drop-to-import target, and offers copy and download of the public key.
+Same table plus Inspector pattern. A persistent banner above the list states the encryption provider and the never-plaintext guarantee, because `#keychain-policy` is currently an empty text node that no user ever sees.
+  - **Corrected 2026-09-24, at execution:** `#keychain-policy` was not an invisible empty node — `features/keychain.ts` writes it with one of two strings once capabilities resolve. It was still promoted to a banner, because a line of small text under a heading is not the same thing as a guarantee the user can see. Columns are Name, Type, SHA256 fingerprint, Host count, Created. The Inspector shows the PEM body in a read-only mono block with a validity badge, states in its own line that private key and passphrase are never echoed back on re-edit, keeps the drop-to-import target, and offers copy and download of the public key.
 
 ## Terminal and SFTP
 

@@ -33,16 +33,16 @@ The pattern is `/#[0-9a-fA-F]{3,8}\b|\brgba?\(/`, applied to each partial with c
 | # | Partial | Bytes (working tree) | Responsibility |
 | --- | --- | --- | --- |
 | 1 | `styles/fonts.css` | 2,469 | Bundled faces. The only file that may name a family in a face declaration. |
-| 2 | `styles/tokens.css` | 5,819 | The token system and the theme groups. |
+| 2 | `styles/tokens.css` | 5,992 | The token system and the theme groups. |
 | 3 | `styles/base.css` | 3,004 | Element defaults: reset, inherited type, buttons and inputs, focus rings, reduced motion. |
-| 4 | `styles/chrome.css` | 8,568 | Application shell: the `#app` grid, top bar, workspace and session tabs, navigation rail, status bar, and the state classes on `.app-shell`. |
-| 5 | `styles/hosts.css` | 7,649 | Hosts dashboard: page header, search row, toolbar, and the card and list shapes. |
-| 6 | `styles/inspector.css` | 7,471 | Connection form: drawer shell, header, sections, fields, footer, and the shared controls the keychain editor reuses. |
-| 7 | `styles/keychain.css` | 6,472 | Keychain library and editor over the shared host-card language. |
+| 4 | `styles/chrome.css` | 9,082 | Application shell: the `#app` grid, top bar, workspace and session tabs, navigation rail, status bar, and the state classes on `.app-shell`. |
+| 5 | `styles/hosts.css` | 8,997 | Hosts dashboard: page header, search row, toolbar, and the table and card shapes a saved host renders in. |
+| 6 | `styles/inspector.css` | 7,299 | Connection form: the docked editor shell and its header, sections, fields and footer, plus the shared controls the keychain editor reuses. |
+| 7 | `styles/keychain.css` | 8,180 | Keychain library and editor over the shared host-table language. |
 | 8 | `styles/terminal.css` | 5,283 | Terminal surface: the xterm pane and its overrides, the session toolbar, the SFTP drawer. |
 | 9 | `styles/states.css` | 3,683 | Nothing-to-show and something-went-wrong: empty placeholder, shortcuts dialog, connection-failure page. |
 
-The size column is a working-tree measurement taken on Windows, and it is labelled that way because it does not reproduce everywhere: `core.autocrlf` is `true` and there is no `.gitattributes`, so the committed blobs are LF while seven of these nine files carry CRLF on disk. A checkout that keeps the blob form reads each of those seven smaller by exactly its line count — `tokens.css` 168, `base.css` 73, `chrome.css` 190, `hosts.css` 89, `inspector.css` 92, `keychain.css` 72, `states.css` 45 — while `fonts.css` and `terminal.css` are stored with LF endings already and read identically. `style.css` itself is CRLF and 1,363 bytes on disk against a 1,340-byte blob. Treat the numbers as an indication of how much each role carries, not as a checksum.
+The size column is a working-tree measurement taken on Windows, and it is labelled that way because it does not reproduce everywhere: `core.autocrlf` is `true` and there is no `.gitattributes`, so the committed blobs are LF while seven of these nine files carry CRLF on disk. A checkout that keeps the blob form reads each of those seven smaller by exactly its line count — `tokens.css` 171, `base.css` 73, `chrome.css` 196, `hosts.css` 103, `inspector.css` 88, `keychain.css` 93, `states.css` 45 — while `fonts.css` and `terminal.css` are stored with LF endings already and read identically. `style.css` itself is CRLF and 1,363 bytes on disk against a 1,340-byte blob. Treat the numbers as an indication of how much each role carries, not as a checksum.
 
 The manifest owns cascade order because partials compete at equal specificity and the later import wins. That is why no partial may `@import`: a nested import would decide order in nine places instead of one, and `visual-contract.test.mjs` asserts `!/@import/` against every partial's own text. The order itself is pinned by the same test, which asserts the exact name list `['fonts', 'tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states']` — and derives it from the manifest through `packages/ui/tests/partial-list.mjs` rather than a second copy of the file, so adding, renaming or reusing a partial fails until the assertion is edited with intent.
 
@@ -52,7 +52,7 @@ The manifest owns cascade order because partials compete at equal specificity an
 
 All values below are read from `packages/ui/src/styles/tokens.css`. The dark column is the `:root` group, the light column the `[data-theme="light"]` group.
 
-`:root` declares 75 custom properties. The light group redeclares 40 of them — the 35 theme colours, the 4 terminal tokens, and `--shadow-pop` — and declares nothing new. The arithmetic below is what `design-tokens.test.mjs` enforces under both selectors, and it is the shape of the file rather than an accident of it: 6 surface steps + 3 line steps + 4 text steps + 8 accent and status + 14 translucent steps = 35 colours, + 4 terminal + 24 metrics + 10 type + 2 derived (`--ring`, `--shadow-pop`) = 75.
+`:root` declares 76 custom properties. The light group redeclares 40 of them — the 35 theme colours, the 4 terminal tokens, and `--shadow-pop` — and declares nothing new. The arithmetic below is what `design-tokens.test.mjs` enforces under both selectors, and it is the shape of the file rather than an accident of it: 6 surface steps + 3 line steps + 4 text steps + 8 accent and status + 14 translucent steps = 35 colours, + 4 terminal + 25 metrics + 10 type + 2 derived (`--ring`, `--shadow-pop`) = 76.
 
 ### Surface ramp
 
@@ -158,7 +158,7 @@ Theme-invariant: `:root` and `[data-theme="light"]` match the same element, so t
 | Row heights | `--row-h: 38px`, `--row-h-compact: 30px` |
 | Z-index | `--z-drawer: 20`, `--z-popover: 30`, `--z-toast: 40`, `--z-dialog: 50` |
 | Motion | `--t-1: 100ms`, `--t-2: 160ms`, `--t-3: 240ms`, `--ease: cubic-bezier(0.2, 0.8, 0.2, 1)` |
-| Chrome geometry | `--chrome-h: 40px`, `--rail-w: 52px`, `--status-h: 24px` |
+| Chrome geometry | `--chrome-h: 40px`, `--rail-w: 52px`, `--status-h: 24px`, `--insp-w: 322px` |
 | Focus ring | `--ring: 0 0 0 2px var(--c-canvas), 0 0 0 4px var(--ac)` |
 | Pop shadow | `--shadow-pop: 0 8px 24px -6px rgba(0, 0, 0, 0.5)` dark, `0 8px 24px -6px rgba(16, 24, 40, 0.28)` light |
 
@@ -177,20 +177,20 @@ The three geometry steps are the reason a shell height is written once. `--chrom
 | `--font-ui` | `Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif` | 1 `var()`: `body` in `base.css` |
 | `--font-mono` | `"JetBrains Mono", "Cascadia Mono", Consolas, monospace` | 8 `var()` across `base`, `chrome`, `hosts`, `inspector`, `terminal`, `states` |
 | `--font-term` | `"Cascadia Mono", Consolas, "Sarasa Mono SC", "Microsoft YaHei Mono", monospace` | 1 `read()` in `terminal-view.ts` |
-| `--fs-micro` | `11px` | 11 `var()` |
-| `--fs-meta` | `12px` | 17 `var()` |
+| `--fs-micro` | `11px` | 13 `var()` |
+| `--fs-meta` | `12px` | 18 `var()` |
 | `--fs-ui` | `13px` | 7 `var()` |
 | `--fs-em` | `14px` | 6 `var()` |
 | `--fs-h2` | `16px` | 4 `var()` |
 | `--fs-h1` | `20px` | 1 `var()` |
 | `--fs-term` | `13.5px` | none — see [known gaps](#known-gaps) |
 
-This is a census rather than a promise: the seven content partials hold 359 `var()` references, `tokens.css` holds 3 more inside its own derived values, and `terminal-view.ts` makes 6 `read()` calls. What is wired and what the screens still owe:
+This is a census rather than a promise: the seven content partials hold 380 `var()` references, `tokens.css` holds 3 more inside its own derived values, and `terminal-view.ts` makes 6 `read()` calls. What is wired and what the screens still owe:
 
 - **Colours: 32 of 35 have a call site.** The three that do not are `--overlay-soft`, `--overlay-press` and `--ac-focus` — a resting lift, a pressed lift, and the focus ring's second stop, all of which need a control to sit on before they mean anything.
 - **Type: all 10 accounted for**, the three fonts plus six of seven `--fs-*` steps; `--fs-term` is the exception and is recorded in [Known gaps](#known-gaps).
 - **Terminal: 1 CSS consumer, 4 TS reads.** `--term-bg` is painted by `terminal.css:6` as well as read by xterm, which is the seam the comment above that rule explains; the other three reach the page only through `getComputedStyle`, so no CSS guard can see them and `terminal-theme.test.mjs` is the tie.
-- **Metrics: 60 references across the five radii, `--ease` and the three chrome steps, and 13 tokens with none** — the six spacing steps, the four z-index stops and the three durations. Both row heights sit between the two categories: `--row-h` and `--row-h-compact` have no partial call site beyond the `[data-density="compact"]` rule that maps one onto the other, and the chrome reads neither. The durations are the one place where "no consumer" is not neutral: the partials do set them, and they set them as literals — `180ms` in `base.css`, `hosts.css`, `inspector.css` and `terminal.css`, `160ms` in `keychain.css` — so the curve is tokenised while the number beside it is off the ladder, 20ms away from `--t-2`.
+- **Metrics: 62 references across the five radii, `--ease`, the four chrome steps and `--row-h`, and 13 tokens with none** — the six spacing steps, the four z-index stops and the three durations. `--row-h` gained call sites when both tables adopted it as their row height, so the ladder the compact density remap feeds on is now live; `--row-h-compact` still has no consumer beyond the `[data-density="compact"]` rule that maps onto it. The durations are the one place where "no consumer" is not neutral: the partials do set them, and they set them as literals — `180ms` in `base.css`, `hosts.css`, `inspector.css` and `terminal.css`, `160ms` in `keychain.css` — so the curve is tokenised while the number beside it is off the ladder, 20ms away from `--t-2`.
 - **Derived: `--ring` has two call sites** (`base.css` for focus, `chrome.css` for the rail's own ring) **and `--shadow-pop` one** (the failure dialog's popover), which is thin but not zero, and both are measured by the pairs they are built from.
 
 ### Legality is per ground and per theme

@@ -33,16 +33,16 @@
 | # | 分片 | 字节（工作副本） | 职责 |
 | --- | --- | --- | --- |
 | 1 | `styles/fonts.css` | 2,469 | 随包分发的字面。唯一可以在字面声明里写出字体族名的文件。 |
-| 2 | `styles/tokens.css` | 5,819 | Token 体系与主题组。 |
+| 2 | `styles/tokens.css` | 5,992 | Token 体系与主题组。 |
 | 3 | `styles/base.css` | 3,004 | 元素默认值：重置、继承的字号、按钮与输入框、焦点环、reduced motion。 |
-| 4 | `styles/chrome.css` | 8,568 | 应用外壳：`#app` 网格、顶栏、工作区与会话标签、导航轨道、状态栏，以及 `.app-shell` 上的状态类。 |
-| 5 | `styles/hosts.css` | 7,649 | 主机面板：页面标题、搜索行、工具栏，以及卡片与列表形态。 |
-| 6 | `styles/inspector.css` | 7,471 | 连接表单：抽屉外壳与标题栏、分区、字段、底栏，以及密钥库编辑器复用的共享控件。 |
-| 7 | `styles/keychain.css` | 6,472 | 在共享主机卡片语言之上的密钥库与编辑器。 |
+| 4 | `styles/chrome.css` | 9,082 | 应用外壳：`#app` 网格、顶栏、工作区与会话标签、导航轨道、状态栏，以及 `.app-shell` 上的状态类。 |
+| 5 | `styles/hosts.css` | 8,997 | 主机面板：页面标题、搜索行、工具栏，以及已保存主机所渲染出的表格与卡片形态。 |
+| 6 | `styles/inspector.css` | 7,299 | 连接表单：嵌入的编辑面外壳与标题栏、分区、字段、底栏，以及密钥库编辑器复用的共享控件。 |
+| 7 | `styles/keychain.css` | 8,180 | 在共享主机表格语言之上的密钥库与编辑器。 |
 | 8 | `styles/terminal.css` | 5,283 | 终端表面：xterm 面板及其覆盖样式、会话工具栏、SFTP 抽屉。 |
 | 9 | `styles/states.css` | 3,683 | 无内容与非正常：空占位、快捷键对话框、连接失败页面。 |
 
-这一列字节取自 Windows 上的工作副本，并且刻意这样标注，因为它并非到处都能复现：`core.autocrlf` 为 `true`，仓库里又没有 `.gitattributes`，于是提交的 blob 是 LF，而这里九个文件里有七个在磁盘上是 CRLF。保留 blob 形态的检出会读到每个这样的文件恰好少它的行数 —— `tokens.css` 168、`base.css` 73、`chrome.css` 190、`hosts.css` 89、`inspector.css` 92、`keychain.css` 72、`states.css` 45 —— 而 `fonts.css` 与 `terminal.css` 本身已按 LF 存储，两处读数一致。`style.css` 自己也是 CRLF，磁盘上 1,363 字节对 blob 的 1,340 字节。把这些数字当作每个职责承载了多少的一个量级参考，不要当作校验和。
+这一列字节取自 Windows 上的工作副本，并且刻意这样标注，因为它并非到处都能复现：`core.autocrlf` 为 `true`，仓库里又没有 `.gitattributes`，于是提交的 blob 是 LF，而这里九个文件里有七个在磁盘上是 CRLF。保留 blob 形态的检出会读到每个这样的文件恰好少它的行数 —— `tokens.css` 171、`base.css` 73、`chrome.css` 196、`hosts.css` 103、`inspector.css` 88、`keychain.css` 93、`states.css` 45 —— 而 `fonts.css` 与 `terminal.css` 本身已按 LF 存储，两处读数一致。`style.css` 自己也是 CRLF，磁盘上 1,363 字节对 blob 的 1,340 字节。把这些数字当作每个职责承载了多少的一个量级参考，不要当作校验和。
 
 清单拥有级联顺序，因为各分片在同一特异度下相互竞争，后导入者获胜。这正是任何分片都不得 `@import` 的原因：嵌套导入会把顺序决定权分散到九个地方，而 `visual-contract.test.mjs` 会对每个分片自己的文本断言 `!/@import/`。顺序本身由同一条测试钉住：它断言的名字列表恰好是 `['fonts', 'tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states']` —— 并且这份列表是透过 `packages/ui/tests/partial-list.mjs` 从清单本身推导出来的，不是第二份拷贝，所以新增、改名或调换顺序都必须带着一份明确的意图去改动那条断言。
 
@@ -52,7 +52,7 @@
 
 以下所有取值都读自 `packages/ui/src/styles/tokens.css`。深色列是 `:root` 组，浅色列是 `[data-theme="light"]` 组。
 
-`:root` 声明了 75 个自定义属性。浅色组重声明其中 40 个 —— 35 个主题色、4 个终端 token，加上 `--shadow-pop` —— 并且不新增任何东西。下面这笔账正是 `design-tokens.test.mjs` 在选择器两边各自强制的东西，而且它就是文件的形状，不是巧合：6 级表面 + 3 档线色 + 4 档文字 + 8 个强调与语义色 + 14 道半透明档 = 35 个颜色，+ 4 个终端 + 24 个度量 + 10 个字体类 + 2 个派生（`--ring`、`--shadow-pop`）= 75。
+`:root` 声明了 76 个自定义属性。浅色组重声明其中 40 个 —— 35 个主题色、4 个终端 token，加上 `--shadow-pop` —— 并且不新增任何东西。下面这笔账正是 `design-tokens.test.mjs` 在选择器两边各自强制的东西，而且它就是文件的形状，不是巧合：6 级表面 + 3 档线色 + 4 档文字 + 8 个强调与语义色 + 14 道半透明档 = 35 个颜色，+ 4 个终端 + 25 个度量 + 10 个字体类 + 2 个派生（`--ring`、`--shadow-pop`）= 76。
 
 ### 表面阶梯
 
@@ -158,7 +158,7 @@
 | 行高 | `--row-h: 38px`、`--row-h-compact: 30px` |
 | 层叠 | `--z-drawer: 20`、`--z-popover: 30`、`--z-toast: 40`、`--z-dialog: 50` |
 | 动效 | `--t-1: 100ms`、`--t-2: 160ms`、`--t-3: 240ms`、`--ease: cubic-bezier(0.2, 0.8, 0.2, 1)` |
-| 外壳几何 | `--chrome-h: 40px`、`--rail-w: 52px`、`--status-h: 24px` |
+| 外壳几何 | `--chrome-h: 40px`、`--rail-w: 52px`、`--status-h: 24px`、`--insp-w: 322px` |
 | 焦点环 | `--ring: 0 0 0 2px var(--c-canvas), 0 0 0 4px var(--ac)` |
 | 浮层阴影 | `--shadow-pop: 0 8px 24px -6px rgba(0, 0, 0, 0.5)`（深色），`0 8px 24px -6px rgba(16, 24, 40, 0.28)`（浅色） |
 
@@ -177,20 +177,20 @@
 | `--font-ui` | `Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif` | 1 处 `var()`：`base.css` 的 `body` |
 | `--font-mono` | `"JetBrains Mono", "Cascadia Mono", Consolas, monospace` | 8 处 `var()`，分布于 `base`、`chrome`、`hosts`、`inspector`、`terminal`、`states` |
 | `--font-term` | `"Cascadia Mono", Consolas, "Sarasa Mono SC", "Microsoft YaHei Mono", monospace` | `terminal-view.ts` 里 1 处 `read()` |
-| `--fs-micro` | `11px` | 11 处 `var()` |
-| `--fs-meta` | `12px` | 17 处 `var()` |
+| `--fs-micro` | `11px` | 13 处 `var()` |
+| `--fs-meta` | `12px` | 18 处 `var()` |
 | `--fs-ui` | `13px` | 7 处 `var()` |
 | `--fs-em` | `14px` | 6 处 `var()` |
 | `--fs-h2` | `16px` | 4 处 `var()` |
 | `--fs-h1` | `20px` | 1 处 `var()` |
 | `--fs-term` | `13.5px` | 无 —— 见[已知缺口](#已知缺口) |
 
-这是一份普查而不是承诺：七个内容分片持有 359 处 `var()` 引用，`tokens.css` 在自己的派生值里另有 3 处，`terminal-view.ts` 做出 6 次 `read()` 调用。已经接通的、以及各屏还欠的：
+这是一份普查而不是承诺：七个内容分片持有 380 处 `var()` 引用，`tokens.css` 在自己的派生值里另有 3 处，`terminal-view.ts` 做出 6 次 `read()` 调用。已经接通的、以及各屏还欠的：
 
 - **颜色：35 个里有 32 个有调用点。** 没有的那三个是 `--overlay-soft`、`--overlay-press` 与 `--ac-focus` —— 一个静止提升、一个按下提升、一个焦点环第二档，它们都得先有一个能承载它们的控件才有意义。
 - **字体类：10 个全部有交代**，三套字体栈加七档 `--fs-*` 里的六档；例外是 `--fs-term`，记在[已知缺口](#已知缺口)里。
 - **终端：1 个 CSS 消费者，4 次 TS 读取。** `--term-bg` 如今既被 xterm 读取，也被 `terminal.css:6` 绘制，这两者之间的接缝正是那条规则上方注释解释的内容；其余三个只经 `getComputedStyle` 抵达页面，任何 CSS 守卫都看不见它们，`terminal-theme.test.mjs` 是那根连线。
-- **度量：五档圆角、`--ease` 与三道外壳几何合计 60 个引用，另有 13 个 token 一个都没有** —— 六道间距、四档层叠、三段时长。两个行高落在两类之间：`--row-h` 与 `--row-h-compact` 除了那条把前者映射到后者的 `[data-density="compact"]` 规则之外没有分片调用点，而外壳两个都不读。时长是唯一一处"没有消费者"并不中立的：分片确实在设时长，设的却是字面量 —— `base.css`、`hosts.css`、`inspector.css`、`terminal.css` 里的 `180ms`，`keychain.css` 里的 `160ms` —— 于是曲线走了 token，紧挨着它的数字却站在刻度之外，离 `--t-2` 差 20ms。
+- **度量：五档圆角、`--ease`、四道外壳几何与 `--row-h` 合计 62 个引用，另有 13 个 token 一个都没有** —— 六道间距、四档层叠、三段时长。两张表都把行高交给 `--row-h` 之后它就有了调用点，紧凑密度所重映射的那把刻度于是是活的；`--row-h-compact` 除了被那条映射规则读取之外仍无分片调用点。`--row-h` 与 `--row-h-compact` 除了那条把前者映射到后者的 `[data-density="compact"]` 规则之外没有分片调用点，而外壳两个都不读。时长是唯一一处"没有消费者"并不中立的：分片确实在设时长，设的却是字面量 —— `base.css`、`hosts.css`、`inspector.css`、`terminal.css` 里的 `180ms`，`keychain.css` 里的 `160ms` —— 于是曲线走了 token，紧挨着它的数字却站在刻度之外，离 `--t-2` 差 20ms。
 - **派生：`--ring` 有两个调用点**（焦点在 `base.css`，轨道自身的焦点环在 `chrome.css`），**`--shadow-pop` 有一个**（失败对话框的浮层在 `states.css`），这很单薄但不是零，而且两者都由构成它们的那几对取值来计量。
 
 ### 合法性是按底面、按主题判定的
