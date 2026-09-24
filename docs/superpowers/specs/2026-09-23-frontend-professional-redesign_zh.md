@@ -143,6 +143,11 @@ SFTP 面板改为四列表格：Name、Size、Mode（八进制）、Modified，�
 路由从两个点扩为四个节点（本机、TCP、密钥交换、认证），失败处画成红色虚线段。日志变成带不可选中行号的 `--c-inset` mono 块，错误行着以 `--err`。操作区是重新连接、编辑主机、复制日志，外加那一行建议。
 
 若某次失败无法归类，路由塌成单个失败节点，页面退化为纯日志块。这样整个能力都留在 `@pureterm/ui` 内部。
+  - **2026-09-24 执行时更正（四节合并）：** 以下四条同时适用于本节与「终端与 SFTP」「状态与反馈」两节。
+    1. **每行传输进度做不出来。** `SshApi.sftp.write`（`packages/protocol/src/protocol.ts:291`）一次性收整个文件的 `Uint8Array` 并 resolve 一次，`EVENTS`（`:47`）只带 `terminal:*` —— 没有进度通道，也没有可推出进度的分块上传。面包屑与模式列照计划落地（后者来自 `SftpEntry.mode`，栈一直带着它，屏幕从没画过），而字节级进度成为后续协议事项，而不是一根靠猜的条子。
+    2. **「取代硬编码的 `grid-template-rows`」漏了一件事：** `#sftp` 当时同时背着两套布局机制 —— `terminal.css:12` 的绝对定位抽屉与 `:53` 的网格子元覆盖 —— 而只有后者会被画出来。取代一种机制意味着删掉旧的。分栏在窄屏上还与约束清单第 5 条的方向相反：两栏各自的下界合起来是 465px，任何手机宽度都装不下，所以 820px 以下文件表回到终端下方，握把改到另一个轴上。
+    3. **画出四个节点，归类出七个阶段，两者之间的折叠必须写在一个地方：** `packages/ui/src/failure-diagnostics.ts` 里的 `NODE_OF`。没有它，渲染就会拿七元数组的下标去点四元 DOM，于是 TCP 失败点亮「密钥交换」—— 那是一页指错地方的诊断。`address` 与 `handshake` 折进 TCP 那一格（坏的是管子，密钥交换根本没开始），`session` 折到最后一格之外（四格全绿，因为登录确实成功了）。塌缩情形按计划落地；分类表由一次对宿主每条 `new Error()` 的清点钉住。
+    4. **toast 没有取代全部 `#status`。** 那三处里有三处不是事件通报：`hosts.ts` 往 `#status` 写的是常驻说明（「填好地址和用户名后点保存」），并在提交失败后把焦点送到出错的字段；`keychain.ts` 那行是对上方字段的校验。一条五秒后自我消失的通知不能当说明书用，而关于「你光标马上要去的那个字段」的提示就该在那个字段旁边。toast 接走的是已完成的事件 —— 保存、删除、后台标签连上了、连上之后保存失败 —— 最后这一处两遍都写。
 
 ## 状态与反馈
 
@@ -181,6 +186,7 @@ packages/ui/src/styles/states.css    骨架、四态、toast、dialog
 2. CSP 保持 `script-src 'self'`，所以常规的首帧前置内联主题脚本这条路不可用。`index.html` 静态声明 `data-theme="dark"`，由最早的模块同步套用存储值，代价是浅色用户在 Desktop 上会看到一帧闪烁。
 3. xterm 在插件加载时就测量单元盒宽度，尚未加载完的 webfont 会算出错误的字形宽度。与其往 `services/terminal.ts` 及其 `ResizeObserver` 驱动的 `fit()` 里加一道 `document.fonts` 门，本轮终端沿用系统 mono 栈。
 4. 所有 id 都是承重的：`ClientView` 遇到缺失 id 会抛异常（`packages/ui/src/client-runtime.ts:55-65`）。不改任何 id 名。生命周期测试断言的行为类名 —— `.host-row`、`.host-main`、`.session-tab`、`.keychain-card`、`#host-list.list-view`、`aria-pressed`、`[data-tab-close]` —— 全部保留，让既有覆盖率继续有意义，而不是被改写成迎合新 markup。
+  - **2026-09-24 执行时更正：** 这些名字里有一个没活下来：计划四把 `#host-list.list-view` 换成了以 `card-view` 作为被添加的那个类，因为「默认是卡片」这个命名把一个已经是默认的状态说出来，反而把表格成了例外。生命周期套件现在断言的是反过来的一对；`[data-tab-close]`、`.host-row`、`.host-main`、`.keychain-card` 与 `aria-pressed` 全部保留。
 5. 断点从五个（1250/1450/900/820/620）加一条容器查询合并为三个（1100/820/620）：1100 以下 Inspector 变窄，820 以下它全宽覆盖且 SFTP 落到终端下方，620 以下顶栏去掉上下文标签。
 
 ## 测试与验证

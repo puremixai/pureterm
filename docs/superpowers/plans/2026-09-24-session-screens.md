@@ -1470,3 +1470,29 @@ Collected here so none of them gets quietly dropped between tasks:
 - A real transfer-progress channel, cipher/host-key-type/uptime on the session payload, and last-connected — all three need a `@pureterm/protocol` change and the consumer sweep that comes with it.
 - Installer and taskbar icons.
 - The mobile drawer below 620px, recorded as a gap by Plan 4's review.
+
+---
+
+## What execution found
+
+Tasks 1-8 landed as nine commits: `4ec122d` two columns, `d8bd385` the grip and the duration ladder, `c30db3c` the file table, `536cec0` the breadcrumb, `ab1eaab` + `16caff0` the classifier and its census, `5db90c9` the four-node route, `995c13d` toasts, `cc4efab` the four states and the structural guard, plus `5e99898` reconciling this plan with what measuring had found. Four deviations from the plan text, all of them the plan being wrong:
+
+- **`client/split-change` was dropped.** The ratio is written and read by one service; `session-change` and `tab-closed` already fan into `sync()`. An event that announces a value to its only producer is a thing a later reader has to trace for no gain.
+- **The 820px stack rule was not in the plan at all.** Measuring at a 447px viewport showed the two columns landing on their own minimum floors — 465px of content in a 447px window. Removing the row layout needed a replacement for the width the spec reserves it for.
+- **180ms went to `--t-2`, not `--t-3`.** The plan said 240ms; 180 is 20ms from `--t-2` and 60ms from `--t-3`, and two different rungs would have split the host card's transition from the key card's.
+- **The file table needed a container query the plan had not foreseen.** Size, mode and modified occupy 254px of fixed tracks while the grip's clamp lets the pane reach its 220px floor.
+
+**Six defects found and fixed, two of which only measurement could reach.**
+
+- A file row written at `min-height: 28px` rendered **39px**, because `base.css` floors every `button` at 38px. This is the third time in this redesign that property pair has beaten a written height (the nav item in Plan 3, the density switch in Plan 4), and it is now guarded the same way.
+- The failure log had a rule tinting `.failure-log-entry i` — an element the log never built. **No error line had ever been coloured.** The rows now carry real markers, so the rule is live and the failing line takes `--err` (5.09:1 light, 5.90:1 dark against the inset ground).
+- The log's gutter numbers were going to be `--tx-3`, which measures **4.16:1** on `--c-inset`; they are `--tx-2`. Found by computing before shipping, not after.
+- The failure avatar was a **third** avatar size (60px) carrying the 20px chip's corner. Now 58px at `--r-4`, matching both library cards.
+- **`999px` was written twice**, not once: the route node and `.tab-state-dot` in the shipped chrome. The new `doesNotMatch` guard found the second one on its first run.
+- The four drawn nodes index a seven-entry stage list. Without `NODE_OF` a TCP failure lights the key-exchange node. Caught by the plan's own reviewer before the code was written.
+
+**The most instructive finding is a hole in the guardrails, not in the UI.** While inserting the toast styles I replaced `.empty { margin: 12px;` instead of preceding it. The result was a bare declaration at zero depth: esbuild emitted it, the browser discarded it, and **60 guards stayed green over a rule that had silently stopped existing.** `stylesheet-contract.test.mjs` now reads every partial for brace balance and for a declaration outside any block, and was tested against the exact breakage — its first version counted braces per line and misfired on this codebase's one-line rules, so the shipped version asks only the question that distinguishes the failure. The census script that found three paraphrased host messages is likewise now a permanent test rather than a scratch tool.
+
+**What could not be checked, and why that matters.** Screenshots remained unavailable throughout (`visibilityState=hidden`), so every colour and geometry claim here is read from `getComputedStyle`, with transitions disabled before the light-theme readings. Narrow widths were probed by forcing container widths and by the viewport the in-app browser happened to offer (it drifted from 1080px to 354px across the session), never by resizing a real window; the desktop window at 100% and 125% scaling is still unmeasured. **No real SSH session was ever opened in this environment**, so the split, the grip drag, the file table and the breadcrumb were measured against the live cascade with synthetic rows, and the route was verified only in the fake-API renderer suite — which does exercise the real DOM and the real event path, but not a real server. The `smoke-client-lifecycle.mjs` harness strips the stylesheet link, so geometry assertions cannot live there at all; an early version of the file-table test asserted header alignment through `getComputedStyle` and could only ever have reported the unstyled default. The keychain list never received a real key here, so its table remains measured on a draft row.
+
+`npm run verify` and `npm run verify:electron` both exit 0; 61 UI guards pass, including assertions spread across five files - two of them brand new (`failure-diagnostics.test.mjs` and `host-message-census.test.mjs`) - namely `visual-contract`, `stylesheet-contract`, `design-tokens` and those two, and four negative tests were run to confirm the new guards can fail.

@@ -135,6 +135,8 @@ Same table plus Inspector pattern. A persistent banner above the list states the
 `session-content` becomes a horizontal split with a 5px draggable grip between terminal and SFTP, replacing the hard-coded `grid-template-rows: minmax(120px,1fr) minmax(160px,40%)`. The grip widens its own hit area, the middle bar turns accent on hover, and the ratio persists for the session.
 
 The SFTP panel becomes a four-column table: Name, Size, Mode as octal, Modified, with a breadcrumb path, row-level transfer progress, and right-aligned `tabular-nums` numerics.
+  - **Corrected 2026-09-24, at execution:** row-level transfer progress is not representable over the current contract. `SshApi.sftp.write` (`packages/protocol/src/protocol.ts:291`) takes the whole file as one `Uint8Array` and resolves once, and `EVENTS` (`:47`) carries only `terminal:*` — there is no progress channel and no chunked upload to derive one from. The breadcrumb and the mode column shipped (the latter from `SftpEntry.mode`, which the stack had always carried and the screen had never shown); byte-level progress becomes a protocol item for a later plan rather than a bar that guesses.
+  - **Corrected 2026-09-24, at execution:** "replacing the hard-coded `grid-template-rows`" left `#sftp` carrying two layout mechanisms at once — the absolute drawer rule at `terminal.css:12` and the grid-child override at `:53` — and only the second was ever painted. Replacing a mechanism means deleting the old one. The split is also `max-width: 820px`-conditional in the other direction from what the constraint list implies: two columns at their own minimum floors are 465px wide, which no phone-width window holds, so below 820 the file table stacks under the terminal and the grip moves to the other axis.
 
 ## Failure diagnostics
 
@@ -143,12 +145,14 @@ The SFTP panel becomes a four-column table: Name, Size, Mode as octal, Modified,
 The route grows from two dots to four nodes (local, TCP, key exchange, authentication) with a dashed red link at the failure point. The log becomes a `--c-inset` mono block with non-selectable line numbers and error lines tinted `--err`. Actions are retry, edit host, copy log, plus the suggestion line.
 
 If a stage cannot be classified, the route collapses to a single failure node and the page degrades to the log block. This keeps the whole feature inside `@pureterm/ui`.
+  - **Corrected 2026-09-24, at execution:** four drawn nodes, seven classified stages, and the fold between them had to be written down somewhere — `NODE_OF` in `packages/ui/src/failure-diagnostics.ts`. Without it the renderer indexes a seven-entry list with a four-node DOM and a TCP failure lights the key-exchange node, which is a diagnostics page that points at the wrong place. `address` and `handshake` fold onto the TCP node (the pipe is what failed, key exchange never began) and `session` folds past the last node (all four are green, because login did work). The collapse case shipped as specified; the classifier is pinned by a census over every `new Error()` the host can raise.
 
 ## States and feedback
 
 Every list gets four states: loading skeleton (shimmer rows at the real 38px height so nothing jumps on arrival, `aria-hidden` plus one polite status line), empty (icon, one-line explanation, the action that resolves it), error (backend unavailable versus a single failed operation), and degraded (a capability is off, such as Keychain being unavailable, while the rest works).
 
 A bottom-right toast replaces the scattered `#status` text nodes: 2px semantic bar, title, one mono detail line, auto-dismiss. `role="status"` for normal notices and `role="alert"` for failures.
+  - **Corrected 2026-09-24, at execution:** three of those text nodes were not event notifications and stayed where they were. `hosts.ts` writes a standing instruction into `#status` ("fill in the address and username, then press Save") and follows a failed submit by focusing the offending field; `keychain.ts` validates against the field above its line. A notice that removes itself in five seconds cannot be a 说明书, and a prompt about the field your cursor is about to move to belongs beside that field. Toasts took the completed events — saved, deleted, a background tab that connected, a save that failed after a successful connect — and the save-failure line now reads both places at once.
 
 ## Assets and dependencies
 
@@ -181,6 +185,7 @@ No `@layer`: esbuild flattens the imports, so file order already is the preceden
 2. CSP keeps `script-src 'self'`, so the usual pre-paint inline theme script is unavailable. `index.html` statically declares `data-theme="dark"` and the earliest module applies the stored value, which leaves a one-frame flash for light users on Desktop only.
 3. xterm measures the cell box when the addon loads, and a webfont that has not finished loading produces wrong glyph widths. Rather than add a `document.fonts` gate into `services/terminal.ts` and its `ResizeObserver`-driven `fit()`, the terminal keeps the system mono stack this round.
 4. Every id is load-bearing: `ClientView` throws on a missing id (`packages/ui/src/client-runtime.ts:55-65`). No id is renamed. Behavioural class names asserted by the lifecycle test — `.host-row`, `.host-main`, `.session-tab`, `.keychain-card`, `#host-list.list-view`, `aria-pressed`, `[data-tab-close]` — are kept so existing coverage stays meaningful instead of being rewritten to match new markup.
+  - **Corrected 2026-09-24, at execution:** one of those names did not survive: Plan 4 retired `#host-list.list-view` in favour of `card-view` as the added class, because a default of "cards" named a state that was already the default and made the table the exception. The lifecycle suite now asserts the inverted pair, and `[data-tab-close]`, `.host-row`, `.host-main`, `.keychain-card` and `aria-pressed` all stayed.
 5. Breakpoints consolidate from five (1250/1450/900/820/620) plus one container query to three (1100/820/620): below 1100 the Inspector narrows, below 820 it overlays full width and SFTP stacks under the terminal, below 620 the top bar drops the context label.
 
 ## Testing and verification

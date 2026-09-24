@@ -196,7 +196,15 @@
   .crumb b { color: var(--tx-1); font-weight: 500; }
   .srow { display: grid; grid-template-columns: minmax(0,1fr) 62px 42px 74px; gap: 8px; align-items: center;
     height: 27px; padding: 0 10px; color: var(--tx-2); font-size: var(--fs-meta); }
-  .srow.h { height: 24px; color: var(--tx-4); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+  /* NOTE, added at execution of Plan 5: this file is the agreed design, not the
+   cascade. Three of its colours were later overruled by a rule the register
+   enforces and this file predates -- `--tx-4` may not be used as text, because it
+   is a non-AA rung (2.25:1 dark, 2.18:1 light), so the two column-header colours
+   and the empty-state lines here now say `--tx-3`. The remaining `--tx-4` uses in
+   this file are labels the shipped screens either do not have or draw elsewhere;
+   `packages/ui/src/styles` is what the guards read, and `docs/design-system.md`
+   is what says why. */
+.srow.h { height: 24px; color: var(--tx-3); font-size: 10.5px /* was --tx-4; the register forbids it as text */; letter-spacing: .06em; text-transform: uppercase;
     border-bottom: 1px solid var(--line-soft); }
   .srow:hover:not(.h) { background: var(--c-raised); }
   .srow .f { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--tx-1); }
@@ -210,7 +218,7 @@
     align-items: center; height: var(--row-h); padding: 0 10px; color: var(--tx-2); font-size: var(--fs-ui);
     background: var(--c-surface); border: 1px solid var(--line-soft); border-radius: var(--r-2); }
   .krow + .krow { margin-top: 3px; }
-  .krow.th { height: 24px; color: var(--tx-4); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+  .krow.th { height: 24px; color: var(--tx-3); font-size: 10.5px /* was --tx-4; the register forbids it as text */; letter-spacing: .06em; text-transform: uppercase;
     background: transparent; border-color: transparent; }
   .krow.sel { background: var(--ac-bg); border-color: var(--ac-line); }
   .kn { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--tx-1); font-weight: 500; }
@@ -243,7 +251,7 @@
     font-style: normal; background: var(--c-surface); border: 1px solid var(--line-strong); border-radius: var(--r-full); }
   .node.done i { color: var(--ok); border-color: var(--ok-line); }
   .node.bad i { color: var(--err); background: var(--err-bg); border-color: var(--err); }
-  .node span { color: var(--tx-4); font-size: 10.5px; line-height: 1.35; text-align: center; }
+  .node span { color: var(--tx-3); font-size: 10.5px /* was --tx-4; the register forbids it as text */; line-height: 1.35; text-align: center; }
   .link { flex: 1; height: 1px; margin: 0 -6px 18px; background: var(--line-strong); }
   .link.bad { background: repeating-linear-gradient(90deg, var(--err) 0 4px, transparent 4px 8px); opacity: .65; }
   .log { max-height: 118px; padding: 9px 0; overflow: hidden; color: var(--tx-3); font-size: var(--fs-micro);
@@ -278,8 +286,8 @@
   .es { display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; height: 118px;
     text-align: center; border: 1px dashed var(--line-strong); border-radius: var(--r-2); }
   .es b { color: var(--tx-2); font-size: var(--fs-meta); font-weight: 500; }
-  .es span { color: var(--tx-4); font-size: var(--fs-micro); line-height: 1.5; }
-  .es .ic { display: grid; place-items: center; width: 26px; height: 26px; color: var(--tx-4); font-size: var(--fs-micro);
+  .es span { color: var(--tx-3); font-size: var(--fs-micro) /* was --tx-4 */; line-height: 1.5; }
+  .es .ic { display: grid; place-items: center; width: 26px; height: 26px; color: var(--tx-3); font-size: var(--fs-micro) /* was --tx-4 */;
     border: 1px solid var(--line-strong); border-radius: var(--r-2); }
   .er { display: flex; gap: 8px; align-items: flex-start; padding: 9px; background: var(--err-bg);
     border: 1px solid var(--err-line); border-radius: var(--r-2); }
