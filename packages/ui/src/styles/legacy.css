@@ -36,8 +36,6 @@
 
   /* Surfaces. */
   --legacy-surface-sunken: #1c2033;
-  --legacy-surface-raised: #24283d;
-  --legacy-surface-raised-hover: #2d324a;
   --legacy-surface-active: #323852;
   --legacy-surface-field: #25293d;
   --legacy-surface-block: #30344a;
@@ -47,30 +45,19 @@
   --legacy-surface-tool-add: #3c4159;
   --legacy-surface-action: #3f435a;
   --legacy-surface-action-hover: #4a506b;
-  --legacy-surface-nav-active: #41465e;
   --legacy-surface-input: #262a40;
   --legacy-surface-log: #2a2e44;
   --legacy-surface-secondary: #2d3147;
-  --legacy-surface-tab-active: #2b3048; /* .workspace-tabs > .app-tab.is-active */
-  --legacy-surface-tab-session: #1c2033; /* .session-tab */
-  --legacy-surface-tab-active-session: #263b43; /* .session-tab.is-active */
-  --legacy-surface-tab-failed: #3e2939;
   --legacy-surface-bar: #1a1e30;
-  --legacy-surface-pill: #20243a; /* .update-pill, and .app-tab.is-active outside .workspace-tabs */
-  --legacy-surface-pill-hover: #303650;
   /* Danger, one value per role. */
-  --legacy-danger-fill: #a84455;
   --legacy-danger-node: #ff5962;
   --legacy-danger-title: #ff6670;
   --legacy-danger-log: #ff8a91;
   /* Glyphs, legends, avatars and inverted marks. */
   --legacy-log-glyph: #bab3d0;
-  --legacy-icon-on-nav: #f5f6ff;
   --legacy-strong-on-dark: #e7e9f4;
   --legacy-placeholder-strong: #adb2c7;
   --legacy-on-solid: #ffffff;
-  --legacy-mark-bg: #e5e8f2;
-  --legacy-mark-fg: #20243a;
   --legacy-key-avatar: #075a87;
   --legacy-address-avatar: #086ba7;
   /* Host-avatar tones. */
@@ -94,7 +81,6 @@
   --legacy-line-field: rgba(222, 226, 255, 0.13);
   --legacy-line-strong: rgba(222, 226, 255, 0.17);
   /* Overlays and row hovers. */
-  --legacy-overlay-soft: rgba(255, 255, 255, 0.025);
   --legacy-overlay-hover: rgba(255, 255, 255, 0.07);
   --legacy-overlay-hover-strong: rgba(255, 255, 255, 0.08);
   --legacy-row-hover: rgba(222, 226, 255, 0.055);
