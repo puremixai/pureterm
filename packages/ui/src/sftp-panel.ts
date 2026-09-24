@@ -135,6 +135,12 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   columns.setAttribute('aria-hidden', 'true')
   for (const label of ['名称', '大小', '模式', '修改时间', '']) columns.append(document.createElement('span'))
 
+  // 面包屑单独一行，不塞进 .panel-head：那一行已经有五个按钮，620px 以下还会换行，
+  // 一个会跳到按钮之间的路径是没法扫读的。
+  const crumbs = document.createElement('nav')
+  crumbs.className = 'sftp-crumbs'
+  crumbs.setAttribute('aria-label', '远端路径')
+
   const list = document.createElement('ul')
   list.id = 'sftp-list'
   list.setAttribute('aria-label', '远端目录内容')
@@ -146,7 +152,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
 
   body.append(columns, list, hint)
   root.textContent = ''
-  root.append(head, createBar, body)
+  root.append(head, crumbs, createBar, body)
 
   /*
    * 三个状态位。行按钮是每次 render 重建的，所以禁用的判定必须由一个
@@ -159,6 +165,34 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   let rowButtons: HTMLButtonElement[] = []
 
   const headButtons = [upButton, refreshButton, mkdirButton, uploadButton, createOk, createCancel]
+
+/** 段与段之间靠 ::before 的斜杠分隔；当前那一段不是按钮，你已经在那儿了。 */
+const crumbButton = (label: string, target: string | null): HTMLElement => {
+  if (target === null) return span('sftp-crumb is-current', label)
+  const element = document.createElement('button')
+  element.type = 'button'
+  element.className = 'sftp-crumb'
+  element.textContent = label
+  element.title = target
+  listeners.add(element, 'click', () => handlers.onNavigate(target))
+  return element
+}
+
+/**
+ * 用服务器 realpath 回来的路径拼，而不是用户请求的那一个（`.` 会解成 home）。
+ * 拼错的话点每一跳去的地方就和地址栏显示的不是一个地方了。
+ */
+const buildCrumbs = (path: string): HTMLElement[] => {
+  const nodes: HTMLElement[] = []
+  const segments = path.split('/').filter(Boolean)
+  nodes.push(crumbButton('/', segments.length ? '/' : null))
+  let walk = ''
+  for (const [index, name] of segments.entries()) {
+    walk += `/${name}`
+    nodes.push(crumbButton(name, index === segments.length - 1 ? null : walk))
+  }
+  return nodes
+}
 
   const closeCreateBar = (): void => {
     createBar.hidden = true
@@ -310,6 +344,9 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
       current = dir
       pathInput.value = dir?.path ?? ''
       pathInput.title = dir?.path ?? ''
+      crumbs.replaceChildren(...(dir ? buildCrumbs(dir.path) : []))
+      // 根上没有可跳的一行；空面板上也该把这一行让给提示语。
+      crumbs.hidden = !dir || dir.path === '/'
       list.textContent = ''
       rowListeners.clear()
       rowButtons = []

@@ -320,6 +320,17 @@ async function runChecks() {
     assert(fileRows[0]!.querySelector('.file-mode')!.textContent === '755', 'mode renders as octal digits')
     assert(fileRows[1]!.querySelector('.file-mode')!.textContent === '—', 'a peer that sent no mode must not read as 000')
     assert(fileRows[1]!.querySelector('.file-size')!.textContent === '—', 'a directory size is not a number of bytes')
+    // 面包屑：可点的是上一跳，当前目录不是按钮；根上没得跳就把整行让出来。
+    const crumbs = document.querySelector<HTMLElement>('.sftp-crumbs')!
+    assert(!!crumbs, 'a browsed directory must show where it is')
+    const hops = crumbs.querySelectorAll('button')
+    assert(hops.length === 1 && hops[0]!.textContent === '/', '/first has exactly one hop, and it is the root')
+    assert(crumbs.querySelector('.is-current')!.textContent === 'first', 'the last crumb is where you are, and is not a button')
+    hops[0]!.click(); await tick()
+    assert(fileRequests.includes('test-1:/'), 'clicking a hop asks for exactly that path, not a guess at one')
+    multiple.api.sftp.list = async () => ({ path: '/', parent: null, entries: [] }) as unknown as typeof multiple.api.sftp.list
+    click('sftp-refresh'); await tick()
+    assert(document.querySelector<HTMLElement>('.sftp-crumbs')!.hidden, 'at the root there is no hop, so the strip gives its row back')
     // 对齐要在真的级联里量：这个 harness 把 <link rel=stylesheet> 剥掉了，
     // 所以这里只断言 DOM 形状，列宽由计划文档任务 3 步骤 7 的实测量负责。
     document.querySelector<HTMLButtonElement>('[data-tab-close]')!.click(); await tick()
