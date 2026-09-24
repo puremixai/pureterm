@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readPartials, totalImports } from './partial-list.mjs'
+import { DARK, LIGHT, ratio, token, triplet } from './token-source.mjs'
 
 // tokens.css is the only sanctioned home for a colour literal. Every other
 // partial must resolve colour through a token, which is what makes the debt
@@ -235,4 +236,33 @@ test('no partial hard-codes a font stack', async () => {
     'the census must cover every partial the manifest imports; an unchecked file is an escape route')
   assert.equal(reports.length, 0,
     `every family must resolve through --font-ui, --font-mono or --font-term:\n\n${reports.join('\n\n')}`)
+})
+
+// Hairlines carry no AA obligation, but a border that computes to nothing is a
+// defect: it is absent, not quiet. This reads the pairs the stylesheet actually
+// paints — a rule with a `--line*` border and a `--c-*` background in the same
+// block — rather than asserting a matrix of combinations nobody draws, which
+// would pass while the one real case vanished. What motivated it: a toolbar
+// separator on a --c-chrome ground measured 1.017:1 in the light theme.
+test('every hairline stays perceptible against the ground it is drawn on', async () => {
+  const { names, texts } = await readPartials()
+  // Keyed per rule, not per pair: keying by pair hid every rule after the first
+  // and made the flip fix one divider at a time.
+  const pairs = new Map()
+  for (const [partial, fileText] of names.map((n, i) => [n, texts[i]])) {
+    if (partial === 'tokens') continue
+    for (const rule of withoutComments(fileText).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const border = /border(?:-[a-z]+)*\s*:\s*[^;]*var\((--line[a-z-]*)\)/.exec(rule[2])
+      const ground = /background:\s*var\((--c-[a-z]+)\)/.exec(rule[2])
+      if (border && ground) pairs.set(`${rule[1].trim().split('\n').pop()} { ${border[1]} on ${ground[1]} }`, [border[1], ground[1]])
+    }
+  }
+  const reports = []
+  for (const [label, [lineName, groundName]] of pairs) {
+    for (const theme of [DARK, LIGHT]) {
+      const got = ratio(triplet(token(theme, lineName)), triplet(token(theme, groundName)))
+      if (got < 1.1) reports.push(`${theme}  ${label} is ${got.toFixed(3)}:1`)
+    }
+  }
+  assert.deepEqual(reports, [], `hairlines that are effectively absent:\n${reports.join('\n')}`)
 })

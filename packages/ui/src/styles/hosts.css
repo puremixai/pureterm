@@ -16,14 +16,14 @@
 #host-search:focus { border: 0; background: transparent; box-shadow: none; }
 #host-search::placeholder { color: var(--tx-4); }
 
-.dashboard-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 58px; margin: 0 0 28px; padding: 0 0 13px; border-bottom: 1px solid var(--line-soft); }
+.dashboard-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 58px; margin: 0 0 28px; padding: 0 0 13px; border-bottom: 1px solid var(--line); }
 .dashboard-actions,
 .dashboard-tools { display: flex; align-items: center; gap: 4px; }
 .action-primary { min-height: 45px; border-color: transparent; border-radius: var(--r-3); background: var(--c-control); color: var(--tx-1); font-size: 15px; white-space: nowrap; }
 .action-primary:hover:not(:disabled),
 .action-split:hover:not(:disabled) { border-color: transparent; background: var(--c-raised); }
 .action-primary span { margin-right: 4px; font-size: 22px; font-weight: 400; vertical-align: -1px; }
-.action-split { min-width: 42px; min-height: 45px; margin-left: -4px; padding: 0; border-color: transparent; border-left: 1px solid var(--line); border-radius: 0 var(--r-3) var(--r-3) 0; background: var(--c-control); color: var(--tx-1); font-size: 20px; }
+.action-split { min-width: 42px; min-height: 45px; margin-left: -4px; padding: 0; border-color: transparent; border-left: 1px solid var(--line-strong); border-radius: 0 var(--r-3) var(--r-3) 0; background: var(--c-control); color: var(--tx-1); font-size: 20px; }
 .dashboard-tools { gap: 6px; }
 .tool-icon { display: grid; min-width: 38px; min-height: 38px; padding: 0; place-items: center; border-color: transparent; border-radius: var(--r-3); background: transparent; color: var(--tx-1); font-size: 20px; }
 .tool-icon:hover:not(:disabled), .tool-icon.active { border-color: transparent; background: var(--c-control); }
@@ -48,7 +48,7 @@
 .host-top { display: flex; align-items: center; min-width: 0; max-width: 100%; gap: 6px; }
 .host-label { overflow: hidden; color: var(--tx-1); font-size: var(--fs-h2); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .host-sub { max-width: 100%; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); text-overflow: ellipsis; white-space: nowrap; }
-.tag { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: 10px; line-height: 1.1; white-space: nowrap; }
+.tag { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: 10px; line-height: 1.1; white-space: nowrap; }
 .tag.saved { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
 .host-actions, .file-actions { position: absolute; top: 9px; right: 9px; display: flex; gap: 2px; padding: 0; opacity: 0; transition: opacity 180ms var(--ease); }
 .host-row:hover .host-actions, .host-row.active .host-actions, .file-row:hover .file-actions { opacity: 1; }

@@ -1,7 +1,7 @@
 /* Keychain shares the host card language, with a reflowing library/editor split. */
 .keychain-dashboard { display: flex; height: 100%; min-height: 0; overflow: hidden; }
 .keychain-main { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; container-type: inline-size; }
-.keychain-toolbar.dashboard-toolbar { flex: 0 0 auto; align-items: center; flex-direction: row; min-height: 86px; margin: 0; padding: 16px 24px; border-bottom: 1px solid var(--line-soft); background: var(--c-chrome); gap: 16px; }
+.keychain-toolbar.dashboard-toolbar { flex: 0 0 auto; align-items: center; flex-direction: row; min-height: 86px; margin: 0; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--c-chrome); gap: 16px; }
 .keychain-toolbar .action-primary { flex: 0 0 auto; }
 .keychain-toolbar .dashboard-tools { min-width: 0; align-self: center; margin-left: auto; }
 .keychain-search { position: relative; display: flex; align-items: center; min-width: 0; max-width: 260px; }
