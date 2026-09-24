@@ -89,6 +89,11 @@
   --t-2: 160ms;
   --t-3: 240ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Chrome geometry. --chrome-h is the height Electron's title-bar overlay is
+     told to reserve, so theme-sync.test.mjs reads it as the single source. */
+  --chrome-h: 40px;
+  --rail-w: 52px;
+  --status-h: 24px;
 
   --font-ui: Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
