@@ -47,10 +47,10 @@ const GLOBAL_TOKENS = [
   '--row-h', '--row-h-compact',
   '--z-drawer', '--z-popover', '--z-toast', '--z-dialog',
   '--t-1', '--t-2', '--t-3', '--ease',
-  // The chrome's own geometry. These three are the only place a shell height is
-  // written down, and theme-sync.test.mjs ties the Electron title-bar overlay to
-  // --chrome-h, so a fourth copy of 40px cannot appear silently.
-  '--chrome-h', '--rail-w', '--status-h',
+  // The chrome's own geometry. These are the only place a shell size is written
+  // down, and theme-sync.test.mjs ties the Electron title-bar overlay to
+  // --chrome-h, so a second copy of a number cannot appear silently.
+  '--chrome-h', '--rail-w', '--status-h', '--insp-w',
 ]
 
 // The single sanctioned exception: a derived value whose components are

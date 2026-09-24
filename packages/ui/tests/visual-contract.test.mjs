@@ -33,7 +33,8 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   // those two already covers.
 
   assert.match(css, /:focus-visible\s*\{/, 'keyboard focus treatment is required')
-  assert.match(css, /grid-template-columns:\s*var\(--rail-w\)\s+minmax\(0,\s*1fr\)/, 'desktop shell needs a stable navigation rail')
+  assert.match(css, /grid-template-columns:\s*var\(--rail-w\)\s+minmax\(0,\s*1fr\)\s+var\(--insp-w\)/, 'the docked editor must be a grid track, not an overlay')
+  assert.match(css, /\.app-shell\.inspector-open\s+\.app-body\s*\{[^}]*var\(--insp-w\)/, 'the third track must appear only while the editor is open')
   assert.match(css, /\.connection-failure\s*\{/, 'connection failures need a dedicated visual state')
   assert.match(css, /\.app-shell\.session-mode\s+#primary-nav\s*\{/, 'terminal sessions need a focused canvas')
   assert.match(css, /@media\s*\(max-width:\s*620px\)/, 'narrow layouts need an explicit mobile fallback')
