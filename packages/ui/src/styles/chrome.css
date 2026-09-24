@@ -1,8 +1,11 @@
 /* Application shell — the #app grid, top bar, workspace and session tabs, the
-   navigation rail, and the state classes on .app-shell that reshape them. */
+   navigation rail, the status bar, and the state classes on .app-shell that
+   reshape them. Heights come from --chrome-h and --status-h; the one literal
+   inside env() below is the number Electron reserves for its overlay, and
+   theme-sync.test.mjs is what keeps it equal to the token. */
 #app {
   display: grid;
-  grid-template-rows: 76px minmax(0, 1fr);
+  grid-template-rows: var(--chrome-h) minmax(0, 1fr) var(--status-h);
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
@@ -16,9 +19,9 @@
   justify-content: space-between;
   min-width: 0;
   width: env(titlebar-area-width, 100%);
-  height: env(titlebar-area-height, 76px);
+  height: env(titlebar-area-height, 40px);
   margin-left: env(titlebar-area-x, 0px);
-  padding: 0 18px 0 24px;
+  padding: 0 8px 0 12px;
   background: var(--c-chrome);
   border-bottom: 1px solid var(--line);
   -webkit-app-region: drag;
@@ -104,11 +107,7 @@
 .app-shell.nav-collapsed .app-body { grid-template-columns: minmax(0, 1fr); }
 .app-shell.nav-collapsed #primary-nav { display: none; }
 
-.app-body { display: grid; grid-template-columns: 278px minmax(0, 1fr); min-height: 0; overflow: hidden; }
-
-@media (max-width: 1250px) {
-  .app-body { grid-template-columns: 232px minmax(0, 1fr); }
-}
+.app-body { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); min-height: 0; overflow: hidden; }
 
 /* The rail and the top bar are one ground, so they separate by hairline rather
    than by two different tints, which is how the old palette read as a skin. */

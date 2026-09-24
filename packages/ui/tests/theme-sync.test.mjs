@@ -25,6 +25,12 @@ function declaration(name) {
   return match[1].toLowerCase()
 }
 
+function pixel(name) {
+  const match = new RegExp(`^[ \\t]*${name}:[ \\t]*(\\d+)px[ \\t]*;`, 'm').exec(code)
+  assert.ok(match, `${name} must be an integer px declaration in styles/tokens.css for this check to mean anything`)
+  return match[1]
+}
+
 function literal(pattern, label) {
   const match = pattern.exec(shell) ?? pattern.exec(html)
   assert.ok(match, `no ${label} matched; the file moved or the value changed shape`)
@@ -49,9 +55,14 @@ test('the overlay height agrees with the top bar the CSS draws', () => {
   assert.ok(overlay, 'shell.ts lost its titleBarOverlay block')
   const height = /height:\s*(\d+)/.exec(overlay[1])
   assert.ok(height, 'the titleBarOverlay block lost its height')
-  const row = /#app\s*\{[^}]*grid-template-rows:\s*(\d+)px/.exec(chrome)
+  const chromeHeight = pixel('--chrome-h')
+  const row = /#app\s*\{[^}]*grid-template-rows:\s*var\(--chrome-h\)\s+minmax\(0,\s*1fr\)\s+var\(--status-h\);/
+    .exec(chrome)
   const fallback = /env\(titlebar-area-height,\s*(\d+)px\)/.exec(chrome)
-  assert.ok(row && fallback, 'chrome.css must keep both a #app grid row and a titlebar-area-height fallback to compare against')
-  assert.equal(height[1], row[1], 'the overlay height must equal the #app top row, or the first grid row is wrong')
-  assert.equal(height[1], fallback[1], 'the overlay height must equal the top bar fallback, or a window without a titlebar area reports one height and paints another')
+  assert.ok(row, 'the #app grid must be three rows: var(--chrome-h), the content, then var(--status-h)')
+  assert.ok(fallback, 'chrome.css must keep an env(titlebar-area-height, …) fallback to compare against')
+  assert.equal(height[1], chromeHeight, 'the overlay height must equal --chrome-h, the only written top-bar height')
+  assert.equal(fallback[1], chromeHeight,
+    'the fallback must equal --chrome-h; env() cannot read a custom property, so this literal is the one place the number is repeated and this assertion is what ties it')
+  assert.equal(pixel('--status-h'), '24', 'the status row is a design decision, not a leftover')
 })

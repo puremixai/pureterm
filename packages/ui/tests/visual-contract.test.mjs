@@ -29,7 +29,7 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   // those two already covers.
 
   assert.match(css, /:focus-visible\s*\{/, 'keyboard focus treatment is required')
-  assert.match(css, /grid-template-columns:\s*278px\s+minmax\(0,\s*1fr\)/, 'desktop shell needs a stable navigation rail')
+  assert.match(css, /grid-template-columns:\s*var\(--rail-w\)\s+minmax\(0,\s*1fr\)/, 'desktop shell needs a stable navigation rail')
   assert.match(css, /\.connection-failure\s*\{/, 'connection failures need a dedicated visual state')
   assert.match(css, /\.app-shell\.session-mode\s+#primary-nav\s*\{/, 'terminal sessions need a focused canvas')
   assert.match(css, /@media\s*\(max-width:\s*620px\)/, 'narrow layouts need an explicit mobile fallback')

@@ -67,7 +67,7 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
       titleBarOverlay: {
         color: '#0e1013',
         symbolColor: '#7d838d',
-        height: 76,
+        height: 40,
       },
     } : {}),
     webPreferences: {
