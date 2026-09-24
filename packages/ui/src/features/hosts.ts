@@ -169,14 +169,14 @@ export class ClientHosts extends Service {
   private openWorkspace(): void {
     this.ctx.clientTerminal.select(null)
     const view = this.ctx.clientView
-    view.element('app').classList.add('drawer-open')
+    view.element('app').classList.add('inspector-open')
     view.element('connection-workspace').hidden = false
     view.element('status').hidden = false
   }
 
   private closeWorkspace(): void {
     const view = this.ctx.clientView
-    view.element('app').classList.remove('drawer-open')
+    view.element('app').classList.remove('inspector-open')
     view.element('connection-workspace').hidden = true
   }
 

@@ -237,7 +237,7 @@ export class ClientTerminal extends Service {
     view.element('library-tab-title').textContent = this.libraryPage === 'keychain' ? 'Keychain' : 'Hosts'
     view.element('session-workspace').hidden = !active
     if (active || this.libraryPage === 'keychain') {
-      app.classList.remove('drawer-open')
+      app.classList.remove('inspector-open')
       view.element('connection-workspace').hidden = true
     }
     const hosts = view.element('hosts-tab')

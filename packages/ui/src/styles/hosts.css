@@ -61,15 +61,10 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); backgro
   #host-list { grid-template-columns: repeat(2, minmax(210px, 1fr)); }
 }
 
-@media (min-width: 1450px) {
-  .app-shell.drawer-open #hosts-panel { padding-right: 516px; }
-}
-
 @media (max-width: 820px) {
   .dashboard-toolbar { align-items: flex-start; flex-direction: column; }
   .dashboard-tools { align-self: flex-end; }
   #host-list { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
-  .app-shell.drawer-open #hosts-panel { padding-right: 16px; }
 }
 
 @media (max-width: 620px) {
@@ -80,7 +75,6 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); backgro
   .dashboard-actions { max-width: 100%; flex-wrap: wrap; }
   .hosts-heading { margin-right: 6px; margin-left: 6px; }
   #host-list { grid-template-columns: 1fr; gap: 11px; padding: 0 6px; }
-  .app-shell.drawer-open #hosts-panel { padding-right: 10px; }
 }
 
 @media (max-width: 620px) {

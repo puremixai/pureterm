@@ -5,15 +5,15 @@
 .keychain-selector { margin-bottom: 12px; }
 #host-direct-key { grid-template-columns: minmax(0, 1fr) auto; }
 
-/* Connection workbench: hosts stay visible while the form behaves like a mature side drawer. */
-.connection-workspace { position: absolute; inset: 0; z-index: 5; min-width: 0; min-height: 0; overflow: hidden; pointer-events: none; background: transparent; }
+/* Connection workbench. Docked, not overlaid: the hosts list stays visible and
+   narrows, which is what the old padding-right compensation was faking. */
+.connection-workspace { display: none; min-width: 0; min-height: 0; overflow: hidden; }
+.app-shell.inspector-open .connection-workspace { display: flex; }
 .connection-workspace[hidden] { display: none !important; }
-/* The drawer separates from the page by a hairline, not by an offset shadow:
+/* The editor separates from the page by a hairline, not by an offset shadow:
    dark has no elevation language, and a shadow on a full-height panel only
    reads as a smudge. */
-#toolbar { position: absolute; inset: 0 0 0 auto; display: flex; width: min(500px, calc(100% - 14px)); min-width: 0; flex-direction: column; overflow: hidden; padding: 0; pointer-events: auto; border-left: 1px solid var(--line); border-radius: 0; background: var(--c-surface); }
-.connection-workspace.is-session { pointer-events: auto; }
-.connection-workspace.is-session #toolbar { display: none; }
+#toolbar { display: flex; width: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; padding: 0; border-left: 1px solid var(--line); background: var(--c-surface); }
 .toolbar-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 18px; min-height: 86px; padding: 17px 17px 15px 22px; border-bottom: 1px solid var(--line-soft); }
 .form-context { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .mode { overflow: hidden; color: var(--tx-1); font-size: 17px; font-weight: 700; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
