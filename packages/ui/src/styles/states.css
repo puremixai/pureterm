@@ -1,24 +1,24 @@
-/* Nothing-to-show and something-went-wrong — the empty placeholder, the
-   shortcuts dialog, and the connection-failure page with its route and log. */
-.shortcuts-dialog { width: min(460px, calc(100vw - 40px)); padding: 28px; border: 1px solid var(--line-strong); border-radius: var(--r-4); background: var(--c-surface); color: var(--tx-2); box-shadow: var(--shadow-pop); }
-.shortcuts-dialog::backdrop { background: var(--scrim); }
-.shortcuts-dialog h2 { margin: 0 0 24px; font-size: var(--fs-h1); }
-.shortcuts-dialog dl { margin: 0; }
-.shortcuts-dialog dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
-.shortcuts-dialog dd { margin: 0; color: var(--tx-3); }
-.shortcuts-dialog p { color: var(--tx-3); line-height: 1.7; }
-
-/* 右下角，用 --status-h 把自己从状态栏下面让开，而不是抄一个 38px ——
-   状态栏改高度那一天，抄的那个数字只会安静地飘在栏上面。 */
-.toasts { position: fixed; right: var(--s-4); bottom: calc(var(--status-h) + var(--s-3)); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2); pointer-events: none; }
-.toast { display: flex; gap: 9px; align-items: flex-start; width: 274px; max-width: calc(100vw - 32px); padding: 10px 11px; border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--c-raised); box-shadow: var(--shadow-pop); pointer-events: auto; cursor: pointer; animation: toast-in var(--t-2) var(--ease); }
-.toast-bar { flex: 0 0 auto; align-self: stretch; width: 2px; border-radius: 1px; background: var(--ok); }
-.toast.is-err .toast-bar { background: var(--err); }
-.toast-title { display: block; color: var(--tx-1); font-size: var(--fs-meta); font-weight: 500; }
-.toast-detail { display: block; margin-top: 2px; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); white-space: nowrap; text-overflow: ellipsis; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
-
+/* Nothing-to-show and something-went-wrong — the empty placeholder, the
+   shortcuts dialog, and the connection-failure page with its route and log. */
+.shortcuts-dialog { width: min(460px, calc(100vw - 40px)); padding: 28px; border: 1px solid var(--line-strong); border-radius: var(--r-4); background: var(--c-surface); color: var(--tx-2); box-shadow: var(--shadow-pop); }
+.shortcuts-dialog::backdrop { background: var(--scrim); }
+.shortcuts-dialog h2 { margin: 0 0 24px; font-size: var(--fs-h1); }
+.shortcuts-dialog dl { margin: 0; }
+.shortcuts-dialog dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.shortcuts-dialog dd { margin: 0; color: var(--tx-3); }
+.shortcuts-dialog p { color: var(--tx-3); line-height: 1.7; }
+
+/* 右下角，用 --status-h 把自己从状态栏下面让开，而不是抄一个 38px ——
+   状态栏改高度那一天，抄的那个数字只会安静地飘在栏上面。 */
+.toasts { position: fixed; right: var(--s-4); bottom: calc(var(--status-h) + var(--s-3)); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2); pointer-events: none; }
+.toast { display: flex; gap: 9px; align-items: flex-start; width: 274px; max-width: calc(100vw - 32px); padding: 10px 11px; border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--c-raised); box-shadow: var(--shadow-pop); pointer-events: auto; cursor: pointer; animation: toast-in var(--t-2) var(--ease); }
+.toast-bar { flex: 0 0 auto; align-self: stretch; width: 2px; border-radius: 1px; background: var(--ok); }
+.toast.is-err .toast-bar { background: var(--err); }
+.toast-title { display: block; color: var(--tx-1); font-size: var(--fs-meta); font-weight: 500; }
+.toast-detail { display: block; margin-top: 2px; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); white-space: nowrap; text-overflow: ellipsis; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
 .empty { margin: 12px; padding: 20px 18px; border: 1px dashed var(--line-strong); border-radius: var(--r-4); color: var(--tx-3); font-size: var(--fs-ui); line-height: 1.75; }
 /* 骨架行的高就是真行的高（--row-h 跟着密度走），所以数据到了以后没有一行会跳。
    条子 22px，剩下的空隙是行自己的。 */
@@ -35,62 +35,62 @@
 .list-error-title { display: block; color: var(--tx-1); font-size: var(--fs-meta); font-weight: 500; }
 .list-error-detail { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--tx-2); font-family: var(--font-mono); font-size: var(--fs-micro); }
 .list-error button { flex: 0 0 auto; }
-@media (prefers-reduced-motion: reduce) { .skeleton-bar { animation: none; } }
-
-.connection-failure { position: absolute; inset: 0; z-index: 12; display: flex; min-width: 0; min-height: 0; overflow: auto; background: var(--c-canvas); }
-.failure-shell { width: min(100%, 650px); margin: auto; padding: 58px 20px 34px; }
-.failure-head { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
-.failure-host { display: flex; align-items: center; min-width: 0; gap: 15px; }
-/* 58px and the card radius, same as the two library cards: 60px was a third
-   avatar size and it inherited the 20px table chip's --r-1 corner. */
-.failure-host .host-avatar { width: 58px; height: 58px; border-radius: var(--r-4); }
-.failure-host h1 { margin: 0 0 5px; overflow: hidden; color: var(--tx-1); font-size: 18px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.failure-host p { margin: 0; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); }
-.failure-copy { flex: 0 0 auto; min-height: 45px; padding: 0 15px; font-size: var(--fs-ui); }
-.failure-copy i { margin-right: 5px; }
-.failure-route { display: flex; align-items: center; margin: 40px 0 14px; }
-/* Unclassified: the route says nothing true, so it says nothing at all and the
-   page degrades to the log block. */
-.route-collapsed .failure-route, .route-collapsed .failure-stage { display: none; }
-/* Four nodes, and only one of them is red. Every node used to be --err, so the
-   strip said "failure" in four places and "here" in none: what carries the
-   information is the break in the link, and that needs the nodes either side of
-   it to stay neutral. --r-full rather than 999px, which is the same circle and
-   is on the ladder. */
-.failure-route-node { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-full); background: var(--c-surface); color: var(--tx-3); font-size: 17px; }
-.failure-route-node.is-passed { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
-.failure-route-node.is-failed { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
-.failure-route-line { flex: 1 1 auto; height: 2px; background: var(--line); }
-.failure-route-line.is-through { background: var(--ok-line); }
-.failure-route-line.is-break { height: 0; background: none; border-top: 2px dashed var(--err); }
-.failure-stage { margin: 0 0 30px; color: var(--tx-2); font-size: var(--fs-meta); text-align: center; }
-.failure-suggestion { margin: 20px 0 0; padding: 11px 13px; border-left: 2px solid var(--ac); background: var(--ac-bg); color: var(--tx-2); font-size: var(--fs-meta); line-height: 1.6; }
-.failure-suggestion:empty { display: none; }
-.failure-shell > h2 { margin: 0 0 34px; color: var(--err); font-size: 17px; font-weight: 700; text-align: center; }
-.failure-log { overflow: hidden; padding: 18px 24px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--c-inset); }
-.failure-log { font-family: var(--font-mono); font-size: var(--fs-meta); line-height: 1.65; }
-/* The gutter is its own node with user-select: none, so "Copy logs" carries the
-   log and not the numbers; the block is mono because every line of it is
-   machine output. */
-.failure-log-entry { display: grid; grid-template-columns: 2.5ch 16px minmax(0, 1fr); gap: 10px; color: var(--tx-1); font-size: var(--fs-em); line-height: 1.55; }
-/* --tx-2, not --tx-3: the block's ground is --c-inset and the muted step is
-   4.16:1 on it, which is under the floor for text at this size. */
-.failure-log-no { color: var(--tx-2); font-variant-numeric: tabular-nums; text-align: right; user-select: none; }
-.failure-log-entry + .failure-log-entry { margin-top: 10px; }
-.failure-log-entry i { flex: 0 0 auto; color: var(--tx-2); font-size: 16px; }
-/* The whole failing line takes --err, not just its marker: 5.09:1 on this ground
-   in the light group and 5.90:1 in the dark one, so the tint can carry text and
-   the eye lands on the right row. The rule used to paint an <i> that the log
-   never built, which is why no error line had ever been coloured. */
-.failure-log-entry.is-error, .failure-log-entry.is-error i { color: var(--err); }
-.failure-log-entry span { min-width: 0; overflow-wrap: anywhere; }
-.failure-actions { display: flex; justify-content: flex-end; gap: 14px; margin-top: 66px; }
-.failure-actions button { min-width: 108px; min-height: 53px; border-radius: var(--r-4); font-size: var(--fs-em); }
-.failure-actions .primary { min-width: 144px; }
-.failure-secondary { background: var(--c-surface); }
-
-@media (max-width: 620px) {
-  .failure-shell { padding-top: 36px; }
-  .failure-actions { justify-content: stretch; margin-top: 42px; }
-  .failure-actions button { flex: 1 1 0; min-width: 0; }
-}
+@media (prefers-reduced-motion: reduce) { .skeleton-bar { animation: none; } }
+
+.connection-failure { position: absolute; inset: 0; z-index: 12; display: flex; min-width: 0; min-height: 0; overflow: auto; background: var(--c-canvas); }
+.failure-shell { width: min(100%, 650px); margin: auto; padding: 58px 20px 34px; }
+.failure-head { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
+.failure-host { display: flex; align-items: center; min-width: 0; gap: 15px; }
+/* 58px and the card radius, same as the two library cards: 60px was a third
+   avatar size and it inherited the 20px table chip's --r-1 corner. */
+.failure-host .host-avatar { width: 58px; height: 58px; border-radius: var(--r-4); }
+.failure-host h1 { margin: 0 0 5px; overflow: hidden; color: var(--tx-1); font-size: 18px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.failure-host p { margin: 0; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); }
+.failure-copy { flex: 0 0 auto; min-height: 45px; padding: 0 15px; font-size: var(--fs-ui); }
+.failure-copy i { margin-right: 5px; }
+.failure-route { display: flex; align-items: center; margin: 40px 0 14px; }
+/* Unclassified: the route says nothing true, so it says nothing at all and the
+   page degrades to the log block. */
+.route-collapsed .failure-route, .route-collapsed .failure-stage { display: none; }
+/* Four nodes, and only one of them is red. Every node used to be --err, so the
+   strip said "failure" in four places and "here" in none: what carries the
+   information is the break in the link, and that needs the nodes either side of
+   it to stay neutral. --r-full rather than 999px, which is the same circle and
+   is on the ladder. */
+.failure-route-node { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-full); background: var(--c-surface); color: var(--tx-3); font-size: 17px; }
+.failure-route-node.is-passed { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
+.failure-route-node.is-failed { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
+.failure-route-line { flex: 1 1 auto; height: 2px; background: var(--line); }
+.failure-route-line.is-through { background: var(--ok-line); }
+.failure-route-line.is-break { height: 0; background: none; border-top: 2px dashed var(--err); }
+.failure-stage { margin: 0 0 30px; color: var(--tx-2); font-size: var(--fs-meta); text-align: center; }
+.failure-suggestion { margin: 20px 0 0; padding: 11px 13px; border-left: 2px solid var(--ac); background: var(--ac-bg); color: var(--tx-2); font-size: var(--fs-meta); line-height: 1.6; }
+.failure-suggestion:empty { display: none; }
+.failure-shell > h2 { margin: 0 0 34px; color: var(--err); font-size: 17px; font-weight: 700; text-align: center; }
+.failure-log { overflow: hidden; padding: 18px 24px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--c-inset); }
+.failure-log { font-family: var(--font-mono); font-size: var(--fs-meta); line-height: 1.65; }
+/* The gutter is its own node with user-select: none, so "Copy logs" carries the
+   log and not the numbers; the block is mono because every line of it is
+   machine output. */
+.failure-log-entry { display: grid; grid-template-columns: 2.5ch 16px minmax(0, 1fr); gap: 10px; color: var(--tx-1); font-size: var(--fs-em); line-height: 1.55; }
+/* --tx-2, not --tx-3: the block's ground is --c-inset and the muted step is
+   4.16:1 on it, which is under the floor for text at this size. */
+.failure-log-no { color: var(--tx-2); font-variant-numeric: tabular-nums; text-align: right; user-select: none; }
+.failure-log-entry + .failure-log-entry { margin-top: 10px; }
+.failure-log-entry i { flex: 0 0 auto; color: var(--tx-2); font-size: 16px; }
+/* The whole failing line takes --err, not just its marker: 5.09:1 on this ground
+   in the light group and 5.90:1 in the dark one, so the tint can carry text and
+   the eye lands on the right row. The rule used to paint an <i> that the log
+   never built, which is why no error line had ever been coloured. */
+.failure-log-entry.is-error, .failure-log-entry.is-error i { color: var(--err); }
+.failure-log-entry span { min-width: 0; overflow-wrap: anywhere; }
+.failure-actions { display: flex; justify-content: flex-end; gap: 14px; margin-top: 66px; }
+.failure-actions button { min-width: 108px; min-height: 53px; border-radius: var(--r-4); font-size: var(--fs-em); }
+.failure-actions .primary { min-width: 144px; }
+.failure-secondary { background: var(--c-surface); }
+
+@media (max-width: 620px) {
+  .failure-shell { padding-top: 36px; }
+  .failure-actions { justify-content: stretch; margin-top: 42px; }
+  .failure-actions button { flex: 1 1 0; min-width: 0; }
+}
