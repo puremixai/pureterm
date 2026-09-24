@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { readPartials, styleImportCount } from './partial-list.mjs'
 
 const html = await readFile(new URL('../src/index.html', import.meta.url), 'utf8')
-const { manifest, names, texts, css } = await readPartials()
+const { manifest, names, css } = await readPartials()
 
 test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(html, /<div id="app" class="app-shell">/)
@@ -24,11 +24,9 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(manifest, /@import\s+"@tabler\/icons-webfont\/dist\/tabler-icons\.min\.css"/)
 
   // Token existence belongs to design-tokens.test.mjs, which reads the theme
-  // groups themselves. What this file can assert and that one cannot: the
-  // flipped app asks the legacy register for nothing, by any name.
-  const styled = names.map((name, index) => name === 'legacy' ? '' : texts[index]).join('\n')
-  const asked = styled.match(/var\(\s*--(?:legacy-|topbar|nav\b|main\b|main-soft|card\b|card-hover|field\b|field-hover|text-\w+|accent\b|accent-strong|accent-soft|warning\b)/g) ?? []
-  assert.deepEqual(asked, [], `styled partials still ask the legacy register for colour: ${asked.join(', ')}`)
+  // groups themselves, and so does "every var() names a declared token", which
+  // stylesheet-contract.test.mjs measures. Nothing is asserted here that one of
+  // those two already covers.
 
   assert.match(css, /:focus-visible\s*\{/, 'keyboard focus treatment is required')
   assert.match(css, /grid-template-columns:\s*278px\s+minmax\(0,\s*1fr\)/, 'desktop shell needs a stable navigation rail')
@@ -39,7 +37,7 @@ test('the shared UI exposes the mature workspace visual contract', () => {
 
 test('the manifest imports every partial exactly once and in cascade order', async () => {
   const { names, texts } = await readPartials()
-  assert.deepEqual(names, ['fonts', 'tokens', 'legacy', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states'],
+  assert.deepEqual(names, ['fonts', 'tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states'],
     'cascade order is load-bearing; change it only with a measured cascade check')
   assert.equal(styleImportCount(manifest), names.length,
     'every @import of a styles/*.css partial must yield a name; a form the parser drops would slip the file out of the contract')

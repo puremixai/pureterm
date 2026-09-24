@@ -2,36 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readPartials, totalImports } from './partial-list.mjs'
 
-// tokens.css holds the new ramp and legacy.css holds the debt register; both
-// are the sanctioned homes for a colour literal. Every other partial must
-// resolve colour through a token, which is what makes the debt permanent. The
-// exemption is audited, not just declared: it has to stay exactly the two
-// literal registers, every member still has to be a partial the manifest
-// imports, and the scan has to cover the rest. Deleting styles/legacy.css in
-// Plan 2 therefore fails here until the set shrinks with it.
-const EXEMPT = new Set(['tokens', 'legacy'])
-const SANCTIONED = ['legacy', 'tokens']
+// tokens.css is the only sanctioned home for a colour literal. Every other
+// partial must resolve colour through a token, which is what makes the debt
+// permanent. The exemption is audited, not just declared: it has to stay
+// exactly the one register, its member still has to be a partial the manifest
+// imports, and the scan has to cover the rest.
+const EXEMPT = new Set(['tokens'])
+const SANCTIONED = ['tokens']
 const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(/
-
-// legacy.css is exempt from the rule above, so "reference an existing entry,
-// do not add one" has to be a number rather than prose: a fresh line there
-// hides from every other check. Plan 2 shrinks it as the palette flips.
-//
-// Measured after each flipped partial, never remembered by hand: it started at
-// 100 and only falls, because the liveness test below names whatever a flip
-// orphans. Update it from the test output, not from a count you did mentally.
-const LEGACY_DECLARATIONS = 1
-
-// The four non-colour names, so a re-declaration in the register fails by name
-// rather than by a confusing count.
-const NOT_COLOUR_DEBT = ['--radius-sm', '--radius-md', '--radius-lg', '--motion-standard']
-
-// Holdovers the plan keeps verbatim even though no partial reads them:
-// --legacy-surface-sunken's #1c2033 is routed to --legacy-surface-tab-session
-// by the mapping table. The register stays complete for the flip, so the
-// exception is named here instead of dropped from the file; Plan 2 should
-// shrink this set to empty.
-const UNREFERENCED_LEGACY = new Set(['--legacy-surface-sunken'])
 
 // styles/fonts.css is the one partial that declares a face, which is the only
 // place a family name may be written rather than asked for through a token. The
@@ -120,61 +98,15 @@ test('no partial hard-codes a colour', async () => {
   assert.equal(reports.length, 0, `colours must resolve through tokens:\n\n${reports.join('\n\n')}`)
 })
 
-// The register, comments gone, with the entry names it declares.
-async function legacyRegister() {
-  const { names, texts } = await readPartials()
-  assert.notEqual(names.indexOf('legacy'), -1,
-    'styles/legacy.css is the register these guards measure; when Plan 2 deletes it, delete them too')
-  const source = withoutComments(texts[names.indexOf('legacy')])
-  const declared = [...source.matchAll(/^[ \t]*(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1])
-  return { source, declared }
-}
-
-test('the legacy register holds exactly its measured declarations', async () => {
-  const { source, declared } = await legacyRegister()
-  assert.equal(declared.length, LEGACY_DECLARATIONS,
-    `styles/legacy.css declares ${declared.length} entries, not ${LEGACY_DECLARATIONS}; the register is a deletion list, not a place to add colours`)
-  assert.equal((source.match(/;/g) || []).length, LEGACY_DECLARATIONS,
-    'every semicolon in styles/legacy.css must close a register entry; nothing else may be declared there')
-  for (const name of NOT_COLOUR_DEBT) {
-    assert.ok(!declared.includes(name),
-      `${name} is geometry or motion, not colour debt: it belongs in styles/tokens.css, not the deletion list`)
-  }
-})
-
-test('every legacy entry is read by a partial, or named in the allowlist', async () => {
-  const { declared } = await legacyRegister()
-  const { names, texts } = await readPartials()
-  const styled = names.filter((n) => n !== 'legacy')
-    .map((n) => withoutComments(texts[names.indexOf(n)]))
-    .join('\n')
-  const referenced = new Set([...styled.matchAll(/var\(\s*(--[a-z0-9-]+)\s*\)/g)].map((m) => m[1]))
-  // Every declared entry, not just the `--legacy-`-prefixed ones: the sixteen
-  // original aliases moved in here unprefixed, and a prefix filter let them go
-  // quietly the moment the flip orphaned them.
-  const orphans = declared.filter((name) => !referenced.has(name) && !UNREFERENCED_LEGACY.has(name))
-  assert.deepEqual(orphans, [], `unreferenced without being allowlisted: ${orphans.join(', ')}`)
-  // The allowlist shrinks too: a holdover that leaves the register, or gains a
-  // call site, has no business staying named here.
-  for (const name of UNREFERENCED_LEGACY) {
-    assert.ok(declared.includes(name), `${name} is allowlisted but no longer declared; shrink the allowlist`)
-    assert.ok(!referenced.has(name), `${name} has a call site again; shrink the allowlist`)
-  }
-})
-
-// The test above reads declarations and asks whether anything references them.
-// This one reads references and asks whether anything declares them, which is
-// the direction that has no guard today. It matters more than it looks: an
-// unknown custom property is not an error, it is substituted at computed-value
-// time, so `padding: var(--s-3x)` does not fail the build and does not print a
-// warning — the declaration simply stops existing on the page. Every one of the
-// new ramp's ~90 call sites is still unwritten, so the palette flip will create
-// the whole exposure in a single commit, and a transposed suffix in a partial
-// (`--fs-metax`) or inside a token value (`var(--c-canvasx)`) is exactly the
-// mistake this catches. The registers' own references are scanned too: a token
-// may be exempt from the literal rule, but it is not exempt from pointing at a
-// name that exists.
-test('every var() reference names a token one of the registers declares', async () => {
+// Reads references and asks whether anything declares them. An unknown custom
+// property is not an error: it is substituted at computed-value time, so
+// `padding: var(--s-3x)` fails no build and prints no warning — the declaration
+// simply stops existing on the page. The palette flip wrote ~150 references to
+// new-ramp names in one pass, which is exactly when a transposed suffix in a
+// partial (`--fs-metax`) or inside a token value (`var(--c-canvasx)`) would
+// slip through. tokens.css is scanned too: a register may be exempt from the
+// literal rule, but it is not exempt from pointing at a name that exists.
+test('every var() reference names a token the register declares', async () => {
   const { names, texts } = await readPartials()
   const declared = new Set()
   for (const register of SANCTIONED) {
@@ -182,7 +114,7 @@ test('every var() reference names a token one of the registers declares', async 
       declared.add(match[1])
     }
   }
-  assert.ok(declared.size > 0, 'the registers declare no tokens at all; the set is the contract')
+  assert.ok(declared.size > 0, 'the register declares no tokens at all; the set is the contract')
   const reports = []
   let scanned = 0
   for (const [name, text] of names.map((n, i) => [n, texts[i]])) {
@@ -198,7 +130,7 @@ test('every var() reference names a token one of the registers declares', async 
   assert.equal(scanned, names.length,
     'the reference check must cover every partial the manifest imports; an unchecked file is an escape route')
   assert.equal(reports.length, 0,
-    `every var() must name a token declared in styles/tokens.css or styles/legacy.css:\n\n${reports.join('\n\n')}`)
+    `every var() must name a token declared in styles/tokens.css:\n\n${reports.join('\n\n')}`)
 })
 
 // A face names a family and publishes a weight range instead of asking for one,
