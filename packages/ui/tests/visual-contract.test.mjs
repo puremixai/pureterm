@@ -14,6 +14,10 @@ test('the shared UI exposes the mature workspace visual contract', () => {
 
   assert.match(html, /class="app-topbar"/)
   assert.match(html, /id="primary-nav"/)
+  assert.match(html, /id="theme-toggle"/, 'the light theme is unreachable without this control')
+  assert.match(html, /id="density-toggle"/)
+  assert.match(html, /class="status-bar"/)
+  assert.match(css, /\.status-bar\s*\{[^}]*var\(--status-h\)/, 'the status bar must be drawn from its token')
   assert.match(html, /id="host-search"/)
   assert.match(html, /id="connection-workspace"/)
   assert.match(html, /id="connection-failure"/)

@@ -1,6 +1,7 @@
 import { createClient } from '../src/client.js'
 import { mountPageClient } from '../src/page-client.js'
 import { ClientTransport } from '../src/services/transport.js'
+import { VERSION } from '../src/lib/version.js'
 import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, RendererReadyPayload, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
 import type { TerminalView } from '../src/terminal-view.js'
 
@@ -204,8 +205,43 @@ async function runChecks() {
     await tick()
     assert(gestures.stats.opens === 1 && document.querySelectorAll('[role="tab"]').length === 2,
       'double-clicking a host must open a new terminal tab')
+    const sized = gestures.terminals.at(-1)!
+    // xterm updates its own cols/rows and *then* emits, and the status bar reads
+    // the live getter rather than the payload, so the fixture has to do the same.
+    sized.cols = 132
+    sized.rows = 41
+    for (const listener of sized.resizeListeners) listener({ cols: 132, rows: 41 })
+    await tick()
+    assert(input('status-size').textContent === '132×41', 'the status bar must follow the active terminal size')
     await client.dispose()
     checks.push('single-click selects, Edit opens the editor, and double-click connects in a new tab')
+
+    const chrome = fixture()
+    client = createClient({ api: chrome.api, terminalFactory: chrome.terminalFactory })
+    assert((await client.ready).ok, 'chrome client failed readiness')
+    const shell = document.documentElement
+    assert(!shell.hasAttribute('data-theme'), 'a first run must carry no stored theme')
+    assert(input('status-version').textContent === `v${VERSION}`, 'the status bar must render the generated version')
+    assert(input('status-size').textContent === '—', 'no session means no terminal size to claim')
+    click('theme-toggle')
+    assert(shell.dataset.theme === 'light', 'the theme switch must write data-theme on <html>')
+    assert(document.getElementById('theme-toggle')!.getAttribute('aria-pressed') === 'true',
+      'the switch must report its own state')
+    click('density-toggle')
+    assert(shell.dataset.density === 'compact', 'the density switch must write data-density')
+    const remembered = JSON.parse(window.localStorage.getItem('pureterm.chrome') ?? '{}')
+    assert(remembered.theme === 'light' && remembered.density === 'compact',
+      'both choices must persist under one key, so a partial write cannot desynchronise them')
+    await client.dispose()
+    client = createClient({ api: chrome.api, terminalFactory: chrome.terminalFactory })
+    assert((await client.ready).ok, 'restored chrome client failed readiness')
+    assert(shell.dataset.theme === 'light' && shell.dataset.density === 'compact',
+      'a remount must restore both choices from storage')
+    window.localStorage.removeItem('pureterm.chrome')
+    delete shell.dataset.theme
+    delete shell.dataset.density
+    await client.dispose()
+    checks.push('the status bar renders real fields, and both chrome switches persist across a remount')
 
     const multiple = fixture()
     client = createClient({ api: multiple.api, terminalFactory: multiple.terminalFactory })
