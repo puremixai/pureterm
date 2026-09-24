@@ -48,8 +48,10 @@ export class ClientHosts extends Service {
     this.scope.listen(view.element('connection-close'), 'click', () => this.closeWorkspace())
     for (const id of ['workspace-home', 'nav-hosts']) this.scope.listen(view.element(id), 'click', () => { ctx.clientTerminal.select(null); this.closeWorkspace() })
     this.scope.listen(view.element('host-view-toggle'), 'click', () => {
-      const list = view.element('host-list').classList.toggle('list-view')
-      view.element('host-view-toggle').setAttribute('aria-pressed', String(list))
+      // The class and the reported state are derived from one value, so they
+      // cannot disagree the way a separate boolean field could.
+      const cards = view.element('host-list').classList.toggle('card-view')
+      view.element('host-view-toggle').setAttribute('aria-pressed', String(cards))
     })
     const shortcuts = view.element<HTMLDialogElement>('shortcuts-dialog')
     for (const id of ['shortcuts-open', 'nav-shortcuts']) this.scope.listen(view.element(id), 'click', () => shortcuts.showModal())
@@ -218,7 +220,7 @@ export class ClientHosts extends Service {
       : '还没有保存的主机。<br />点击「新建主机」开始建立连接。'
     const count = this.ctx.clientView.element('host-count')
     count.textContent = this.query && visible.length !== this.hosts.length ? `${visible.length} / ${this.hosts.length} hosts` : `${this.hosts.length} hosts`
-    this.list.render(visible, this.selectedId)
+    this.list.render(visible, this.selectedId, this.ctx.clientKeychain.records)
   }
 
   private syncMode(): void {
