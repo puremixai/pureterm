@@ -31,6 +31,7 @@ declare module 'cordis' {
     'client/session-change'(sessionId: string | null): void
     'client/connection-change'(): void
     'client/tab-closed'(tabId: string): void
+    'client/terminal-resize'(size: { cols: number; rows: number }): void
     'client/edit-connection'(request: TerminalOpenRequest, title: string): void
     'client/keychain-change'(): void
   }
@@ -200,7 +201,10 @@ export class ClientTerminal extends Service {
       release: () => { listeners.clear(); data.dispose(); resize.dispose(); pane.terminal.dispose(); pane.container.remove(); strip.remove() },
     }
     const data = pane.terminal.onData(value => { if (tab.sessionId) this.ctx.clientTransport.api.input(tab.sessionId, value) })
-    const resize = pane.terminal.onResize(({ cols, rows }) => { if (tab.sessionId) this.ctx.clientTransport.api.resize(tab.sessionId, cols, rows) })
+    const resize = pane.terminal.onResize(({ cols, rows }) => {
+      if (tab.id === this.activeId) this.ctx.emit('client/terminal-resize', { cols, rows })
+      if (tab.sessionId) this.ctx.clientTransport.api.resize(tab.sessionId, cols, rows)
+    })
     listeners.add(button, 'click', () => this.select(id))
     listeners.add(close, 'click', () => this.closeTab(id))
     listeners.add(strip, 'auxclick', event => { if (event.button === 1) { event.preventDefault(); this.closeTab(id) } })

@@ -6,13 +6,14 @@ import { ClientTerminal } from './services/terminal.js'
 import { ClientHosts } from './features/hosts.js'
 import { ClientKeychain } from './features/keychain.js'
 import { ClientSftp } from './features/sftp.js'
+import { ClientChrome } from './services/chrome.js'
 import { ClientApplication } from './features/readiness.js'
 import type { TerminalFactory } from './terminal-view.js'
 
 export interface ClientOptions { document?: Document; api?: SshApi; terminalFactory?: TerminalFactory }
 export interface Client {
   readonly context: Context
-  readonly scopes: Readonly<Record<'view' | 'transport' | 'terminal' | 'keychain' | 'hosts' | 'sftp' | 'application', Fiber>>
+  readonly scopes: Readonly<Record<'view' | 'transport' | 'terminal' | 'keychain' | 'hosts' | 'sftp' | 'chrome' | 'application', Fiber>>
   readonly ready: Promise<RendererReadyPayload>
   dispose(): Promise<void>
 }
@@ -35,6 +36,7 @@ export function createClient(options: ClientOptions = {}): Client {
     keychain: context.plugin(ClientKeychain),
     hosts: context.plugin(ClientHosts),
     sftp: context.plugin(ClientSftp),
+    chrome: context.plugin(ClientChrome),
     application: context.plugin(ClientApplication),
   }
   // A pending Cordis fiber can await before its dependencies exist. Wait in dependency
