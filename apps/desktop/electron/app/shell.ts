@@ -58,15 +58,15 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
     height: 740,
     minWidth: 720,
     minHeight: 420,
-    backgroundColor: '#121426',
+    backgroundColor: '#0e1013',
     show: true,
     title: 'PureTerm',
     titleBarStyle: 'hidden',
     autoHideMenuBar: options.autoHideMenuBar,
     ...(options.useWindowControlsOverlay ? {
       titleBarOverlay: {
-        color: '#121426',
-        symbolColor: '#a1a5bb',
+        color: '#0e1013',
+        symbolColor: '#7d838d',
         height: 76,
       },
     } : {}),
