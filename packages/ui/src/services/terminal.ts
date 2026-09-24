@@ -14,6 +14,8 @@ export interface TerminalTab {
   state: TabState
   message: string
   logs: string[]
+  /** 终端与文件表的比例（0-1）。跟着会话走：null = 用 CSS 里的默认模板。 */
+  split: number | null
 }
 interface OwnedTab extends TerminalTab {
   button: HTMLButtonElement
@@ -202,7 +204,7 @@ export class ClientTerminal extends Service {
     pane.container.setAttribute('aria-labelledby', id)
     const listeners = new DomListeners()
     const tab: OwnedTab = { id, title, request: { ...request }, ...pane, button, label, strip, listeners,
-      sessionId: null, state: 'connecting', message: '正在连接…', logs: [], attempt: 0,
+      sessionId: null, state: 'connecting', message: '正在连接…', logs: [], attempt: 0, split: null,
       release: () => { listeners.clear(); data.dispose(); resize.dispose(); pane.terminal.dispose(); pane.container.remove(); strip.remove() },
     }
     const data = pane.terminal.onData(value => { if (tab.sessionId) this.ctx.clientTransport.api.input(tab.sessionId, value) })
@@ -383,6 +385,17 @@ export class ClientTerminal extends Service {
     const { width, height } = tab.container.getBoundingClientRect()
     if (width < 40 || height < 40) return
     try { tab.terminal.fit() } catch (error) { console.warn('[renderer] fit 失败', error) }
+  }
+
+  /**
+   * 记下当前会话的终端/文件表比例。null 回到 CSS 的默认模板。
+   *
+   * 存在这里是因为「哪个会话」只有 ClientTerminal 知道，而拖动的把手只有
+   * ClientSftp 摸得到：所以一边存、一边画，不新开一条事件。
+   */
+  setSplit(ratio: number | null): void {
+    const tab = this.active
+    if (tab) tab.split = ratio
   }
 
   settleLayout(): Promise<boolean> {

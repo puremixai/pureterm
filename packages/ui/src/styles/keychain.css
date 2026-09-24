@@ -20,7 +20,7 @@
    action, exactly the hosts table's shape. */
 #keychain-columns,
 .keychain-card { display: grid; grid-template-columns: minmax(0,1.2fr) 1fr 1.5fr 62px 74px 24px; align-items: center; gap: 12px; padding: 0 10px; }
-.keychain-card { min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); transition: background-color 160ms var(--ease), border-color 160ms var(--ease); }
+.keychain-card { min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
 .keychain-card:hover { border-color: var(--line-strong); background: var(--c-raised); }
 .keychain-card.active { border-color: var(--ac); }
 .keychain-card-main { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 14px; padding: 0; border: 0; background: transparent; text-align: left; }

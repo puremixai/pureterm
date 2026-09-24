@@ -23,7 +23,7 @@
 #sftp-create .panel-title { flex: 0 0 auto; }
 #sftp-create-name { flex: 1 1 auto; min-width: 120px; height: 32px; padding: 0 9px; border-radius: var(--r-2); font-size: var(--fs-meta); }
 #sftp-list { list-style: none; margin: 0; padding: 0; }
-.file-row { position: relative; display: flex; align-items: center; min-width: 0; border: 1px solid transparent; border-radius: var(--r-3); transition: background-color 180ms var(--ease), border-color 180ms var(--ease); }
+.file-row { position: relative; display: flex; align-items: center; min-width: 0; border: 1px solid transparent; border-radius: var(--r-3); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
 .file-row:hover { background: var(--overlay-hover); }
 .file-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 5px 6px 9px; border: 0; border-radius: var(--r-3); background: transparent; color: var(--tx-2); cursor: pointer; font-size: var(--fs-meta); text-align: left; user-select: none; }
 .file-main:hover:not(:disabled) { border-color: transparent; background: transparent; }
@@ -65,6 +65,20 @@
 @media (max-width: 820px) {
   .files-open .session-content { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(120px, 1.35fr) var(--grip-w) minmax(160px, 1fr); }
   .files-open #sftp { border-left: 0; border-top: 1px solid var(--line); }
+}
+/* 5px 是可见宽度，命中的是它两侧各 4px 的 ::after —— 把元素本身做宽就会从终端
+   那里吃掉 8px。把手是居中一段 26px 的线，悬停或聚焦时变成强调色：一根没有焦点
+   的 5px 灰条很容易被看成边框。 */
+.session-grip { position: relative; z-index: 2; flex: none; cursor: col-resize; touch-action: none; background: var(--c-chrome); }
+.session-grip::after { content: ''; position: absolute; inset: 0 -4px; }
+.session-grip::before { content: ''; position: absolute; top: 50%; right: 1px; left: 1px; height: 26px; border-radius: var(--r-1); background: var(--line-strong); transform: translateY(-50%); transition: background-color var(--t-2) var(--ease); }
+.session-grip:hover::before, .session-grip:focus-visible::before { background: var(--ac); }
+.session-grip:focus-visible { outline: none; box-shadow: var(--ring); }
+.session-grip[hidden] { display: none; }
+@media (max-width: 820px) {
+  /* 同一根把手，另一个轴：::before 变成横的一段，光标和按键方向跟着变。 */
+  .session-grip { cursor: row-resize; }
+  .session-grip::before { top: auto; right: auto; bottom: 1px; left: 50%; width: 26px; height: auto; transform: translateX(-50%); }
 }
 .session-content #terminal { min-width: 0; }
 #sftp > .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

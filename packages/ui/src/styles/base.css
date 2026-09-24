@@ -49,7 +49,7 @@ button {
   cursor: pointer;
   font-size: var(--fs-ui);
   font-weight: 500;
-  transition: background-color 180ms var(--ease), border-color 180ms var(--ease), color 180ms var(--ease), transform 180ms var(--ease);
+  transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease), color var(--t-2) var(--ease), transform var(--t-2) var(--ease);
 }
 
 button:hover:not(:disabled) { border-color: var(--line-strong); background: var(--c-raised); color: var(--tx-1); }

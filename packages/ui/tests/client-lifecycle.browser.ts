@@ -286,6 +286,28 @@ async function runChecks() {
     assert(input('sftp-path').value === '/second', 'background directory result leaked into another tab')
     tabButtons[0]!.click()
     assert(!input('sftp').hidden && input('sftp-path').value === '/first', 'switching tabs must restore each file panel directory')
+    // 分栏把手：可聚焦的分隔条，键盘走得动，而且比例是各个会话自己的。
+    // 断言不钉在列上 —— 测试窗口可能落在 820 以下，那时它按行分栏。
+    const grip = document.querySelector<HTMLElement>('.session-grip')!
+    assert(!!grip, 'an open file table must come with a grip')
+    assert(grip.getAttribute('role') === 'separator' && grip.getAttribute('aria-orientation') === 'vertical', 'the grip must announce itself as a separator')
+    assert(grip.tabIndex === 0, 'a grip nobody can focus is a border')
+    const template = () => input('sftp').parentElement!.getAttribute('style') ?? ''
+    const firstValue = Number(grip.getAttribute('aria-valuenow'))
+    assert(firstValue > 20 && firstValue < 80, `the default ratio must sit inside the clamp, got ${firstValue}`)
+    grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    assert(Number(grip.getAttribute('aria-valuenow')) === firstValue + 2, 'ArrowRight moves the split by two points')
+    assert(/--grip-w/.test(template()), 'the moved ratio is written back as a track, not a width')
+    for (let step = 0; step < 40; step += 1) grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    assert(Number(grip.getAttribute('aria-valuenow')) === 78, 'the drag stops at the clamp, so no pane can vanish')
+    grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+    assert(template() === '' && grip.getAttribute('aria-valuenow') === '57', 'Home returns to the CSS default rather than a JS copy of it')
+    grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true }))
+    assert(Number(grip.getAttribute('aria-valuenow')) === 47, 'Shift steps are ten points, for a long drag back')
+    tabButtons[1]!.click(); await tick()
+    assert(Number(document.querySelector<HTMLElement>('.session-grip')!.getAttribute('aria-valuenow')) === 57, 'another session must not inherit this one’s ratio')
+    tabButtons[0]!.click(); await tick()
+    assert(Number(document.querySelector<HTMLElement>('.session-grip')!.getAttribute('aria-valuenow')) === 47, 'and this one must still have its own')
     assert(fileRequests.join(',') === 'test-1:.,test-2:.', 'file panel requests used the wrong SSH session')
     document.querySelector<HTMLButtonElement>('[data-tab-close]')!.click(); await tick()
     assert(multiple.stats.closes === 1 && multiple.terminals[0]!.disposed === 1 && multiple.terminals[1]!.disposed === 0, 'closing one tab must only release its session')

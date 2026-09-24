@@ -52,7 +52,7 @@
 .field > span { color: var(--tx-3); font-size: var(--fs-micro); font-weight: 600; }
 .credentials-section > .field,
 .auth-field { margin-bottom: 12px; }
-input, select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: var(--r-4); outline: none; background: var(--c-control); color: var(--tx-1); font-size: var(--fs-em); transition: border-color 180ms var(--ease), background-color 180ms var(--ease), box-shadow 180ms var(--ease); }
+input, select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: var(--r-4); outline: none; background: var(--c-control); color: var(--tx-1); font-size: var(--fs-em); transition: border-color var(--t-2) var(--ease), background-color var(--t-2) var(--ease), box-shadow var(--t-2) var(--ease); }
 input::placeholder { color: var(--tx-4); }
 input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--line-strong); background: var(--c-raised); }
 /* :focus carries no ring of its own: base.css owns the keyboard ring and does

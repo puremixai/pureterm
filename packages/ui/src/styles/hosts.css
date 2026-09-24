@@ -72,7 +72,7 @@
 /* Dark separates with hairlines, not elevation, so the row's only rest-state
    signal is its border and the one-step surface raise. The old hover also
    lifted the card by 1px, which reads as a glitch with no shadow under it. */
-.host-row { position: relative; min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); transition: background-color 180ms var(--ease), border-color 180ms var(--ease); }
+.host-row { position: relative; min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
 .host-row:hover { border-color: var(--line-strong); background: var(--c-raised); }
 .host-row.active { border-color: var(--ac-line); background: var(--ac-bg); }
 .host-main { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 14px; padding: 0; border: 0; border-radius: var(--r-2); background: transparent; color: var(--tx-2); cursor: pointer; text-align: left; user-select: none; }
@@ -87,7 +87,7 @@
 .host-label { overflow: hidden; color: var(--tx-1); font-size: var(--fs-h2); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .tag { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: 10px; line-height: 1.1; white-space: nowrap; }
 .tag.saved { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
-.host-actions, .file-actions { position: absolute; top: 9px; right: 9px; display: flex; gap: 2px; padding: 0; opacity: 0; transition: opacity 180ms var(--ease); }
+.host-actions, .file-actions { position: absolute; top: 9px; right: 9px; display: flex; gap: 2px; padding: 0; opacity: 0; transition: opacity var(--t-2) var(--ease); }
 .host-row:hover .host-actions, .host-row.active .host-actions, .file-row:hover .file-actions { opacity: 1; }
 .host-row:focus-within .host-actions, .file-row:focus-within .file-actions { opacity: 1; }
 button.mini { min-height: 28px; padding: 0 7px; border-color: transparent; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: var(--fs-micro); font-weight: 600; }
