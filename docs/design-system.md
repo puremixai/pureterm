@@ -12,6 +12,8 @@ Inside the shared stylesheet, a colour literal may appear in exactly one file. `
 
 The qualifier is load-bearing, because the rule is about CSS and the guard reads partials. Two places outside the cascade hold colour literals: the sixteen-entry `ANSI` array in `packages/ui/src/terminal-view.ts`, deliberate and covered in [Terminal palette](#terminal-palette), and `<meta name="theme-color" content="#0e1013">` at `packages/ui/src/index.html:15`, which is outside the stylesheet and so outside the literal rule — `theme-sync.test.mjs` is what ties it to `--c-chrome`. Naming them here is what keeps the one-file sentence honest rather than merely narrow.
 
+The end-to-end form of that claim is checkable in the artifact rather than the source: the built `packages/ui/dist/app.css` carries 56 hex literals, 50 of them inside the two theme blocks, and the remaining six all belong to `@xterm/xterm/css/xterm.css` — `.composition-view { background: #000; color: #FFF }` and its siblings, a vendored third-party sheet the guard reads no more than it reads Tabler's icons. No test reads the flattened sheet; the count above was measured by hand, and it is recorded so the next reader does not have to re-derive where those six come from.
+
 `packages/ui/src/styles/fonts.css` is the only file that may name a typeface in a face declaration, because that is what an `@font-face` does: it declares a face rather than asking a token for one. The three stacks the page asks for — `--font-ui`, `--font-mono`, `--font-term` — are named in `tokens.css`, so `fonts.css` is the only place a family is declared, not the only place one is written out.
 
 `packages/ui/tests/stylesheet-contract.test.mjs` enforces all of it, and the exemption list is itself asserted rather than declared:

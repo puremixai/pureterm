@@ -12,6 +12,8 @@
 
 这个限定语是承重的，因为这条规则说的是 CSS，而守卫读取的是分片。级联之外有两处持有颜色字面量：`packages/ui/src/terminal-view.ts` 里那份十六项的 `ANSI` 数组，这是刻意的，见[终端色板](#终端色板)；以及 `packages/ui/src/index.html:15` 的 `<meta name="theme-color" content="#0e1013">`，它在样式表之外，因而也在字面量规则之外 —— 是 `theme-sync.test.mjs` 把它拴在 `--c-chrome` 上。把它们点明在这里，才让"一个文件"这句话既成立又不越界。
 
+这条声明还有一个端到端的形态可以在产物而非源码里核对：构建出的 `packages/ui/dist/app.css` 携带 56 个十六进制字面量，其中 50 个在两个主题块之内，剩下六个全部属于 `@xterm/xterm/css/xterm.css` —— `.composition-view { background: #000; color: #FFF }` 及其同族，一张守卫同样不去读取的第三方随包样式表，正如它不读取 Tabler 的图标表。没有任何测试读取摊平后的那张表；上面这个数字是手工量出来的，记录在此，好让下一位读者不必重新推算那六个来自哪里。
+
 `packages/ui/src/styles/fonts.css` 是唯一可以在字面声明里写出字体族名的文件，因为 `@font-face` 做的事就是这样：它声明一张字面，而不是向 token 索取一张。页面实际索取的三套字体栈 —— `--font-ui`、`--font-mono`、`--font-term` —— 名字写在 `tokens.css` 里，所以 `fonts.css` 是唯一*声明*字面的地方，而不是唯一写出字体族名的地方。
 
 `packages/ui/tests/stylesheet-contract.test.mjs` 强制执行以上全部规则，而且豁免清单本身是被断言的，不是被声明的：

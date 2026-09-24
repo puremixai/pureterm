@@ -616,3 +616,19 @@ npm run start:desktop
 - 计划三：外壳重建 —— 52px 图标轨道、删除 `#nav-toggle` 与 `.nav-collapsed`、会话标签进顶栏、用真正存在的字段搭 24px 状态栏、内联 SVG 品牌标记、favicon、删除 `.window-control` 死 CSS、76px 顶栏降到 40px、让浅色可达的主题开关、以及 `data-density`。
 - 计划四：各屏 —— hosts 与 keychain 表格、右固定 Inspector、可拖拽 SFTP 分栏、四态、toast、失败诊断、断点从六个合并为三个。
 - 两个后续计划继承本计划的规则：`tokens.css` 之外不得有颜色字面量，每个 `var(--x)` 必须指得到已声明的 token。
+
+---
+
+## 执行所发现的
+
+**任务六**落成两个提交。`666737b` 增加了 `every hairline stays perceptible against the ground it is drawn on` —— 位置在 `stylesheet-contract.test.mjs`，而不是本计划所写的 `design-tokens.test.mjs`，因为能读取各分片的那个文件，才是能看见"哪些配对真的被画了出来"的那个文件。一张 token 配对的矩阵会为三十六条没人画的组合作保，而那条唯一真实存在的组合消失时它照样通过。它从七个内容分片里收集 28 条规则，逐条在两个主题下测量，低于 1.1:1 即失败。拿它去量翻转自己的产出时，发现了映射表看不见的两处相撞：浅色的 `--line-soft` 是 `#eceef1`，与浅色的 `--c-inset` 同一个值，于是画在那个字面上的分隔线算出来恰好是 1.000；而深色的 `--line-soft` 在 `--c-raised` 上是 1.034。于是六处声明各上调一档 —— 四处分隔线由 `--line-soft` 到 `--line`（密钥库外壳的边、`terminal.css` 里的两条规则、主机卡片分隔线），以及 `.tag` 与 `.action-split` 在它们的 `--c-control` 填充上由 `--line` 到 `--line-strong`。`62d55be` 用从代码树上量来的数字重写了 `docs/design-system.md` 与它的中文配对：token 计数、字节列、消费者普查、语义色在自己着色底上的比例矩阵、完整的"逐底面逐主题"合法性矩阵，以及登记簿那一节 —— 它现在已经是历史了。
+
+**任务七没有完成。** 视觉复核需要一双对着渲染窗口的眼睛，而本次会话产不出这样一个窗口：内置浏览器报告 `visibilityState=hidden` 且视口是 `0x0`，于是任何一屏的截图都拿不到，也没有开一个 Electron 窗口来查看。检查过的内容比第二步那七项窄得多，并且照此如实报告：
+
+- 对着运行中的 `npm run start:web` 页面，构建出的样式表透过 `var()` 引用 50 个不同 token，而它们在活文档上**全部解析成功**。页面里唯一未解析的自定义属性属于宿主环境，不属于 PureTerm。
+- 四个元素透过 `getComputedStyle` 读出，并与阶梯一致：`.app-topbar` 的 `rgb(14, 16, 19)` 就是 `--c-chrome`；`.host-avatar` 的 `rgb(33, 37, 43)` 就是 `--c-control`，其上的图例是 `rgb(242, 243, 245)`，即 `--tx-1` —— 这正是 `--legacy-on-solid` 那条映射在活页面上的样子；`.nav-item` 的 `rgba(90, 174, 255, 0.12)` 就是 `--ac-bg`；`#terminal` 的 `rgb(8, 9, 10)` 就是 `--term-bg`。四者的 `box-shadow` 与 `transform` 都是 `none`。
+- 没有打开任何 SSH 会话，因此终端接缝 —— DOM 渲染器的底色与 `#terminal` 背景相接的那一像素，以及 `.terminal-pane` 内边距透出来的地方 —— 完全没有被走过。
+
+(a) 到 (g) 仍然开着，并且成为计划三的第一个检查点，而不是现在就重调某个取值：在一套全绿的测试下面改值，正是当年那份登记簿长出自己的第二套手工拷贝颜色的方式。来跑这一步的人应该先看 (c) —— 四个主机头像色调并成一块中性底，是那张清单上唯一一项移除信息而不只是移除颜料的改动。
+
+**一个值得记下的事实。** 构建出的 `packages/ui/dist/app.css` 携带 56 个十六进制字面量：50 个在两个主题块之内，另外六个属于 `@xterm/xterm/css/xterm.css` 里的 `.composition-view` 及其同族。没有任何测试读取摊平后的那张表；这个数是手工量出来的，如今写进 `docs/design-system.md`，好让下一位读者不必重新推算那六个从何而来。
