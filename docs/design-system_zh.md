@@ -35,14 +35,14 @@
 | 1 | `styles/fonts.css` | 2,469 | 随包分发的字面。唯一可以在字面声明里写出字体族名的文件。 |
 | 2 | `styles/tokens.css` | 5,992 | Token 体系与主题组。 |
 | 3 | `styles/base.css` | 3,004 | 元素默认值：重置、继承的字号、按钮与输入框、焦点环、reduced motion。 |
-| 4 | `styles/chrome.css` | 9,082 | 应用外壳：`#app` 网格、顶栏、工作区与会话标签、导航轨道、状态栏，以及 `.app-shell` 上的状态类。 |
-| 5 | `styles/hosts.css` | 8,997 | 主机面板：页面标题、搜索行、工具栏，以及已保存主机所渲染出的表格与卡片形态。 |
-| 6 | `styles/inspector.css` | 7,299 | 连接表单：嵌入的编辑面外壳与标题栏、分区、字段、底栏，以及密钥库编辑器复用的共享控件。 |
-| 7 | `styles/keychain.css` | 8,180 | 在共享主机表格语言之上的密钥库与编辑器。 |
+| 4 | `styles/chrome.css` | 8,927 | 应用外壳：`#app` 网格、顶栏、工作区与会话标签、导航轨道、状态栏，以及 `.app-shell` 上的状态类。 |
+| 5 | `styles/hosts.css` | 10,765 | 主机面板：页面标题、搜索行、工具栏，以及已保存主机所渲染出的表格与卡片形态。 |
+| 6 | `styles/inspector.css` | 7,730 | 连接表单：嵌入的编辑面外壳与标题栏、分区、字段、底栏，以及密钥库编辑器复用的共享控件。 |
+| 7 | `styles/keychain.css` | 9,052 | 在共享主机表格语言之上的密钥库与编辑器。 |
 | 8 | `styles/terminal.css` | 5,283 | 终端表面：xterm 面板及其覆盖样式、会话工具栏、SFTP 抽屉。 |
 | 9 | `styles/states.css` | 3,683 | 无内容与非正常：空占位、快捷键对话框、连接失败页面。 |
 
-这一列字节取自 Windows 上的工作副本，并且刻意这样标注，因为它并非到处都能复现：`core.autocrlf` 为 `true`，仓库里又没有 `.gitattributes`，于是提交的 blob 是 LF，而这里九个文件里有七个在磁盘上是 CRLF。保留 blob 形态的检出会读到每个这样的文件恰好少它的行数 —— `tokens.css` 171、`base.css` 73、`chrome.css` 196、`hosts.css` 103、`inspector.css` 88、`keychain.css` 93、`states.css` 45 —— 而 `fonts.css` 与 `terminal.css` 本身已按 LF 存储，两处读数一致。`style.css` 自己也是 CRLF，磁盘上 1,363 字节对 blob 的 1,340 字节。把这些数字当作每个职责承载了多少的一个量级参考，不要当作校验和。
+这一列字节取自 Windows 上的工作副本，并且刻意这样标注，因为它并非到处都能复现：`core.autocrlf` 为 `true`，仓库里又没有 `.gitattributes`，于是提交的 blob 是 LF，而这里九个文件里有七个在磁盘上是 CRLF。保留 blob 形态的检出会读到每个这样的文件恰好少它的行数 —— `tokens.css` 171、`base.css` 73、`chrome.css` 194、`hosts.css` 125、`inspector.css` 96、`keychain.css` 105、`states.css` 45 —— 而 `fonts.css` 与 `terminal.css` 本身已按 LF 存储，两处读数一致。`style.css` 自己也是 CRLF，磁盘上 1,363 字节对 blob 的 1,340 字节。把这些数字当作每个职责承载了多少的一个量级参考，不要当作校验和。
 
 清单拥有级联顺序，因为各分片在同一特异度下相互竞争，后导入者获胜。这正是任何分片都不得 `@import` 的原因：嵌套导入会把顺序决定权分散到九个地方，而 `visual-contract.test.mjs` 会对每个分片自己的文本断言 `!/@import/`。顺序本身由同一条测试钉住：它断言的名字列表恰好是 `['fonts', 'tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states']` —— 并且这份列表是透过 `packages/ui/tests/partial-list.mjs` 从清单本身推导出来的，不是第二份拷贝，所以新增、改名或调换顺序都必须带着一份明确的意图去改动那条断言。
 
@@ -85,6 +85,8 @@
 | `--tx-4` | `#565b63` | `#9aa1aa` | 2.67:1 / 2.61:1 |
 
 `--tx-1` 与 `--tx-2` 是正文和次级文字，`--tx-3` 是弱化档，`--tx-4` 是第四档。`design-tokens.test.mjs` 对两个主题下 `--c-surface` 上的 `--tx-1`、`--tx-2`、`--tx-3` 断言 AA，而把 `--tx-4` 当作排序守卫而非 AA 上限：它必须弱于 `--tx-3` 且不低于 1.5:1，因此把它抬进 AA 是进步，任它淡到不可见则不是。
+
+正因为它不是 AA 档，`--tx-4` 就不能当作文字来用。唯一被认可的位置是 `::placeholder`：它说明的是一个标签已经在屏幕上的字段，并且第一次按键就会消失。`stylesheet-contract.test.mjs` 会读取级联里的每一条规则，任何选择器不是 placeholder 的 `color: var(--tx-4)` 都会让它失败。主机表与密钥表的列标题曾经是第一条这样的规则 —— 11px 的真实文字，暗色 2.88:1、浅色 2.61:1 —— 现在它们取 `--tx-3`（在各自底面上是 5.16:1 与 4.55:1）。
 
 ### 强调色与语义色
 
@@ -168,7 +170,7 @@
 
 `--shadow-pop` 是度量不可变性唯一被认可的例外：它由主题色派生，因此必须逐主题重算而非继承。测试同时断言它是颜色和终端类别之外浅色组里唯一的声明，并且它的浅色值不同于深色值。它也是仅存的阴影：翻转拿掉了卡片、行与面板上的高度阴影，改由线色承担，于是这颗留了下来，专给那个必须离开自己的容器、并要能在身后一切之上被分辨出来的浮层使用。
 
-`[data-density="compact"]` 是与主题正交的另一个维度，只重映射一个 token：`--row-h: var(--row-h-compact)`。
+`[data-density="compact"]` 是与主题正交的另一个维度，只重映射一个 token：`--row-h: var(--row-h-compact)`。要让这次重映射真的落到列表行上，行内那个按钮就不能再把它托住：`base.css` 给每个 `button` 都设了 `min-height: 38px`，而 38px 恰好就是舒适档的 `--row-h`，所以表格行里的 `.host-main` 与 `.keychain-card-main` 无论 token 说什么都保持原高。两者都在表格视图里被解除下限 —— 那里行自己的盒子才是点击目标，按钮只是把它填满。
 
 ### 字号阶梯
 
@@ -185,12 +187,12 @@
 | `--fs-h1` | `20px` | 1 处 `var()` |
 | `--fs-term` | `13.5px` | 无 —— 见[已知缺口](#已知缺口) |
 
-这是一份普查而不是承诺：七个内容分片持有 380 处 `var()` 引用，`tokens.css` 在自己的派生值里另有 3 处，`terminal-view.ts` 做出 6 次 `read()` 调用。已经接通的、以及各屏还欠的：
+这是一份普查而不是承诺：七个内容分片持有 381 处 `var()` 引用，`tokens.css` 在自己的派生值里另有 3 处，`terminal-view.ts` 做出 6 次 `read()` 调用。已经接通的、以及各屏还欠的：
 
 - **颜色：35 个里有 32 个有调用点。** 没有的那三个是 `--overlay-soft`、`--overlay-press` 与 `--ac-focus` —— 一个静止提升、一个按下提升、一个焦点环第二档，它们都得先有一个能承载它们的控件才有意义。
 - **字体类：10 个全部有交代**，三套字体栈加七档 `--fs-*` 里的六档；例外是 `--fs-term`，记在[已知缺口](#已知缺口)里。
 - **终端：1 个 CSS 消费者，4 次 TS 读取。** `--term-bg` 如今既被 xterm 读取，也被 `terminal.css:6` 绘制，这两者之间的接缝正是那条规则上方注释解释的内容；其余三个只经 `getComputedStyle` 抵达页面，任何 CSS 守卫都看不见它们，`terminal-theme.test.mjs` 是那根连线。
-- **度量：五档圆角、`--ease`、四道外壳几何与 `--row-h` 合计 62 个引用，另有 13 个 token 一个都没有** —— 六道间距、四档层叠、三段时长。两张表都把行高交给 `--row-h` 之后它就有了调用点，紧凑密度所重映射的那把刻度于是是活的；`--row-h-compact` 除了被那条映射规则读取之外仍无分片调用点。`--row-h` 与 `--row-h-compact` 除了那条把前者映射到后者的 `[data-density="compact"]` 规则之外没有分片调用点，而外壳两个都不读。时长是唯一一处"没有消费者"并不中立的：分片确实在设时长，设的却是字面量 —— `base.css`、`hosts.css`、`inspector.css`、`terminal.css` 里的 `180ms`，`keychain.css` 里的 `160ms` —— 于是曲线走了 token，紧挨着它的数字却站在刻度之外，离 `--t-2` 差 20ms。
+- **度量：五档圆角、`--ease`、四道外壳几何与 `--row-h` 合计 66 个引用，另有 13 个 token 一个都没有** —— 六道间距、四档层叠、三段时长。两张表都把行高交给 `--row-h` 之后它就有了调用点，而等到行内按钮不再把它托在 38px 上，它才第一次真的能够推动一行：在此之前密度开关改的是一个 token，改不动任何几何。`--row-h-compact` 除了被那条把 `--row-h` 映射到它的 `[data-density="compact"]` 规则读取之外，仍无分片调用点。时长是唯一一处"没有消费者"并不中立的：分片确实在设时长，设的却是字面量 —— `base.css`、`hosts.css`、`inspector.css`、`terminal.css` 里的 `180ms`，`keychain.css` 里的 `160ms` —— 于是曲线走了 token，紧挨着它的数字却站在刻度之外，离 `--t-2` 差 20ms。
 - **派生：`--ring` 有两个调用点**（焦点在 `base.css`，轨道自身的焦点环在 `chrome.css`），**`--shadow-pop` 有一个**（失败对话框的浮层在 `states.css`），这很单薄但不是零，而且两者都由构成它们的那几对取值来计量。
 
 ### 合法性是按底面、按主题判定的
@@ -329,3 +331,4 @@ OFL 声明必须是一个 `/*!` 块，不能是 `/*` 注释，也不能只是一
 - 有十六个 token 至今无法被屏幕上的任何东西触达：颜色里的 `--overlay-soft`、`--overlay-press` 与 `--ac-focus`，度量里的六道间距、四档层叠与三段时长。它们由 `design-tokens.test.mjs` 孤立验证，而不是被渲染出的像素验证，这正是等待各屏的那把刻度应有的状态 —— 但它也意味着这十六个取值里任何一个的错误，浏览器都还没有开口反驳。
 - 生成的 `packages/ui/src/lib/changelog.ts` 没有任何导入方。`packages/`、`apps/`、`scripts/` 下都没有代码导入它，构建出的 `packages/ui/dist/app.js` 里也找不到任何变更日志字符串。它的姊妹 `lib/version.ts` 现在有了：`services/chrome.ts` 把它渲染进状态栏，而 `client-lifecycle.browser.ts` 断言的正是那次渲染，而不是一份拷贝来的版本字符串。`npm run release:check` 会解析这两个文件并与 `CHANGELOG.md`、`VERSION.txt` 比对，因此两者都不会悄悄过期，但今天变更日志那一半仍是构建期的发布元数据，而不是页面内容。
 - `--font-mono` 以 `"JetBrains Mono"` 开头，而它并未随包发布；本机只安装了 `@fontsource-variable/inter`。因此界面里的等宽文字会按机器落到 Cascadia Mono 或 Consolas。这是普通字体栈行为，不是缺陷，但它意味着 `--font-mono` 与 `--font-term` 今天的差别只是终端那两个 CJK 回退加上缺席的 JetBrains Mono。
+- 620px 以下两个嵌入编辑器都会逃出它们的轨道。`.keychain-editor` 与 `.connection-workspace` 在 900px 处改成 `position: absolute; inset: …`，只要 `#main` 的高度仍由 `.app-body` 网格给出确定值，这就是准确的；但 620px 那条块把 `.app-body` 变成可滚动的纵向 flex 列，`#main` 的高度于是由内容决定，绝对定位的编辑器所解析的包含块就变成背后的列表而不是视口。两个编辑器都不曾低于 1080px 被测过：内置视口是固定的，而回环主机拒绝被嵌入。这条作为缺口记录，没有闭眼修改。
