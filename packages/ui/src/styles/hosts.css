@@ -72,27 +72,32 @@ button.mini { min-height: 28px; padding: 0 7px; border-color: transparent; borde
 button.mini:hover:not(:disabled) { border-color: var(--line); background: var(--c-surface); color: var(--tx-1); }
 button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
 
-@media (max-width: 1250px) {
-  #host-list { grid-template-columns: repeat(2, minmax(210px, 1fr)); }
+@media (max-width: 1100px) {
+  #host-list.card-view { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
 }
 
 @media (max-width: 820px) {
   .dashboard-toolbar { align-items: flex-start; flex-direction: column; }
   .dashboard-tools { align-self: flex-end; }
-  #host-list { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
+  #host-list.card-view { grid-template-columns: minmax(0, 1fr); }
+  .host-columns,
+  #host-list:not(.card-view) .host-row { grid-template-columns: minmax(0,1.6fr) 1fr 24px; }
+  /* Row children are main, address, user, auth, updated, actions — so the two
+     that go are nth-child(3) and (4), and the header drops its third and fourth
+     spans to match. Name, address and the actions stay. The :not(.card-view) is
+     load-bearing: a card grid must keep the shape the card rules gave it. */
+  #host-list:not(.card-view) .host-row .host-cell:nth-child(3),
+  #host-list:not(.card-view) .host-row .host-cell:nth-child(4),
+  .host-columns span:nth-child(3), .host-columns span:nth-child(4) { display: none; }
 }
 
 @media (max-width: 620px) {
-  #main { min-height: calc(100dvh - 130px); overflow: visible; }
-  #hosts-panel { height: auto; min-height: calc(100dvh - 130px); overflow: visible; padding: 12px 10px 24px; }
+  #main { min-height: 0; overflow: hidden; }
+  #hosts-panel { height: 100%; min-height: 0; overflow: auto; padding: 12px 10px 24px; }
   .host-search-row { margin-bottom: 18px; }
   .dashboard-toolbar { margin-bottom: 20px; }
   .dashboard-actions { max-width: 100%; flex-wrap: wrap; }
   .hosts-heading { margin-right: 6px; margin-left: 6px; }
-  #host-list { grid-template-columns: 1fr; gap: 11px; padding: 0 6px; }
-}
-
-@media (max-width: 620px) {
-  #main { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-  #hosts-panel { height: 100%; min-height: 0; overflow: auto; }
+  #host-list { padding: 0 6px; }
+  #host-list.card-view { gap: 11px; }
 }
