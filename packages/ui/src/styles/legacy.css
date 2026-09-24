@@ -12,58 +12,22 @@
      tokens.css. Do NOT rename: every var(--nav), var(--topbar),
      var(--text-strong), var(--accent), var(--warning) in the partials keeps
      resolving through these. */
-  --topbar: #121426;
-  --nav: #272b40;
-  --main: #1d2033;
-  --main-soft: #22263a;
-  --card: #292d43;
-  --card-hover: #30354d;
-  --field: #171a2b;
-  --field-hover: #1d2134;
-  --text-strong: #f5f5fb;
-  --text: #e5e7f2;
-  --text-muted: #a1a5bb;
-  --text-faint: #737991;
-  --accent: #a7c4ff;
-  --accent-strong: #3c9ef5;
-  --accent-soft: rgba(121, 169, 255, 0.16);
-  --legacy-ok: #7bd6af;
-  --legacy-err: #ff929e;
-  --warning: #f2c86f;
 
   /* Role-named entries so no partial hard-codes a colour, grouped the way the
      palette is used rather than alphabetically. */
 
   /* Surfaces. */
   --legacy-surface-sunken: #1c2033;
-  --legacy-surface-log: #2a2e44;
-  --legacy-surface-secondary: #2d3147;
-  --legacy-surface-bar: #1a1e30;
   /* Danger, one value per role. */
-  --legacy-danger-node: #ff5962;
-  --legacy-danger-title: #ff6670;
-  --legacy-danger-log: #ff8a91;
   /* Glyphs, legends, avatars and inverted marks. */
-  --legacy-log-glyph: #bab3d0;
-  --legacy-on-solid: #ffffff;
   /* Scrollbars. */
-  --legacy-scroll-thumb: #454b67;
   /* Hairlines. Seven steps when this register was written; the flip's
      three-step ramp has already taken --legacy-line-hair and
      --legacy-line-strong, so what remains is what still has a call site.
      `--legacy-line` at .085 is the value the new --line replaces. */
-  --legacy-line: rgba(222, 226, 255, 0.085);
-  --legacy-line-strong: rgba(222, 226, 255, 0.17);
   /* Overlays and row hovers. */
-  --legacy-row-hover: rgba(222, 226, 255, 0.055);
   /* Translucent tints, then the two insets they sit beside. */
-  --legacy-tint-warn: rgba(242, 200, 111, 0.1);
-  --legacy-tint-warn-line: rgba(242, 200, 111, 0.28);
   /* Shadows: the call sites wrote a whole box-shadow as one literal, so each
      entry carries its offsets and blur as well as its colour. */
-  --legacy-shadow-log: 0 14px 32px rgba(7, 8, 18, 0.14);
-  --legacy-shadow-sheet: 0 -12px 28px rgba(0, 0, 0, 0.18);
-  --legacy-shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.53);
   /* Modal backdrop. */
-  --legacy-backdrop: rgba(7, 9, 22, 0.6);
 }

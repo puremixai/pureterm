@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { readPartials, styleImportCount } from './partial-list.mjs'
 
 const html = await readFile(new URL('../src/index.html', import.meta.url), 'utf8')
-const { manifest, css } = await readPartials()
+const { manifest, names, texts, css } = await readPartials()
 
 test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(html, /<div id="app" class="app-shell">/)
@@ -23,9 +23,12 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(html, /class="ti ti-server-2"/)
   assert.match(manifest, /@import\s+"@tabler\/icons-webfont\/dist\/tabler-icons\.min\.css"/)
 
-  for (const token of ['--topbar', '--nav', '--card', '--text-strong', '--accent']) {
-    assert.match(css, new RegExp(`${token}\\s*:`), `missing design token ${token}`)
-  }
+  // Token existence belongs to design-tokens.test.mjs, which reads the theme
+  // groups themselves. What this file can assert and that one cannot: the
+  // flipped app asks the legacy register for nothing, by any name.
+  const styled = names.map((name, index) => name === 'legacy' ? '' : texts[index]).join('\n')
+  const asked = styled.match(/var\(\s*--(?:legacy-|topbar|nav\b|main\b|main-soft|card\b|card-hover|field\b|field-hover|text-\w+|accent\b|accent-strong|accent-soft|warning\b)/g) ?? []
+  assert.deepEqual(asked, [], `styled partials still ask the legacy register for colour: ${asked.join(', ')}`)
 
   assert.match(css, /:focus-visible\s*\{/, 'keyboard focus treatment is required')
   assert.match(css, /grid-template-columns:\s*278px\s+minmax\(0,\s*1fr\)/, 'desktop shell needs a stable navigation rail')

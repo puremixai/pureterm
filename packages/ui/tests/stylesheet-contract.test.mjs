@@ -20,7 +20,7 @@ const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(/
 // Measured after each flipped partial, never remembered by hand: it started at
 // 100 and only falls, because the liveness test below names whatever a flip
 // orphans. Update it from the test output, not from a count you did mentally.
-const LEGACY_DECLARATIONS = 37
+const LEGACY_DECLARATIONS = 1
 
 // The four non-colour names, so a re-declaration in the register fails by name
 // rather than by a confusing count.
@@ -149,8 +149,10 @@ test('every legacy entry is read by a partial, or named in the allowlist', async
     .map((n) => withoutComments(texts[names.indexOf(n)]))
     .join('\n')
   const referenced = new Set([...styled.matchAll(/var\(\s*(--[a-z0-9-]+)\s*\)/g)].map((m) => m[1]))
-  const orphans = declared.filter((name) => name.startsWith('--legacy-')
-    && !referenced.has(name) && !UNREFERENCED_LEGACY.has(name))
+  // Every declared entry, not just the `--legacy-`-prefixed ones: the sixteen
+  // original aliases moved in here unprefixed, and a prefix filter let them go
+  // quietly the moment the flip orphaned them.
+  const orphans = declared.filter((name) => !referenced.has(name) && !UNREFERENCED_LEGACY.has(name))
   assert.deepEqual(orphans, [], `unreferenced without being allowlisted: ${orphans.join(', ')}`)
   // The allowlist shrinks too: a holdover that leaves the register, or gains a
   // call site, has no business staying named here.
