@@ -58,10 +58,6 @@
   --legacy-surface-bar: #1a1e30;
   --legacy-surface-pill: #20243a; /* .update-pill, and .app-tab.is-active outside .workspace-tabs */
   --legacy-surface-pill-hover: #303650;
-  /* Legend on an accent fill, and the brighter fill it hovers to. */
-  --legacy-on-accent: #081426;
-  --legacy-on-accent-hover: #06111f;
-  --legacy-accent-hover: #56adff;
   /* Danger, one value per role. */
   --legacy-danger-fill: #a84455;
   --legacy-danger-node: #ff5962;

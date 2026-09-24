@@ -17,10 +17,11 @@ const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(/
 // do not add one" has to be a number rather than prose: a fresh line there
 // hides from every other check. Plan 2 shrinks it as the palette flips.
 //
-// 96, not 100: --radius-sm, --radius-md, --radius-lg and --motion-standard were
-// never colour and have left the register for tokens.css, so they must not come
-// back. The whole file is now colour debt, and deleting it is one `git rm`.
-const LEGACY_DECLARATIONS = 96
+// 93, from 100: the four non-colour entries left for tokens.css, and the three
+// accent-legend entries lost their last consumer when `button.primary` moved to
+// --ac with --ac-fg. The count falls one per retired line as the flip proceeds,
+// and the liveness test below makes each retirement name itself.
+const LEGACY_DECLARATIONS = 93
 
 // The four non-colour names, so a re-declaration in the register fails by name
 // rather than by a confusing count.
