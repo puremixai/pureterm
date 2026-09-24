@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-density="comfortable">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PureTerm · graphite target prototype</title>
+<!--
+  Design artifact, not product code. Nothing builds it and nothing imports it.
+  It is the complete target UI agreed during the 2026-09-23 brainstorming, including
+  the parts Plans 1-2 deliberately deferred (chrome, status bar, tables, SFTP split,
+  four states, toasts, light theme).
+
+  Colour, radii, spacing, type and motion all resolve through the real token sheet at
+  ../../../packages/ui/src/styles/tokens.css — this file declares no colour at all, so a
+  value that drifts in tokens.css drifts here too, which is the point of looking at it
+  before Plan 3.
+  Where the original mockup used color-mix(), the shipped ramp now has a named step
+  (--ac-line, --err-bg, --ok-line), and this file uses that step instead.
+-->
+<link rel="stylesheet" href="../../../packages/ui/src/styles/tokens.css">
+<style>
+  /* ---- prototype frame: this is the page the reviewer sees, not the app ---- */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 22px 64px; background: var(--c-inset); color: var(--tx-1);
+    font-family: var(--font-ui); font-size: var(--fs-ui); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .doc { max-width: 1180px; margin: 0 auto; }
+  .doc > h1 { margin: 0 0 4px; font-size: var(--fs-h1); font-weight: 600; letter-spacing: -.02em; }
+  .doc > p.lead { margin: 0 0 22px; color: var(--tx-3); font-size: var(--fs-meta); }
+  .bar { display: flex; align-items: center; gap: 8px; margin: 0 0 26px; padding: 10px 12px;
+    background: var(--c-surface); border: 1px solid var(--line); border-radius: var(--r-3); }
+  .bar h2 { margin: 0; font-size: var(--fs-meta); font-weight: 500; color: var(--tx-2); }
+  .seg { display: flex; gap: 2px; padding: 2px; background: var(--c-inset); border: 1px solid var(--line-strong); border-radius: var(--r-1); }
+  .seg button { height: 24px; padding: 0 10px; border: 0; border-radius: 2px; background: transparent;
+    color: var(--tx-3); font: inherit; font-size: var(--fs-meta); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--c-control); color: var(--tx-1); font-weight: 500; }
+  .cap { margin: 26px 0 8px; font-size: var(--fs-micro); font-weight: 500; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--tx-4); }
+  .cap b { color: var(--tx-2); font-weight: 500; letter-spacing: 0; text-transform: none; }
+  .note { margin: 8px 0 0; color: var(--tx-3); font-size: var(--fs-meta); max-width: 92ch; }
+  .note code { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--tx-2); }
+
+  /* ---- the app itself ---- */
+  .pw { position: relative; display: flex; flex-direction: column; overflow: hidden;
+    background: var(--c-canvas); color: var(--tx-1); border: 1px solid var(--line);
+    border-radius: var(--r-3); box-shadow: var(--shadow-pop); font-size: var(--fs-ui); }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .micro { font-size: var(--fs-micro); font-weight: 500; letter-spacing: .07em; text-transform: uppercase; color: var(--tx-4); }
+  .sp { flex: 1; }
+  svg { display: block; }
+
+  /* top chrome: 40px, brand + session tabs + window controls */
+  .tb { display: flex; align-items: center; gap: 14px; height: 40px; flex: none;
+    padding: 0 8px 0 12px; background: var(--c-chrome); border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 8px; }
+  .mark { display: grid; place-items: center; width: 18px; height: 18px; color: var(--ac);
+    background: var(--c-control); border: 1px solid var(--line-strong); border-radius: var(--r-1); }
+  .brand b { font-size: var(--fs-meta); font-weight: 600; letter-spacing: -.01em; color: var(--tx-1); }
+  .brand i { font-style: normal; font-size: var(--fs-micro); color: var(--tx-4); }
+  .tabs { display: flex; align-items: center; gap: 2px; height: 100%; }
+  .tab { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 8px 0 10px;
+    border: 1px solid transparent; border-radius: var(--r-2); font-size: var(--fs-meta); color: var(--tx-3); }
+  .tab.on { background: var(--c-surface); border-color: var(--line); color: var(--tx-1); font-weight: 500; }
+  .tab .x { display: grid; place-items: center; width: 14px; height: 14px; border-radius: 2px; opacity: 0; }
+  .tab:hover .x { opacity: .6; }
+  .tab.add { padding: 0 8px; color: var(--tx-4); }
+  .dot { flex: none; width: 6px; height: 6px; border-radius: var(--r-full); background: var(--idle); }
+  .dot.ok { background: var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .dot.err { background: var(--err); }
+  .ib { display: grid; place-items: center; width: 26px; height: 26px; color: var(--tx-3);
+    border: 1px solid transparent; border-radius: var(--r-1); background: transparent; cursor: pointer; }
+  .ib:hover { color: var(--tx-1); background: var(--c-raised); border-color: var(--line); }
+  .wctl { display: flex; gap: 1px; margin-left: 4px; }
+  .wctl span { display: grid; place-items: center; width: 30px; height: 22px; font-size: var(--fs-micro);
+    color: var(--tx-3); border-radius: var(--r-1); }
+  .wctl span:hover { background: var(--c-raised); }
+  .wctl span.cls:hover { color: var(--ac-fg); background: var(--err); }
+
+  /* body: 52px icon rail + main + 322px inspector */
+  .bd { display: flex; flex: 1; min-height: 0; }
+  .rail { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px;
+    width: 52px; padding: 10px 0; background: var(--c-chrome); border-right: 1px solid var(--line); }
+  [data-density="compact"] .rail { width: 44px; }
+  .ri { position: relative; display: grid; place-items: center; width: 34px; height: 34px;
+    color: var(--tx-4); border-radius: var(--r-2); cursor: pointer; }
+  .ri:hover { color: var(--tx-2); background: var(--c-raised); }
+  .ri.on { color: var(--ac); background: var(--ac-bg); }
+  .ri.on::before { content: ''; position: absolute; top: 9px; left: -10px; width: 2px; height: 16px;
+    border-radius: 1px; background: var(--ac); }
+  .rail hr { width: 20px; margin: 6px 0; border: 0; border-top: 1px solid var(--line); }
+
+  .mn { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+  .ph { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px; }
+  .ph h1 { margin: 0; font-size: var(--fs-h1); font-weight: 600; letter-spacing: -.02em; }
+  .ph .meta { font-size: var(--fs-meta); color: var(--tx-3); }
+  .search { display: flex; align-items: center; gap: 7px; width: 210px; height: 28px; padding: 0 9px;
+    color: var(--tx-4); font-size: var(--fs-meta); background: var(--c-control);
+    border: 1px solid var(--line); border-radius: var(--r-1); }
+  .search kbd { margin-left: auto; padding: 1px 4px; color: var(--tx-4); font-family: inherit;
+    font-size: 10px; border: 1px solid var(--line-strong); border-radius: var(--r-1); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px;
+    color: var(--tx-1); font: inherit; font-size: var(--fs-ui); font-weight: 500; background: transparent;
+    border: 1px solid var(--line-strong); border-radius: var(--r-1); cursor: pointer; }
+  .btn:hover { background: var(--c-raised); }
+  .btn.p { color: var(--ac-fg); font-weight: 600; background: var(--ac); border-color: transparent; }
+  .btn.dgr { color: var(--err); border-color: var(--err-line); }
+  .btn.sm { height: 24px; padding: 0 9px; font-size: var(--fs-meta); }
+
+  /* hosts table */
+  .tbl { flex: 1; min-height: 0; padding: 0 16px 14px; overflow: hidden; }
+  .tr { display: grid; grid-template-columns: minmax(0,1.5fr) 1.2fr .9fr 1fr 1fr 24px; gap: 12px;
+    align-items: center; height: var(--row-h); padding: 0 10px; color: var(--tx-2);
+    font-size: var(--fs-ui); border: 1px solid transparent; border-radius: var(--r-2); }
+  .tr.th { height: 26px; padding: 0 10px; color: var(--tx-4); font-size: var(--fs-micro);
+    letter-spacing: .06em; text-transform: uppercase; border: 0; border-bottom: 1px solid var(--line-soft);
+    border-radius: 0; }
+  .tr.row { position: relative; background: var(--c-surface); border-color: var(--line-soft); }
+  .tr.row + .tr.row { margin-top: 3px; }
+  .tr.row:hover { background: var(--c-raised); border-color: var(--line-strong); }
+  .tr.sel { background: var(--ac-bg); border-color: var(--ac-line); }
+  .tr.sel::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 0; width: 2px;
+    border-radius: 1px; background: var(--ac); }
+  .nm { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--tx-1); font-weight: 500; }
+  .av { display: grid; place-items: center; flex: none; width: 20px; height: 20px; color: var(--tx-3);
+    font-size: 8.5px; font-weight: 700; letter-spacing: -.02em; background: var(--c-control);
+    border: 1px solid var(--line-strong); border-radius: var(--r-1); }
+  .tr.sel .av { color: var(--ac-fg); background: var(--ac); border-color: transparent; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-micro); color: var(--tx-3); }
+  .tag.k { color: var(--tx-2); }
+  .num { color: var(--tx-3); font-size: var(--fs-meta); }
+
+  /* inspector */
+  .insp { display: flex; flex: none; flex-direction: column; width: 322px; background: var(--c-surface);
+    border-left: 1px solid var(--line); }
+  .ih { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 14px;
+    border-bottom: 1px solid var(--line); }
+  .ibody { flex: 1; min-height: 0; padding: 14px; overflow: hidden; }
+  .sec { margin-bottom: 16px; }
+  .sec > .micro { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft); }
+  label { display: block; margin: 9px 0 4px; color: var(--tx-3); font-size: var(--fs-meta); }
+  .in { width: 100%; height: 28px; padding: 0 8px; color: var(--tx-1); font: inherit; font-size: var(--fs-ui);
+    background: var(--c-inset); border: 1px solid var(--line-strong); border-radius: var(--r-1); }
+  .in.foc { background: var(--c-canvas); border-color: var(--ac); box-shadow: var(--ring); }
+  .row2 { display: flex; gap: 7px; }
+  .row2 .in:first-child { flex: 1; }
+  .port { width: 64px; flex: none; }
+  .hint { margin-top: 6px; color: var(--tx-4); font-size: var(--fs-micro); }
+  .switch { display: flex; gap: 2px; padding: 2px; background: var(--c-inset);
+    border: 1px solid var(--line-strong); border-radius: var(--r-1); }
+  .switch b, .switch span { flex: 1; padding: 4px 0; color: var(--tx-3); font-size: var(--fs-meta);
+    font-weight: 400; text-align: center; border-radius: 2px; }
+  .switch b { color: var(--tx-1); font-weight: 500; background: var(--c-control); }
+  .cb { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--tx-2); font-size: var(--fs-meta); }
+  .cb i { display: grid; place-items: center; width: 14px; height: 14px; color: var(--ac-fg); font-size: 9px;
+    font-style: normal; background: var(--ac); border-radius: var(--r-1); }
+  .lock { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--tx-4); font-size: var(--fs-micro); }
+  .if { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--c-chrome);
+    border-top: 1px solid var(--line); }
+
+  /* status bar */
+  .sb { display: flex; align-items: center; gap: 8px; height: 24px; flex: none; padding: 0 10px;
+    color: var(--tx-3); font-size: var(--fs-micro); background: var(--c-chrome);
+    border-top: 1px solid var(--line); }
+  .sb .sep { color: var(--line-strong); }
+  .sb b { color: var(--tx-2); font-weight: 400; }
+
+  /* toast */
+  .toast { position: absolute; right: 16px; bottom: 38px; display: flex; gap: 9px; align-items: flex-start;
+    width: 274px; padding: 10px 11px; background: var(--c-raised); border: 1px solid var(--line-strong);
+    border-radius: var(--r-2); box-shadow: var(--shadow-pop); }
+  .toast .bar2 { align-self: stretch; width: 2px; border-radius: 1px; background: var(--ok); }
+  .toast.err .bar2 { background: var(--err); }
+  .toast .ti { color: var(--tx-1); font-size: var(--fs-meta); font-weight: 500; }
+  .toast .td { margin-top: 2px; color: var(--tx-3); font-size: var(--fs-micro); }
+
+  /* terminal + draggable sftp split */
+  .termwrap { display: flex; flex: 1; min-height: 0; }
+  .term { flex: 1.35; min-width: 0; padding: 10px 12px; color: var(--term-fg); background: var(--term-bg);
+    font-family: var(--font-mono); font-size: var(--fs-ui); line-height: 1.6; white-space: pre-wrap; }
+  .term .p { color: var(--term-cursor); }
+  .term .o { color: var(--tx-3); }
+  .term .g { color: var(--ok); }
+  .term .y { color: var(--warn); }
+  .grip { position: relative; flex: none; width: 5px; cursor: col-resize; background: var(--c-chrome);
+    border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .grip::after { content: ''; position: absolute; top: 50%; right: 1px; left: 1px; height: 26px;
+    border-radius: 2px; background: var(--line-strong); transform: translateY(-50%); }
+  .grip:hover::after { background: var(--ac); }
+  .sftp { display: flex; flex: none; flex-direction: column; width: 38%; min-width: 0; background: var(--c-surface); }
+  .sh { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; font-size: var(--fs-meta);
+    border-bottom: 1px solid var(--line); }
+  .crumb { display: flex; gap: 4px; color: var(--tx-3); font-size: var(--fs-micro); }
+  .crumb b { color: var(--tx-1); font-weight: 500; }
+  .srow { display: grid; grid-template-columns: minmax(0,1fr) 62px 42px 74px; gap: 8px; align-items: center;
+    height: 27px; padding: 0 10px; color: var(--tx-2); font-size: var(--fs-meta); }
+  .srow.h { height: 24px; color: var(--tx-4); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+    border-bottom: 1px solid var(--line-soft); }
+  .srow:hover:not(.h) { background: var(--c-raised); }
+  .srow .f { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--tx-1); }
+  .srow .r { color: var(--tx-3); font-size: var(--fs-micro); text-align: right; }
+  .prog { height: 2px; margin-top: 3px; background: var(--line); border-radius: 1px; }
+  .prog i { display: block; width: 62%; height: 100%; background: var(--ac); border-radius: 1px; }
+
+  /* keychain */
+  .kl { flex: 1; min-width: 0; padding: 12px 14px; }
+  .krow { display: grid; grid-template-columns: minmax(0,1.2fr) 1fr 1.5fr 62px 74px; gap: 10px;
+    align-items: center; height: var(--row-h); padding: 0 10px; color: var(--tx-2); font-size: var(--fs-ui);
+    background: var(--c-surface); border: 1px solid var(--line-soft); border-radius: var(--r-2); }
+  .krow + .krow { margin-top: 3px; }
+  .krow.th { height: 24px; color: var(--tx-4); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+    background: transparent; border-color: transparent; }
+  .krow.sel { background: var(--ac-bg); border-color: var(--ac-line); }
+  .kn { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--tx-1); font-weight: 500; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 5px; color: var(--tx-3);
+    font-size: 10.5px; border: 1px solid var(--line-strong); border-radius: var(--r-1); }
+  .chip.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-line); }
+  .chip.err { color: var(--err); background: var(--err-bg); border-color: var(--err-line); }
+  .chip.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
+  .chip.ac { color: var(--ac); background: var(--ac-bg); border-color: var(--ac-line); }
+  .banner { display: flex; gap: 8px; align-items: center; margin: 0 14px; padding: 8px 10px; color: var(--tx-2);
+    font-size: var(--fs-meta); background: var(--c-surface); border: 1px solid var(--line);
+    border-left: 2px solid var(--ac); border-radius: var(--r-2); }
+  .drop { padding: 16px; color: var(--tx-3); font-size: var(--fs-meta); text-align: center; background: var(--c-inset);
+    border: 1px dashed var(--line-strong); border-radius: var(--r-2); }
+  .drop b { display: block; margin-bottom: 3px; color: var(--tx-2); font-size: var(--fs-meta); font-weight: 500; }
+  .ta { height: 62px; padding: 7px 8px; font-size: var(--fs-micro); line-height: 1.55; resize: none; }
+  .note { display: flex; gap: 6px; align-items: flex-start; margin-top: 8px; color: var(--tx-4); font-size: var(--fs-micro); line-height: 1.5; }
+
+  /* failure diagnostics */
+  .fail { padding: 20px 22px; }
+  .fh { display: flex; align-items: flex-start; gap: 12px; }
+  .favi { display: grid; place-items: center; flex: none; width: 34px; height: 34px; color: var(--err);
+    font-size: 11px; font-weight: 700; background: var(--err-bg); border: 1px solid var(--err-line);
+    border-radius: var(--r-2); }
+  .fh h2 { margin: 0 0 3px; font-size: var(--fs-h2); font-weight: 600; letter-spacing: -.01em; }
+  .fh p { margin: 0; color: var(--tx-3); font-size: var(--fs-meta); }
+  .route { display: flex; align-items: center; margin: 18px 0; }
+  .node { display: flex; flex-direction: column; gap: 5px; align-items: center; width: 88px; }
+  .node i { display: grid; place-items: center; width: 28px; height: 28px; color: var(--tx-3); font-size: var(--fs-micro);
+    font-style: normal; background: var(--c-surface); border: 1px solid var(--line-strong); border-radius: var(--r-full); }
+  .node.done i { color: var(--ok); border-color: var(--ok-line); }
+  .node.bad i { color: var(--err); background: var(--err-bg); border-color: var(--err); }
+  .node span { color: var(--tx-4); font-size: 10.5px; line-height: 1.35; text-align: center; }
+  .link { flex: 1; height: 1px; margin: 0 -6px 18px; background: var(--line-strong); }
+  .link.bad { background: repeating-linear-gradient(90deg, var(--err) 0 4px, transparent 4px 8px); opacity: .65; }
+  .log { max-height: 118px; padding: 9px 0; overflow: hidden; color: var(--tx-3); font-size: var(--fs-micro);
+    line-height: 1.75; background: var(--c-inset); border: 1px solid var(--line); border-radius: var(--r-2); }
+  .log div { display: flex; gap: 10px; padding: 0 11px; }
+  .log em { flex: none; width: 16px; color: var(--tx-4); font-style: normal; text-align: right; user-select: none; }
+  .log b { color: var(--err); font-weight: 400; }
+  .acts { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
+  .kbd { padding: 1.5px 5px; color: var(--tx-2); font-family: inherit; font-size: 10px; background: var(--c-control);
+    border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-1); }
+
+  /* dialog */
+  .dlg { width: 392px; margin: 16px auto; overflow: hidden; background: var(--c-surface);
+    border: 1px solid var(--line-strong); border-radius: var(--r-3); box-shadow: var(--shadow-pop); }
+  .dlg h3 { margin: 0; padding: 13px 15px; font-size: var(--fs-em); font-weight: 600; background: var(--c-chrome);
+    border-bottom: 1px solid var(--line); }
+  .dl { display: grid; grid-template-columns: 1fr auto; gap: 0 14px; padding: 6px 15px 13px; }
+  .dl > * { padding: 6px 0; color: var(--tx-2); font-size: var(--fs-meta); border-bottom: 1px solid var(--line-soft); }
+  .dl > :nth-last-child(-n+2) { border-bottom: 0; }
+  .dlg .ff { display: flex; align-items: center; padding: 11px 15px; background: var(--c-chrome);
+    border-top: 1px solid var(--line); }
+
+  /* four states */
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); }
+  .st { min-height: 158px; padding: 11px; background: var(--c-canvas); }
+  .st > .micro { display: block; margin-bottom: 9px; }
+  .sk { height: 22px; margin-bottom: 4px; border-radius: var(--r-2);
+    background: linear-gradient(90deg, var(--c-surface) 0%, var(--c-raised) 45%, var(--c-surface) 90%);
+    background-size: 200% 100%; animation: shim 1.5s linear infinite; }
+  @keyframes shim { to { background-position: -200% 0; } }
+  .sk.w1 { width: 44%; } .sk.w2 { width: 70%; } .sk.w3 { width: 30%; }
+  .es { display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; height: 118px;
+    text-align: center; border: 1px dashed var(--line-strong); border-radius: var(--r-2); }
+  .es b { color: var(--tx-2); font-size: var(--fs-meta); font-weight: 500; }
+  .es span { color: var(--tx-4); font-size: var(--fs-micro); line-height: 1.5; }
+  .es .ic { display: grid; place-items: center; width: 26px; height: 26px; color: var(--tx-4); font-size: var(--fs-micro);
+    border: 1px solid var(--line-strong); border-radius: var(--r-2); }
+  .er { display: flex; gap: 8px; align-items: flex-start; padding: 9px; background: var(--err-bg);
+    border: 1px solid var(--err-line); border-radius: var(--r-2); }
+  .er.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+  .er b { display: block; color: var(--tx-1); font-size: var(--fs-meta); font-weight: 500; }
+  .er span { color: var(--tx-3); font-size: var(--fs-micro); }
+  .er > span:first-child { color: var(--err); }
+  .er.warn > span:first-child { color: var(--warn); }
+  .spin { width: 14px; height: 14px; border: 1.5px solid var(--line-strong); border-top-color: var(--ac);
+    border-radius: var(--r-full); animation: rot .7s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .lg { display: flex; align-items: center; gap: 8px; color: var(--tx-3); font-size: var(--fs-meta); }
+  @media (prefers-reduced-motion: reduce) { .sk, .spin { animation: none; } }
+  @media (max-width: 900px) { .grid4 { grid-template-columns: 1fr 1fr; } .bd { flex-direction: column; }
+    .insp { width: auto; } }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>PureTerm · graphite target prototype</h1>
+  <p class="lead">The whole agreed design in one file: the chrome, the tables, the split, the states and the light theme that Plans 1–2 deferred. Every value resolves through <code>packages/ui/src/styles/tokens.css</code>.</p>
+
+  <div class="bar">
+    <h2>Theme</h2>
+    <div class="seg" role="group" aria-label="Theme">
+      <button id="d" aria-pressed="true">Dark</button><button id="l" aria-pressed="false">Light</button>
+    </div>
+    <h2>Density</h2>
+    <div class="seg" role="group" aria-label="Density">
+      <button id="cc" aria-pressed="true">Comfortable</button><button id="ck" aria-pressed="false">Compact</button>
+    </div>
+    <span class="sp"></span>
+    <h2 id="probe">—</h2>
+  </div>
+
+  <div class="cap">① 骨架 · Hosts 表格 · 右侧 Inspector <b>— 52px 图标轨道、40px 顶栏、24px 状态栏</b></div>
+  <div class="pw">
+    <div class="tb">
+      <div class="brand">
+        <span class="mark"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 4l4 4-4 4"/><path d="M8.5 12.5h5"/></svg></span>
+        <b>PureTerm</b><i>/ Vault</i>
+      </div>
+      <div class="tabs">
+        <div class="tab on"><span class="dot ok"></span>prod-web-01<span class="x"><svg width="9" height="9" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5"><path d="M2 2l6 6M8 2l-6 6"/></svg></span></div>
+        <div class="tab"><span class="dot"></span>build-lab<span class="x"><svg width="9" height="9" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5"><path d="M2 2l6 6M8 2l-6 6"/></svg></span></div>
+        <div class="tab add">+</div>
+      </div>
+      <span class="sp"></span>
+      <span class="ib"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.2"/><path d="M8 2.8v10.4" stroke-width="5.2" stroke-linecap="butt" opacity=".28"/></svg></span>
+      <div class="wctl"><span>–</span><span>▢</span><span class="cls">✕</span></div>
+    </div>
+    <div class="bd">
+      <div class="rail">
+        <div class="ri on"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.2" y="2.2" width="11.6" height="4.6" rx="1"/><rect x="2.2" y="9.2" width="11.6" height="4.6" rx="1"/><path d="M4.8 4.5h.01M4.8 11.5h.01" stroke-width="2"/></svg></div>
+        <div class="ri"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="6" r="2.6"/><path d="M7.8 7.2l5 5M11 10l1.2-1.2"/></svg></div>
+        <div class="ri"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 5h10v6H3z"/><path d="M5.5 7.2h.01M8 7.2h.01M10.5 7.2h.01M5 9.4h6"/></svg></div>
+        <span class="sp"></span><hr/>
+        <div class="ri"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 2v1.6M8 12.4V14M2 8h1.6M12.4 8H14M3.8 3.8l1.1 1.1M11.1 11.1l1.1 1.1M12.2 3.8l-1.1 1.1M4.9 11.1l-1.1 1.1"/></svg></div>
+      </div>
+      <div class="mn">
+        <div class="ph">
+          <h1>Hosts</h1><span class="meta">12 saved · 2 connected</span>
+          <span class="sp"></span>
+          <div class="search"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4L14 14"/></svg> Search hosts <kbd>Ctrl K</kbd></div>
+          <div class="btn p">+ New host</div>
+          <span class="ib"><svg width="14" height="14" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path d="M2 3.5h12M2 8h12M2 12.5h12"/></svg></span>
+        </div>
+        <div class="tbl">
+          <div class="tr th"><span>Name</span><span>Address</span><span>User</span><span>Auth</span><span>Last connected</span><span></span></div>
+          <div class="tr row sel">
+            <span class="nm"><span class="av">PW</span>prod-web-01</span>
+            <span class="mono num">10.2.1.8:22</span><span class="num">deploy</span>
+            <span class="tag k"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="6" r="2.4"/><path d="M7.6 7l5.2 5.2M10.8 9.8l1-1"/></svg>ed25519 · keychain</span>
+            <span class="num">今天 09:14</span><span></span>
+          </div>
+          <div class="tr row">
+            <span class="nm"><span class="av">BL</span>build-lab</span>
+            <span class="mono num">10.2.4.19:22</span><span class="num">ci</span>
+            <span class="tag"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="6.5" width="9" height="6" rx="1"/><path d="M5.6 6.5V5a2.4 2.4 0 014.8 0v1.5"/></svg>password</span>
+            <span class="num">昨天 22:03</span><span></span>
+          </div>
+          <div class="tr row">
+            <span class="nm"><span class="av">SE</span>singapore-edge</span>
+            <span class="mono num">10.9.2.3:2222</span><span class="num">root</span>
+            <span class="tag k"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="6" r="2.4"/><path d="M7.6 7l5.2 5.2M10.8 9.8l1-1"/></svg>rsa-4096 · file</span>
+            <span class="num">9 天前</span><span></span>
+          </div>
+          <div class="tr row">
+            <span class="nm"><span class="av" style="border-style:dashed">DG</span>devel-gpu</span>
+            <span class="mono num" style="color:var(--tx-4)">192.168.1.41:22</span><span class="num" style="color:var(--tx-4)">dev</span>
+            <span class="chip warn">⚠ 指纹已变更</span>
+            <span class="num" style="color:var(--tx-4)">从未连接</span><span></span>
+          </div>
+        </div>
+      </div>
+      <div class="insp">
+        <div class="ih"><span class="micro">Edit host</span><span class="sp"></span><span class="ib"><svg width="11" height="11" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5"><path d="M2 2l6 6M8 2l-6 6"/></svg></span></div>
+        <div class="ibody">
+          <div class="sec">
+            <div class="micro">Address</div>
+            <div class="row2"><input class="in mono foc" value="10.2.1.8"><input class="in mono port" value="22"></div>
+            <div class="hint mono">ssh deploy@10.2.1.8:22 · 已解析</div>
+          </div>
+          <div class="sec">
+            <div class="micro">General</div>
+            <label>Label</label><input class="in" value="prod-web-01">
+          </div>
+          <div class="sec">
+            <div class="micro">Credentials</div>
+            <label>Username</label><input class="in" value="deploy">
+            <label>Authentication</label>
+            <div class="switch"><b>Private key</b><span>Password</span></div>
+            <label>Keychain</label><input class="in" value="id_ed25519_prod">
+            <div class="lock"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="6.5" width="9" height="6" rx="1"/><path d="M5.6 6.5V5a2.4 2.4 0 014.8 0v1.5"/></svg>Windows DPAPI · 私钥不落明文</div>
+            <div class="cb"><i>✓</i>记住凭据</div>
+          </div>
+        </div>
+        <div class="if"><div class="btn dgr">删除</div><span class="sp"></span><div class="btn">保存</div><div class="btn p">Connect ▸</div></div>
+      </div>
+    </div>
+    <div class="sb">
+      <span class="dot ok"></span><b>已连接</b><span class="sep">│</span><span class="mono">00:42:17</span>
+      <span class="sep">│</span><span class="mono">deploy@10.2.1.8:22</span>
+      <span class="sep">│</span>chacha20-poly1305 · ed25519 · 128 行
+      <span class="sp"></span>
+      <span>本地工作区</span><span class="sep">│</span>密钥库 ✓<span class="sep">│</span><span class="mono">v0.1.0-alpha.1</span>
+    </div>
+    <div class="toast"><div class="bar2"></div><div><div class="ti">已连接到 prod-web-01</div><div class="td mono">auth: ed25519 · 用时 412 ms</div></div></div>
+  </div>
+  <p class="note">状态栏的 <code>uptime</code>、<code>cipher</code>、<code>host key type</code> 今天 <b>Host 侧不提供</b>：计划三要么把阶段信息加进 <code>@pureterm/protocol</code>，要么先把这三格换成已存在的字段。这是本原型里唯一一处画了尚未实现的东西。</p>
+
+  <div class="cap">② 终端工作区 · 可拖拽分栏 + SFTP 表格</div>
+  <div class="pw">
+    <div class="tb">
+      <div class="brand">
+        <span class="mark"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 4l4 4-4 4"/><path d="M8.5 12.5h5"/></svg></span>
+        <b>PureTerm</b><i>/ Session</i>
+      </div>
+      <div class="tabs">
+        <div class="tab on"><span class="dot ok"></span>prod-web-01<span class="x">✕</span></div>
+        <div class="tab"><span class="dot ok"></span>build-lab<span class="x">✕</span></div>
+        <div class="tab add">+</div>
+      </div>
+      <span class="sp"></span>
+      <div class="btn sm">文件</div><div class="btn sm">重新连接</div><div class="btn sm">断开</div>
+      <div class="wctl"><span>–</span><span>▢</span><span class="cls">✕</span></div>
+    </div>
+    <div class="termwrap" style="height:378px">
+      <div class="term"><span class="o">Last login: Wed Sep 24 09:14:02 2026 from 10.2.0.4</span>
+<span class="p">deploy@prod-web-01</span><span class="o">:</span><span class="y">~</span><span class="p">$</span> systemctl status nginx
+<span class="g">●</span> nginx.service - A high performance web server
+<span class="o">     Loaded: loaded (/lib/systemd/system/nginx.service; enabled)</span>
+<span class="o">             Active: active (running) since Wed 2026-09-23 09:12:44 CST</span>
+<span class="p">deploy@prod-web-01</span><span class="o">:</span><span class="y">~</span><span class="p">$</span> ▮</div>
+      <div class="grip" id="grip"></div>
+      <div class="sftp" id="sftp">
+        <div class="sh">
+          <span class="crumb mono">/ <b>var</b> / www <b>prod</b></span>
+          <span class="sp"></span>
+          <span class="ib" style="width:20px;height:20px">↻</span><span class="ib" style="width:20px;height:20px">↑</span><span class="ib" style="width:20px;height:20px">＋</span>
+        </div>
+        <div class="srow h"><span>Name</span><span class="r">Size</span><span class="r">Mode</span><span class="r">Modified</span></div>
+        <div class="srow"><span class="f">▸ conf.d</span><span class="r">—</span><span class="r mono">755</span><span class="r mono">09:12</span></div>
+        <div class="srow"><span class="f">▸ html</span><span class="r">—</span><span class="r mono">755</span><span class="r mono">09:12</span></div>
+        <div class="srow" style="background:var(--ac-bg)"><span class="f">▾ logs</span><span class="r">—</span><span class="r mono">750</span><span class="r mono">09:41</span></div>
+        <div class="srow"><span class="f">📄 access.log</span><span class="r mono">4.2 MB</span><span class="r mono">640</span><span class="r mono">09:41</span></div>
+        <div class="srow"><span class="f" style="flex-direction:column;align-items:stretch"><span style="display:flex;gap:7px">⬆ error.log（下载中）</span><span class="prog"><i></i></span></span><span class="r mono">62%</span><span class="r mono">640</span><span class="r mono">—</span></div>
+        <div class="srow"><span class="f">📄 nginx.conf</span><span class="r mono">3.1 KB</span><span class="r mono">644</span><span class="r mono">08:02</span></div>
+      </div>
+    </div>
+    <div class="sb">
+      <span class="dot ok"></span><b>已连接</b><span class="sep">│</span>SFTP 会话 <b>1 / 2</b>
+      <span class="sep">│</span><span class="mono">148×41</span>
+      <span class="sp"></span>
+      <span class="mono">↓ 0.14 MB/s · ↑ 0.00 MB/s</span><span class="sep">│</span>拖动竖线可调整比例<span class="sep">│</span><span class="mono">Ctrl W</span> 关闭标签
+    </div>
+  </div>
+  <p class="note">分隔条可以真的拖动，试试：终端与 SFTP 的比例不再是写死的 40% 行高。终端底色始终是 <code>--term-bg</code>，浅色主题下也不变 —— 这是当初选定 B 方向的那一点。</p>
+
+  <div class="cap">③ Keychain · 表格 + Inspector <b>— "私钥永不回显"要看得见</b></div>
+  <div class="pw">
+    <div class="tb" style="gap:10px;padding-left:14px">
+      <h1 style="margin:0;font-size:15px;font-weight:600">Keychain</h1>
+      <span class="meta" style="font-size:var(--fs-micro);color:var(--tx-3)">4 keys · ed25519 / rsa / ecdsa</span>
+      <span class="sp"></span>
+      <div class="search" style="width:180px">搜索密钥 <kbd>⌕</kbd></div>
+      <div class="btn p">+ 新建密钥</div>
+    </div>
+    <div class="bd" style="height:330px">
+      <div class="kl">
+        <div class="banner" style="margin:0 0 10px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--ac)"><rect x="3.5" y="6.5" width="9" height="6" rx="1"/><path d="M5.6 6.5V5a2.4 2.4 0 014.8 0v1.5"/></svg>
+          加密提供方：<b>Windows DPAPI（当前用户）</b> · 私钥与口令不以明文落盘 · 桌面会话结束即失效
+        </div>
+        <div class="krow th"><span>名称</span><span>类型</span><span>指纹 SHA256</span><span>关联</span><span>创建</span></div>
+        <div class="krow sel"><span class="kn">id_ed25519_prod</span><span class="chip ac">ed25519</span><span class="mono" style="font-size:var(--fs-micro);color:var(--tx-3)">7f3a:9c1e:…:b2d4</span><span class="mono">1 host</span><span class="mono">08-14</span></div>
+        <div class="krow"><span class="kn">build-ci-rsa</span><span class="chip">rsa-4096</span><span class="mono" style="font-size:var(--fs-micro);color:var(--tx-3)">a11d:04fe:…:9a7c</span><span class="mono">3 hosts</span><span class="mono">07-02</span></div>
+        <div class="krow"><span class="kn">edge-ecdsa</span><span class="chip">ecdsa-p256</span><span class="mono" style="font-size:var(--fs-micro);color:var(--tx-3)">c02b:77aa:…:1f03</span><span class="mono" style="color:var(--tx-4)">未使用</span><span class="mono">06-19</span></div>
+        <div class="krow"><span class="kn" style="color:var(--warn)">⚠ legacy-dsa</span><span class="chip warn">ssh-dss</span><span class="mono" style="font-size:var(--fs-micro);color:var(--tx-3)">ff90:12bc:…:04aa</span><span class="mono">1 host</span><span class="mono">03-11</span></div>
+      </div>
+      <div class="insp" style="width:308px">
+        <div class="ih" style="height:38px"><span class="micro">Edit key</span><span class="sp"></span><span style="color:var(--tx-4);font-size:13px">✕</span></div>
+        <div class="ibody">
+          <div class="sec">
+            <div class="micro">Identity</div>
+            <label>名称</label><div class="in" style="display:flex;align-items:center">id_ed25519_prod</div>
+            <label>私钥</label>
+            <div class="in ta mono">-----BEGIN OPENSSH PRIVATE KEY-----<br>b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9u…<br>-----END OPENSSH PRIVATE KEY-----</div>
+            <div class="note"><span class="chip ok" style="flex:none">PEM 有效</span> ed25519 · 411 B · 未加密 · 公钥已自动生成并匹配</div>
+          </div>
+          <div class="sec">
+            <div class="micro">Import</div>
+            <div class="drop"><b>将私钥文件拖到这里</b>OpenSSH · PEM · PPK &nbsp;·&nbsp; 最大 256 KiB</div>
+            <div class="note">✎ 私钥与口令在重新编辑时<b style="color:var(--tx-2)">永不回显</b>；只改名称无需重新导入。</div>
+            <div class="note">✕ 不支持：SSH 证书 · Windows Hello · FIDO2</div>
+          </div>
+          <div class="sec">
+            <div class="micro">Public key</div>
+            <div class="in ta mono" style="font-size:10.5px;color:var(--tx-3)">ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF7… deploy@prod</div>
+            <div style="display:flex;gap:7px;margin-top:8px"><div class="btn">复制公钥</div><div class="btn">下载 .pub</div></div>
+          </div>
+        </div>
+        <div class="if"><div class="btn dgr">删除</div><span class="sp"></span><div class="btn p">保存密钥</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">④ 连接失败 · 从"一坨日志"改成可定位的诊断</div>
+  <div class="pw">
+    <div class="tb" style="gap:10px;padding-left:14px">
+      <h1 style="margin:0;font-size:15px;font-weight:600">Connection failed</h1>
+      <span class="sp"></span>
+      <span class="chip err">认证被拒绝</span>
+      <span style="font-size:var(--fs-meta);color:var(--tx-3)">Permission denied (publickey)</span>
+    </div>
+    <div class="fail">
+      <div class="fh">
+        <div class="favi">SE</div>
+        <div><h2>singapore-edge</h2><p class="mono">ssh root@10.9.2.3:2222 · 耗时 1.42 s · 尝试 3 个身份</p></div>
+        <span class="sp"></span>
+        <div class="btn">复制日志</div>
+      </div>
+      <div class="route">
+        <div class="node done"><i>✓</i><span>本机<br>密钥已装载</span></div><div class="link"></div>
+        <div class="node done"><i>✓</i><span>TCP 连接<br>142 ms</span></div><div class="link"></div>
+        <div class="node done"><i>✓</i><span>KEX 协商<br>curve25519</span></div><div class="link bad"></div>
+        <div class="node bad"><i>✕</i><span>服务端认证<br>publickey 拒绝</span></div>
+      </div>
+      <div class="log mono">
+        <div><em>1</em><span>connecting to root@10.9.2.3:2222 …</span></div>
+        <div><em>2</em><span>remote: SSH-2.0-OpenSSH_8.9p1 Ubuntu-6ubuntu2.5</span></div>
+        <div><em>3</em><span>kex: curve25519-sha256 · cipher: chacha20-poly1305@openssh.com</span></div>
+        <div><em>4</em><span>offering public key: SHA256:c02b7aa…1f03 (edge-ecdsa)</span></div>
+        <div><em>5</em><b>denied: no matching authorized_keys entry on server</b></div>
+        <div><em>6</em><b>exit: Permission denied (publickey).</b></div>
+      </div>
+      <div class="acts">
+        <div class="btn p">重新连接 ▸</div><div class="btn">编辑主机</div><div class="btn">复制日志</div>
+        <span class="sp"></span>
+        <span style="font-size:var(--fs-micro);color:var(--tx-4)">下一步排查：确认服务端 <span class="kbd">authorized_keys</span> 是否包含该公钥 · 或改用其他身份</span>
+      </div>
+    </div>
+  </div>
+  <p class="note">路由节点必须由连接阶段的真实事件驱动（TCP → KEX → 认证），断在哪一环标红哪一环。这要求 Host 侧把阶段化错误码带进 <code>@pureterm/protocol</code>；拿不到阶段信息时，这一屏退化成只留日志与动作条。</p>
+
+  <div class="cap">⑤ 快捷键对话框 · 同一套 token，<kbd> 样式统一</div>
+  <div class="pw" style="background:var(--c-inset)">
+    <div class="dlg">
+      <h3>工作区快捷键</h3>
+      <div class="dl">
+        <span>下一个标签</span><span><span class="kbd">Ctrl</span> <span class="kbd">Tab</span></span>
+        <span>上一个标签</span><span><span class="kbd">Ctrl</span> <span class="kbd">⇧</span> <span class="kbd">Tab</span></span>
+        <span>关闭当前会话标签</span><span><span class="kbd">Ctrl</span> <span class="kbd">W</span></span>
+        <span>聚焦终端</span><span><span class="kbd">Ctrl</span> <span class="kbd">`</span></span>
+        <span>切换 SFTP 面板</span><span><span class="kbd">Ctrl</span> <span class="kbd">E</span></span>
+        <span>收起 Inspector</span><span><span class="kbd">Esc</span></span>
+      </div>
+      <div class="ff"><span style="font-size:var(--fs-micro);color:var(--tx-4)">浏览器可能截获部分组合键，此时请使用标签栏按钮。</span><span class="sp"></span><div class="btn p">知道了</div></div>
+    </div>
+  </div>
+
+  <div class="cap">⑥ 四态 · 同一个列表的骨架 / 空 / 后端错误 / 降级 <b>— 现在只有"空"，且是一行灰字</b></div>
+  <div class="pw">
+    <div class="grid4">
+      <div class="st">
+        <span class="micro">加载骨架</span>
+        <div class="sk w2"></div><div class="sk"></div><div class="sk w1"></div><div class="sk w2"></div><div class="sk w3"></div>
+        <div class="lg" style="margin-top:9px"><div class="spin"></div>正在读取本机主机库…</div>
+      </div>
+      <div class="st">
+        <span class="micro">空状态</span>
+        <div class="es"><div class="ic">⊕</div><b>还没有保存的主机</b><span>建立第一条 SSH 连接<br>Ctrl Enter 直接开终端</span>
+          <div class="btn p" style="margin-top:4px">+ 新建主机</div></div>
+      </div>
+      <div class="st">
+        <span class="micro">后端错误</span>
+        <div class="er"><span>⚠</span><div><b>主机库读取失败</b><span class="mono">hosts.json: EPERM · 数据目录不可写</span></div></div>
+        <div class="er warn" style="margin-top:6px"><span>⚠</span><div><b style="font-size:var(--fs-meta)">密钥库不可用</b><span>DPAPI 拒绝访问，密码类凭据暂时禁用</span></div></div>
+        <div style="display:flex;gap:7px;margin-top:8px"><div class="btn">重新加载</div><div class="btn">打开数据目录</div></div>
+      </div>
+      <div class="st">
+        <span class="micro">部分可用 / 降级</span>
+        <div class="krow" style="grid-template-columns:1fr;height:26px;font-size:var(--fs-meta)"><span class="kn">prod-web-01</span></div>
+        <div class="krow" style="grid-template-columns:1fr;height:26px;font-size:var(--fs-meta)"><span class="kn">build-lab</span></div>
+        <div class="note" style="margin-top:9px">◐ Web 模式：凭据只在当前页面有效，刷新后需重新填写；不会写入磁盘。</div>
+        <div class="note">◐ 桌面模式已启用系统密钥库</div>
+        <div class="lg" style="margin-top:9px"><span class="dot ok"></span>后端就绪 · <span class="mono">18 ms</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">骨架用 shimmer 且行高等于 <code>--row-h</code>，加载完成不跳动；空状态必须给下一步动作；错误分三层（后端不可用 / 能力降级 / 单条操作失败），恢复入口各不相同；桌面与 Web 的能力差异常驻可见。</p>
+
+  <div class="cap">⑦ 合法性探针 <b>— 浅色主题下 <code>--tx-3</code> 与 <code>--ac</code> 只允许待在 <code>--c-surface</code> 上</b></div>
+  <div class="pw" style="padding:14px 16px">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px" id="probe-grid"></div>
+  </div>
+  <p class="note">每格显示前景/底面配对的实测对比度，由页面自己按 WCAG 公式算。低于 4.5:1 的配对会被标出并加删除线 —— 这正是 <code>docs/design-system.md</code> 那张矩阵的活体版本，也是计划三挑底面时的即时反馈。</p>
+</div>
+
+<script>
+  const html = document.documentElement
+  const seg = (a, b) => {
+    const set = (el, on) => el.setAttribute('aria-pressed', String(on))
+    a.onclick = () => { set(a, true); set(b, false) }
+    b.onclick = () => { set(a, false); set(b, true) }
+    return { a, b }
+  }
+  const theme = seg(document.getElementById('d'), document.getElementById('l'))
+  theme.a.onclick = () => { html.dataset.theme = 'dark'; theme.b.setAttribute('aria-pressed', 'false') }
+  theme.b.onclick = () => { html.dataset.theme = 'light'; theme.a.setAttribute('aria-pressed', 'false') }
+  const dens = seg(document.getElementById('cc'), document.getElementById('ck'))
+  dens.a.onclick = () => { html.dataset.density = 'comfortable'; dens.b.setAttribute('aria-pressed', 'false') }
+  dens.b.onclick = () => { html.dataset.density = 'compact'; dens.a.setAttribute('aria-pressed', 'false') }
+
+  // drag the terminal / SFTP split
+  const grip = document.getElementById('grip'), sftp = document.getElementById('sftp')
+  let dragging = null
+  grip.addEventListener('pointerdown', (e) => {
+    dragging = { x: e.clientX, w: sftp.getBoundingClientRect().width }
+    grip.setPointerCapture(e.pointerId)
+  })
+  grip.addEventListener('pointermove', (e) => {
+    if (!dragging) return
+    const total = grip.parentElement.getBoundingClientRect().width
+    sftp.style.width = Math.min(Math.max(dragging.w - (e.clientX - dragging.x), total * 0.2), total * 0.6) + 'px'
+  })
+  grip.addEventListener('pointerup', () => { dragging = null })
+
+  // the contrast probe, computed from the tokens as the browser resolves them
+  const cs = getComputedStyle(html)
+  const tok = (n) => cs.getPropertyValue(n).trim()
+  const parse = (s) => {
+    const m = /rgba?\(([^)]+)\)/.exec(s)
+    if (m) { const p = m[1].split(',').map(Number); return p.length === 3 ? [...p, 1] : p }
+    const v = s.replace('#', '')
+    return [0, 2, 4].map((i) => Number.parseInt(v.length === 3 ? v[i] + v[i] : v.slice(i, i + 2), 16)).concat(1)
+  }
+  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]) }
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
+  const over = (c, ground) => c[3] === 1 ? c.slice(0, 3) : [0, 1, 2].map((i) => Math.round(c[i] * c[3] + ground[i] * (1 - c[3])))
+  const grid = document.getElementById('probe-grid')
+  const grounds = ['--c-canvas', '--c-chrome', '--c-surface', '--c-raised', '--c-control']
+  const render = () => {
+    grid.innerHTML = ''
+    for (const fg of ['--tx-1', '--tx-2', '--tx-3', '--ac']) {
+      for (const bg of grounds) {
+        const g = parse(tok(bg)), f = parse(tok(fg))
+        const eff = over(f, g)
+        const r = ratio(eff, g)
+        const cell = document.createElement('div')
+        cell.style.cssText = `background:${tok(bg)};color:${tok(fg)};padding:8px 9px;border-radius:${tok('--r-2')};
+          border:1px solid ${tok('--line')};font-size:${tok('--fs-micro')};line-height:1.45;${r < 4.5 ? 'text-decoration:line-through' : ''}`
+        cell.textContent = `${fg.replace('--', '')} / ${bg.replace('--c-', '')} ${r.toFixed(2)}${r < 4.5 ? ' ✕' : ' ✓'}`
+        grid.appendChild(cell)
+      }
+    }
+    document.getElementById('probe').textContent =
+      `${tok('--tx-3')} on ${tok('--c-control')} = ${ratio(over(parse(tok('--tx-3')), parse(tok('--c-control'))), parse(tok('--c-control'))).toFixed(2)}:1`
+  }
+  render()
+  // Recomputed synchronously: a custom-property change is reflected in
+  // getComputedStyle immediately, and requestAnimationFrame would never fire
+  // while the tab is in the background.
+  for (const b of [theme.a, theme.b, dens.a, dens.b]) b.addEventListener('click', render)
+</script>
+</body>
+</html>
