@@ -1,5 +1,6 @@
 import type { SftpDir, SftpEntry } from '@pureterm/protocol'
 import { formatBytes, formatTime } from './format.js'
+import { cell } from './host-list.js'
 import { DomListeners } from './client-runtime.js'
 
 /**
@@ -47,6 +48,17 @@ function span(className: string, text: string): HTMLSpanElement {
 
 function tag(text: string, extra = ''): HTMLSpanElement {
   return span(extra ? `tag ${extra}` : 'tag', text)
+}
+
+/**
+ * 权限位取低 12 位（含 setuid/gid/sticky）。
+ *
+ * 0 不是 000 权限，而是「对端没给这个属性」（sftp-bridge.ts:455 把缺失的 attrs
+ * 一律落成 0）—— 把不知道画成没人可读，是比空白更糟的谎。
+ */
+function octalMode(mode: number): string {
+  if (!mode) return '—'
+  return (mode & 0o7777).toString(8).padStart(3, '0')
 }
 
 function button(id: string, label: string, className: string): HTMLButtonElement {
@@ -116,6 +128,13 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   const createCancel = button('sftp-create-cancel', '取消', 'ghost small')
   createBar.append(span('panel-title', '新建文件夹'), createName, createOk, createCancel)
 
+  const columns = document.createElement('div')
+  columns.id = 'sftp-columns'
+  columns.className = 'file-columns'
+  // 列标题只是给眼睛对齐用的；每一行自己带完整语义，所以这里不重复播报。
+  columns.setAttribute('aria-hidden', 'true')
+  for (const label of ['名称', '大小', '模式', '修改时间', '']) columns.append(document.createElement('span'))
+
   const list = document.createElement('ul')
   list.id = 'sftp-list'
   list.setAttribute('aria-label', '远端目录内容')
@@ -125,7 +144,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   hint.className = 'empty'
   hint.textContent = '连上之后可以在这里浏览远端文件。'
 
-  body.append(list, hint)
+  body.append(columns, list, hint)
   root.textContent = ''
   root.append(head, createBar, body)
 
@@ -177,9 +196,14 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     // 软链单独标出来：它的类型是「跟着目标走」的，用户需要知道这一行不是本体
     if (entry.isSymlink) top.append(tag('链接', 'link'))
 
+    // 大小、模式、时间是行的孩子而不是按钮的孩子：它们是表格里的那些列，
+    // 得和列标题对得上，而按钮里的内容对不到列上。
+    main.append(top)
     // 目录的大小没有意义（不是 0，是「不适用」），写 0 会让人以为它是空目录
-    main.append(top, span('file-size', entry.isDirectory ? '—' : formatBytes(entry.size)))
-    main.append(span('file-time', formatTime(entry.mtime)))
+    item.append(main,
+      cell('file-size', entry.isDirectory ? '—' : formatBytes(entry.size)),
+      cell('file-mode', octalMode(entry.mode), entry.mode ? `八进制 ${(entry.mode & 0o7777).toString(8)}` : '对端没有给出权限属性'),
+      cell('file-time', formatTime(entry.mtime)))
 
     const actions = document.createElement('span')
     actions.className = 'file-actions'
@@ -215,7 +239,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     rowListeners.add(main, 'dblclick', () => fire())
 
     actions.append(primary, remove)
-    item.append(main, actions)
+    item.append(actions)
 
     rowButtons.push(main, primary, remove)
     return item

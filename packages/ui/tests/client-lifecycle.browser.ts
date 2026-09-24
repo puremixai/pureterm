@@ -2,7 +2,7 @@ import { createClient } from '../src/client.js'
 import { mountPageClient } from '../src/page-client.js'
 import { ClientTransport } from '../src/services/transport.js'
 import { VERSION } from '../src/lib/version.js'
-import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, RendererReadyPayload, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
+import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, RendererReadyPayload, SftpDir, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
 import type { TerminalView } from '../src/terminal-view.js'
 
 const assert = (value: unknown, message: string): void => { if (!value) throw new Error(message) }
@@ -274,7 +274,7 @@ async function runChecks() {
     assert(multiple.terminals[1]!.writes.some(value => value instanceof Uint8Array && value[0] === 66), 'second tab lost its output')
     const tabButtons = [...document.querySelectorAll<HTMLButtonElement>('.session-tab [role="tab"]')]
     const fileRequests: string[] = []
-    const pendingDirectory = deferred<{ path: string; parent: string; entries: [] }>()
+    const pendingDirectory = deferred<SftpDir>()
     multiple.api.sftp.list = async (id, path) => {
       fileRequests.push(id + ':' + path)
       if (id === 'test-1') return pendingDirectory.promise
@@ -282,7 +282,11 @@ async function runChecks() {
     }
     tabButtons[0]!.click(); click('sftp-toggle'); await tick()
     tabButtons[1]!.click(); click('sftp-toggle'); await tick()
-    pendingDirectory.resolve({ path: '/first', parent: '/', entries: [] }); await tick()
+    // 一个文件带权限位、一个目录不带：模式列要在两种情况下都说得对。
+    pendingDirectory.resolve({ path: '/first', parent: '/', entries: [
+      { name: 'deploy.sh', path: '/first/deploy.sh', isDirectory: false, isSymlink: false, size: 1842, mtime: 1_758_300_000, mode: 0o755 },
+      { name: 'logs', path: '/first/logs', isDirectory: true, isSymlink: false, size: 4096, mtime: 1_758_300_000, mode: 0 },
+    ] } as SftpDir); await tick()
     assert(input('sftp-path').value === '/second', 'background directory result leaked into another tab')
     tabButtons[0]!.click()
     assert(!input('sftp').hidden && input('sftp-path').value === '/first', 'switching tabs must restore each file panel directory')
@@ -309,6 +313,15 @@ async function runChecks() {
     tabButtons[0]!.click(); await tick()
     assert(Number(document.querySelector<HTMLElement>('.session-grip')!.getAttribute('aria-valuenow')) === 47, 'and this one must still have its own')
     assert(fileRequests.join(',') === 'test-1:.,test-2:.', 'file panel requests used the wrong SSH session')
+    // 文件表是第三张表格：五行列、模式是八进制、对端没给属性时不谎报成 000。
+    const fileRows = document.querySelectorAll('.file-row')
+    assert(fileRows.length === 2, 'each entry is one row')
+    assert(fileRows[0]!.children.length === 5, `a file row is name, size, mode, modified, actions, not ${fileRows[0]!.children.length}`)
+    assert(fileRows[0]!.querySelector('.file-mode')!.textContent === '755', 'mode renders as octal digits')
+    assert(fileRows[1]!.querySelector('.file-mode')!.textContent === '—', 'a peer that sent no mode must not read as 000')
+    assert(fileRows[1]!.querySelector('.file-size')!.textContent === '—', 'a directory size is not a number of bytes')
+    // 对齐要在真的级联里量：这个 harness 把 <link rel=stylesheet> 剥掉了，
+    // 所以这里只断言 DOM 形状，列宽由计划文档任务 3 步骤 7 的实测量负责。
     document.querySelector<HTMLButtonElement>('[data-tab-close]')!.click(); await tick()
     assert(multiple.stats.closes === 1 && multiple.terminals[0]!.disposed === 1 && multiple.terminals[1]!.disposed === 0, 'closing one tab must only release its session')
     click('hosts-tab')

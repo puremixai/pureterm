@@ -45,7 +45,8 @@ function span(className: string, text: string): HTMLSpanElement {
   return element
 }
 
-function cell(className: string, text: string, title?: string): HTMLSpanElement {
+/** 一行里的一个数据格。主机表与文件表共用，所以两张表的单元格不会各自漂移。 */
+export function cell(className: string, text: string, title?: string): HTMLSpanElement {
   const element = span(`host-cell ${className}`, text)
   if (title) element.title = title
   return element

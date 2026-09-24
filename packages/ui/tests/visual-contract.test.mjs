@@ -28,6 +28,13 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(html, /id="keychain-columns"[^>]*class="host-columns"/, 'the key table shares that header shape')
   assert.match(css, /\.host-columns,\s*\.host-row \{[^}]*minmax\(0,1\.5fr\)/, 'the header and the rows must share one column template')
   assert.match(css, /#keychain-columns,\s*\.keychain-card \{[^}]*minmax\(0,1\.2fr\)/, 'the key table must share its template the same way')
+  // The remote file table is the third one, so it shares the same discipline:
+  // one template for the header and the rows, and a way to let go of the data
+  // columns when the grip has dragged the pane narrower than they need.
+  assert.match(css, /\.file-columns,\s*\.file-row \{[^}]*minmax\(0,1fr\) 62px 42px 74px 24px/, 'the file header and its rows must share one column template')
+  assert.match(css, /@container \(max-width: 259px\)[\s\S]{0,240}minmax\(0, 1fr\) 24px/, 'the file columns must give up before they overflow the pane')
+  assert.match(css, /:has\(#sftp-hint:not\(\[hidden\]\)\) #sftp-columns/, 'the file header must leave with an empty directory')
+  assert.match(css, /\.file-row \.file-main \{ min-height: 0/, 'a file row must not be floored by the button inside it')
   // A card is the same row with its columns folded away — all but the address,
   // which is the one thing a name cannot stand in for.
   assert.match(css, /\.card-view \.host-row \.host-cell \{ display: none/, 'a card must not repeat the table columns')
