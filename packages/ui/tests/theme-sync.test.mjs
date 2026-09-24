@@ -66,3 +66,25 @@ test('the overlay height agrees with the top bar the CSS draws', () => {
     'the fallback must equal --chrome-h; env() cannot read a custom property, so this literal is the one place the number is repeated and this assertion is what ties it')
   assert.equal(pixel('--status-h'), '24', 'the status row is a design decision, not a leftover')
 })
+
+// The mark is drawn twice: once as the 18px glyph in the top bar, where CSS owns
+// the colour, and once as a favicon, where a data: URI cannot read a custom
+// property. Two copies of one glyph is the exact debt this system exists to
+// remove, so the path data and both colours are compared instead of trusted.
+test('the brand mark and the favicon are the same glyph in the same colours', () => {
+  const mark = /class="workspace-mark"[^>]*>([\s\S]*?)<\/span>/.exec(html)
+  assert.ok(mark, 'index.html lost the .workspace-mark element')
+  const paths = [...mark[1].matchAll(/d="([^"]+)"/g)].map((m) => m[1])
+  assert.equal(paths.length, 2, 'the mark is a chevron and a cursor bar, in that order')
+
+  const icon = /rel="icon" href="data:image\/svg\+xml,([^"]+)"/.exec(html)
+  assert.ok(icon, 'index.html must carry an inline SVG favicon')
+  const svg = decodeURIComponent(icon[1])
+  // The URI uses single quotes because the attribute itself uses double ones, so
+  // only the path data and the colour value are compared, never the quoting.
+  for (const d of paths) assert.ok(svg.includes(d), `the favicon is missing the mark path ${d}`)
+  assert.equal(/fill=['"]?(#[0-9a-fA-F]{6})/.exec(svg)?.[1].toLowerCase(), declaration('--c-chrome'),
+    'the favicon ground must equal --c-chrome, the ground the top bar paints')
+  assert.equal(/stroke=['"]?(#[0-9a-fA-F]{6})/.exec(svg)?.[1].toLowerCase(), declaration('--ac'),
+    'the favicon glyph must equal --ac, which is what .workspace-mark colours itself with')
+})

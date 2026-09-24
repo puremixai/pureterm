@@ -65,15 +65,13 @@
 .app-tab-mark {
   display: grid;
   flex: 0 0 auto;
-  width: 23px;
-  height: 23px;
+  width: 18px;
+  height: 18px;
   place-items: center;
-  border-radius: var(--r-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-1);
   background: var(--c-control);
   color: var(--ac);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
 }
 
 .workspace-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
@@ -93,7 +91,9 @@
 }
 
 .app-tab.is-active { background: var(--c-control); color: var(--tx-1); }
-.app-tab-mark { width: 18px; height: 18px; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-2); font-size: 8px; }
+/* The library tab's mark still holds a Tabler glyph rather than the brand SVG,
+   so it needs a font-size; the box itself comes from the shared rule. */
+.app-tab-mark { color: var(--tx-2); font-size: 8px; }
 
 .app-body { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); min-height: 0; overflow: hidden; }
 
@@ -161,3 +161,30 @@
   .app-body { min-height: 0; overflow: hidden; }
   .session-tab { width: 154px; }
 }
+
+/* Status bar. Every field here is a value the renderer already owns; the
+   cipher, host key type and uptime this design originally asked for are not
+   reported by the Host at all, so they are absent rather than faked. */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--status-h);
+  padding: 0 10px;
+  background: var(--c-chrome);
+  border-top: 1px solid var(--line);
+  color: var(--tx-3);
+  font-size: var(--fs-micro);
+  line-height: 1;
+}
+
+.status-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+/* Tabular figures, because the size field changes width as you resize. */
+.status-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.status-fill { flex: 1 1 auto; }
+.status-sep { color: var(--line-strong); }
+.status-dot { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--idle); }
+.status-dot[data-state="connected"] { background: var(--ok); }
+.status-dot[data-state="connecting"] { background: var(--warn); }
+.status-dot[data-state="failed"],
+.status-dot[data-state="disconnected"] { background: var(--err); }
