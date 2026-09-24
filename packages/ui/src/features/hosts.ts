@@ -109,6 +109,7 @@ export class ClientHosts extends Service {
   }
 
   get count(): number { return this.hosts.length }
+  get records(): readonly HostRecord[] { return this.hosts }
   private input<T extends HTMLElement = HTMLInputElement>(id: string): T { return this.ctx.clientView.element<T>(id) }
   private auth(): AuthMethod { return this.input('auth').value === 'privateKey' ? 'privateKey' : 'password' }
 
@@ -235,6 +236,11 @@ export class ClientHosts extends Service {
     const hosts = await this.ctx.clientTransport.api.hosts.list()
     if (!this.scope.alive || listRevision !== this.listRevision) return
     this.hosts = hosts
+    // Keychain 的「关联主机」列要这份计数；它不能反过来注入本 feature，
+    // 因为本 feature 已经注入了它 —— 事件是唯一不成环的通道。
+    const counts: Record<string, number> = {}
+    for (const host of hosts) if (host.keyId) counts[host.keyId] = (counts[host.keyId] ?? 0) + 1
+    this.ctx.emit('client/host-counts', counts)
     // A list reply may arrive after the user has moved to another form.
     if (formRevision === this.formRevision) {
       if (keepId !== undefined) { this.editingId = keepId; this.selectedId = keepId }

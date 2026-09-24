@@ -32,6 +32,11 @@ declare module 'cordis' {
     'client/connection-change'(): void
     'client/tab-closed'(tabId: string): void
     'client/terminal-resize'(size: { cols: number; rows: number }): void
+    /**
+     * keyId → 使用它的主机数。Keychain 的表格要显示这一列，而 ClientHosts 已经
+     * 注入 ClientKeychain —— 反向再注入一次就是一个环，所以走事件。
+     */
+    'client/host-counts'(counts: Record<string, number>): void
     'client/edit-connection'(request: TerminalOpenRequest, title: string): void
     'client/keychain-change'(): void
   }

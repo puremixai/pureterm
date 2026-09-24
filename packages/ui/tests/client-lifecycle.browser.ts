@@ -95,7 +95,7 @@ async function runChecks() {
     click('keychain-close'); change('keychain-search', 'no-match')
     assert(document.querySelectorAll('.keychain-card').length === 0 && !input('keychain-empty').hidden, 'key search must filter real records')
     change('keychain-search', ''); click('keychain-view')
-    assert(input('keychain-list').classList.contains('list-view'), 'key list toggle must update layout')
+    assert(input('keychain-list').classList.contains('card-view'), 'key list toggle must update layout')
     click('keychain-view'); click('nav-hosts'); click('host-new'); fill()
     input('auth').value = 'privateKey'; input('auth').dispatchEvent(new Event('change'))
     input('host-keychain').value = vault.keys[0]!.id; input('host-keychain').dispatchEvent(new Event('change'))

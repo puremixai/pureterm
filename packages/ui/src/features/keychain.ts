@@ -20,6 +20,7 @@ export class ClientKeychain extends Service {
   private dirty = false
   private available = false
   private sessionOnly = true
+  private hostCounts: Record<string, number> = {}
 
   constructor(ctx: Context) {
     super(ctx, 'clientKeychain')
@@ -42,12 +43,13 @@ export class ClientKeychain extends Service {
       this.notice(this.sessionOnly ? '与后端断开，临时密钥和草稿已清除。重新连接后请再次导入密钥。' : '与后端断开，未保存的草稿已清除。已加密保存的密钥不受影响。', true)
       ctx.emit('client/keychain-change')
     })
+    ctx.on('client/host-counts', counts => { this.hostCounts = counts; this.render() })
     this.scope.listen(this.el('keychain-new'), 'click', () => this.edit())
     this.scope.listen(this.el('keychain-close'), 'click', () => this.close())
     this.scope.listen(this.el('keychain-search'), 'input', () => this.render())
     this.scope.listen(this.el('keychain-view'), 'click', () => {
-      const list = this.el('keychain-list').classList.toggle('list-view')
-      this.el('keychain-view').setAttribute('aria-pressed', String(list))
+      const cards = this.el('keychain-list').classList.toggle('card-view')
+      this.el('keychain-view').setAttribute('aria-pressed', String(cards))
     })
     this.scope.listen(this.el('keychain-editor'), 'submit', event => { event.preventDefault(); void this.save() })
     this.scope.listen(this.el('keychain-delete'), 'click', () => void this.remove())
@@ -166,6 +168,19 @@ export class ClientKeychain extends Service {
     empty.querySelector('p')!.textContent = query ? '试试名称、类型或指纹中的其他关键词。' : '点击「新建密钥」，粘贴或导入私钥文件。保存后可在主机认证设置中选择使用。'
   }
 
+  private cell(className: string, text: string, title = ''): HTMLElement {
+    const element = this.ctx.clientView.document.createElement('span')
+    element.className = `host-cell ${className}`
+    element.textContent = text
+    if (title) element.title = title
+    return element
+  }
+
+  /** 关联主机数由 ClientHosts 在每次刷新后广播 —— 反向注入会成环。 */
+  private associationCount(id: string): number {
+    return this.hostCounts[id] ?? 0
+  }
+
   private card(key: KeyRecord | null, label: string, subtitle: string, list: HTMLElement): void {
     const doc = this.ctx.clientView.document
     const row = doc.createElement('li')
@@ -181,6 +196,18 @@ export class ClientKeychain extends Service {
     const title = doc.createElement('span'); title.className = 'host-label'; title.textContent = label
     const sub = doc.createElement('span'); sub.className = 'keychain-card-sub'; sub.textContent = subtitle
     content.append(title, sub); main.append(avatar, content); row.append(main)
+    if (key) {
+      const usage = this.associationCount(key.id)
+      row.append(
+        this.cell('', key.type),
+        this.cell('mono', key.fingerprint.replace(/^SHA256:/, '')),
+        this.cell('when', usage ? `${usage} host${usage === 1 ? '' : 's'}` : '未使用', usage ? '' : '尚无主机使用这把密钥'),
+        this.cell('', new Date(key.updatedAt).toLocaleDateString()),
+      )
+    } else {
+      // 草稿卡片保留四个单元格，否则正在新建密钥时列会塌。
+      row.append(this.cell('', '—'), this.cell('mono', '—'), this.cell('when', '—'), this.cell('', '—'))
+    }
     main.title = key ? `${label}\n${key.fingerprint}` : label
     this.cards.add(main, 'click', () => {
       this.selectedId = key?.id ?? null

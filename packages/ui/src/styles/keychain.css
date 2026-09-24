@@ -9,23 +9,35 @@
 .keychain-search input { height: 40px; padding-left: 37px; border-color: transparent; border-radius: var(--r-3); background: var(--c-control); }
 .keychain-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 28px 32px; scrollbar-color: var(--scroll-thumb-strong) transparent; scrollbar-width: thin; }
 .keychain-content .hosts-heading { margin: 0 0 8px; }
-.keychain-policy { margin: 0 0 22px; color: var(--tx-3); font-size: var(--fs-meta); line-height: 1.6; }
-.keychain-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
-@container (max-width: 1200px) { .keychain-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container (max-width: 630px) { .keychain-list { grid-template-columns: minmax(0, 1fr); } }
-.keychain-card { display: flex; align-items: center; min-width: 0; min-height: 91px; border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); transition: background-color 160ms var(--ease), border-color 160ms var(--ease); }
+.keychain-policy { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; padding: 8px 10px; color: var(--tx-2); font-size: var(--fs-meta); line-height: 1.6; background: var(--c-surface); border: 1px solid var(--line); border-left: 2px solid var(--ac); border-radius: var(--r-2); }
+/* The never-plaintext guarantee is the one thing a user cannot infer from the UI,
+   so it is a banner above the list rather than a line of small text under it. */
+.keychain-policy:empty { display: none; }
+.keychain-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; margin: 0; padding: 0; list-style: none; }
+@container (max-width: 1200px) { .keychain-list.card-view { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 630px) { .keychain-list.card-view { grid-template-columns: minmax(0, 1fr); } }
+/* Six tracks, the last one the edit button: five columns of data plus the
+   action, exactly the hosts table's shape. */
+#keychain-columns,
+.keychain-card { display: grid; grid-template-columns: minmax(0,1.2fr) 1fr 1.5fr 62px 74px 24px; align-items: center; gap: 12px; padding: 0 10px; }
+.keychain-card { min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); transition: background-color 160ms var(--ease), border-color 160ms var(--ease); }
 .keychain-card:hover { border-color: var(--line-strong); background: var(--c-raised); }
 .keychain-card.active { border-color: var(--ac); }
-.keychain-card-main { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 14px; padding: 13px 8px 13px 15px; border: 0; background: transparent; text-align: left; }
+.keychain-card-main { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 14px; padding: 0; border: 0; background: transparent; text-align: left; }
 .keychain-card-main:hover:not(:disabled) { background: transparent; }
 .keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 58px; height: 58px; border-radius: var(--r-4); color: var(--tx-1); background: var(--c-control); font-size: 29px; }
 .keychain-card .host-content { gap: 5px; }
 .keychain-card-sub { color: var(--tx-3); font-size: var(--fs-meta); font-weight: 400; }
 .keychain-card-edit { flex: 0 0 auto; min-width: 32px; margin-right: 10px; opacity: 0; }
 .keychain-card:hover .keychain-card-edit, .keychain-card:focus-within .keychain-card-edit, .keychain-card.active .keychain-card-edit { opacity: 1; }
-.keychain-list.list-view { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-.keychain-list.list-view .keychain-card { min-height: 68px; }
-.keychain-list.list-view .keychain-avatar { width: 40px; height: 40px; font-size: 24px; border-radius: var(--r-3); }
+.keychain-list.card-view { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.keychain-list.card-view .keychain-card { grid-template-columns: minmax(0, 1fr); align-items: flex-start; min-height: 91px; padding: 0; }
+.keychain-list.card-view .keychain-card-main { padding: 13px 8px 13px 15px; }
+.keychain-list.card-view .keychain-card .host-cell { display: none; }
+/* A card keeps the fingerprint: type and dates are noise, the print is what you
+   match against the server. */
+.keychain-list.card-view .keychain-card .host-cell.mono { display: block; order: 2; color: var(--tx-3); font-size: var(--fs-micro); }
+.keychain-list.card-view .keychain-avatar { width: 40px; height: 40px; font-size: 24px; border-radius: var(--r-3); }
 #keychain-view[aria-pressed="true"] { background: var(--c-control); }
 .keychain-empty { display: grid; justify-items: center; max-width: 450px; margin: 65px auto; text-align: center; color: var(--tx-3); }
 .keychain-empty > i { display: grid; place-items: center; width: 72px; height: 72px; margin-bottom: 18px; border-radius: var(--r-4); background: var(--c-surface); color: var(--ac); font-size: 34px; }
@@ -33,7 +45,7 @@
 .keychain-empty p { line-height: 1.8; }
 /* The editor recedes to the canvas ground so its sections read as raised
    cards; the register had them the same tint as the panel behind them. */
-.keychain-editor { display: flex; flex: 0 0 clamp(360px, 28vw, 500px); min-width: 0; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--c-canvas); }
+.keychain-editor { display: flex; flex: 0 0 var(--insp-w); min-width: 0; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--c-canvas); }
 .keychain-editor .toolbar-head { background: var(--c-chrome); }
 .keychain-editor fieldset { min-inline-size: 0; margin: 0; border: 0; }
 .keychain-editor .drawer-scroll { padding: 18px 16px; }

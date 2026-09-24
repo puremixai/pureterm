@@ -92,6 +92,9 @@
                 <p id="keychain-policy" class="keychain-policy"></p>
                 <p id="keychain-notice" class="keychain-message" role="status">正在加载密钥…</p>
                 <button id="keychain-reload" type="button" class="ghost" hidden>重新加载</button>
+                <div id="keychain-columns" class="host-columns" role="presentation">
+                  <span>名称</span><span>类型</span><span>指纹 SHA256</span><span>关联</span><span>创建</span><span></span>
+                </div>
                 <ul id="keychain-list" class="keychain-list" aria-label="已保存的密钥"></ul>
                 <div id="keychain-empty" class="keychain-empty" hidden><i class="ti ti-key" aria-hidden="true"></i><h2>还没有密钥</h2><p>点击「新建密钥」，粘贴或导入私钥文件。<br />保存后可在主机认证设置中选择使用。</p></div>
               </div>
