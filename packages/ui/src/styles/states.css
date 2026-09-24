@@ -11,7 +11,6 @@
 .empty { margin: 12px; padding: 20px 18px; border: 1px dashed var(--line-strong); border-radius: var(--r-4); color: var(--tx-3); font-size: var(--fs-ui); line-height: 1.75; }
 
 .connection-failure { position: absolute; inset: 0; z-index: 12; display: flex; min-width: 0; min-height: 0; overflow: auto; background: var(--c-canvas); }
-.connection-failure[hidden] { display: none !important; }
 .failure-shell { width: min(100%, 650px); margin: auto; padding: 58px 20px 34px; }
 .failure-head { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
 .failure-host { display: flex; align-items: center; min-width: 0; gap: 15px; }

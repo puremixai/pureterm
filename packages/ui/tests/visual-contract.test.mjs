@@ -52,6 +52,15 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(css, /:focus-visible\s*\{/, 'keyboard focus treatment is required')
   assert.match(css, /#main\s*\{[^}]*display:\s*grid/, 'the workspace column must be a grid so it can hand its own column to the editor')
   assert.match(css, /\.app-shell\.inspector-open\s+#main\s*\{[^}]*var\(--insp-w\)/, 'the docked editor must be a track of the workspace column, not an overlay')
+  // The split is one mechanism. #sftp used to be an absolutely positioned drawer
+  // AND a grid child of .session-content, and only the second one could ever be
+  // seen — .files-open is what shows the panel at all.
+  assert.match(css, /\.session-content\s*\{[^}]*grid-template-columns:/, 'the session content is a column grid')
+  assert.match(css, /\.files-open \.session-content\s*\{[^}]*var\(--grip-w\)/, 'the grip is its own track, not an overlay on one')
+  assert.doesNotMatch(css, /#sftp\s*\{[^}]*position:\s*absolute/, 'one element may not have two layout mechanisms')
+  // Two columns at their minimum floors are 465px, which no phone-width window
+  // holds; the narrow case stacks and must keep saying so.
+  assert.match(css, /grid-template-rows:\s*minmax\(120px, 1\.35fr\) var\(--grip-w\) minmax\(160px, 1fr\)/, 'below 820 the file table stacks under the terminal')
   // .app-body holds the rail and one workspace column and nothing else. An
   // --insp-w track there is an empty third column, and the editor — a child of
   // #main — stays below the fold of a column it never narrows.

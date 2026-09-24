@@ -9,7 +9,10 @@
    narrows, which is what the old padding-right compensation was faking. */
 .connection-workspace { display: none; min-width: 0; min-height: 0; overflow: hidden; }
 .app-shell.inspector-open .connection-workspace { display: flex; }
-.connection-workspace[hidden] { display: none !important; }
+/* No per-component [hidden] rule lives here: base.css carries
+   `[hidden] { display: none !important }`, and an !important author rule beats a
+   plain declaration whatever the specificity, so duplicating it only hides a
+   fact a reader would otherwise have to look up. */
 /* The editor separates from the page by a hairline, not by an offset shadow:
    dark has no elevation language, and a shadow on a full-height panel only
    reads as a smudge. */

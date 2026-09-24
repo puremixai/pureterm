@@ -92,11 +92,15 @@
   /* Chrome geometry. --chrome-h is the height Electron's title-bar overlay is
      told to reserve, so theme-sync.test.mjs reads it as the single source.
      --insp-w is the docked editor: both the connection form and the key editor
-     take it, so the two screens cannot drift to two different widths. */
+     take it, so the two screens cannot drift to two different widths.
+     --grip-w is the split handle between the terminal and the file table. It is
+     a token because two things have to agree on it: the track, and the hit area
+     that widens past it so a 5px bar is grabbable. */
   --chrome-h: 40px;
   --rail-w: 52px;
   --status-h: 24px;
   --insp-w: 322px;
+  --grip-w: 5px;
 
   --font-ui: Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
