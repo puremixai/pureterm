@@ -28,6 +28,21 @@ export function collectSwitches(has: (name: string) => boolean): string[] {
   return TRACKED_SWITCHES.filter((name) => has(name))
 }
 
+/**
+ * 顶栏要不要自己画最小化/最大化/关闭。
+ *
+ * 窗口是 `titleBarStyle: 'hidden'`，所以三平台的差别在于**谁画那三个按钮**：
+ * macOS 的红绿灯由系统保留在左上角，顶栏再画一套就是两套；Windows/Linux 的同一个
+ * 设置不给任何原生按钮，顶栏不画就没有关窗入口。
+ *
+ * 这个决定写在纯决策层，而不是渲染层：渲染层只认桥带不带 `windowControls` 这一项，
+ * 于是「谁画」只有一个地方回答。preload 拿 process.platform 调它，smoke-desktop.mjs
+ * 拿它单测 —— preload 本身在沙箱里，脱离 Electron 测不了。
+ */
+export function drawsOwnWindowControls(platform: NodeJS.Platform): boolean {
+  return platform !== 'darwin'
+}
+
 export interface PlatformPlanInput {
   platform: NodeJS.Platform
   env: NodeJS.ProcessEnv
@@ -47,8 +62,8 @@ export interface PlatformPlan {
   includeAppMenu: boolean
   /** Windows/Linux 上菜单保留快捷键能力，但不占用一整行界面。 */
   autoHideMenuBar: boolean
-  /** Windows/Linux 隐藏标题栏后，仍由系统绘制最小化、最大化与关闭按钮。 */
-  useWindowControlsOverlay: boolean
+  /** 顶栏是否自绘最小化/最大化/关闭。macOS 由系统画红绿灯，所以是 false。 */
+  selfDrawnWindowControls: boolean
   /** 为什么这么选。写进启动日志——环境相关的决定最怕「不知道为什么」。 */
   reasons: string[]
 }
@@ -81,6 +96,11 @@ export function resolvePlatformPlan(input: PlatformPlanInput): PlatformPlan {
       ? 'macOS：关掉最后一个窗口后留在 Dock；装最小应用菜单（否则终端里 Cmd+C/Cmd+V 不可用）'
       : '非 macOS：关掉最后一个窗口即退出；不装 macOS App 菜单',
   )
+  reasons.push(
+    isMac
+      ? 'macOS：红绿灯由系统画在左上角，顶栏不自绘窗口按钮'
+      : '非 macOS：titleBarStyle:hidden 不带原生按钮，顶栏自绘最小化/最大化/关闭',
+  )
 
   return {
     platform: input.platform,
@@ -91,7 +111,7 @@ export function resolvePlatformPlan(input: PlatformPlanInput): PlatformPlan {
     quitOnAllWindowsClosed: !isMac,
     includeAppMenu: isMac,
     autoHideMenuBar: !isMac,
-    useWindowControlsOverlay: !isMac,
+    selfDrawnWindowControls: drawsOwnWindowControls(input.platform),
     reasons,
   }
 }

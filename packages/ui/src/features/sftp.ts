@@ -33,6 +33,8 @@ export class ClientSftp extends Service {
   private readonly states = new Map<string, FileState>()
   private renderedSession: string | null = null
   private grip: HTMLElement | null = null
+  /** 上一次广播出去的面板开合状态，用来避免每次 sync 都重复发同一条事件。 */
+  private announced = false
 
   constructor(ctx: Context) {
     super(ctx, 'clientSftp')
@@ -60,6 +62,18 @@ export class ClientSftp extends Service {
     })
     this.ensureGrip(view)
     this.scope.listen(toggle, 'click', () => { if (ctx.clientTerminal.sessionId) this.setOpen(element.hidden) })
+    // Ctrl/Cmd+E 归这里，因为面板的开合只有这一处知道（ClientTerminal 不能反过来
+    // 注入 ClientSftp：那边已经注入了它，那样成环）。和 Ctrl+W 一样是抢来的键 ——
+    // readline 里 Ctrl+E 是移到行尾 —— 项目已经为 Ctrl+W 做过同样的取舍，这里保持一致，
+    // 并且对话框里写着它。
+    this.scope.listen(view.document, 'keydown', event => {
+      const key = event as KeyboardEvent
+      if (!(key.ctrlKey || key.metaKey) || key.key.toLowerCase() !== 'e') return
+      if (view.element<HTMLDialogElement>('shortcuts-dialog').open || !ctx.clientTerminal.sessionId) return
+      key.preventDefault()
+      key.stopPropagation()
+      this.setOpen(element.hidden)
+    }, true)
     ctx.on('client/session-change', () => this.sync())
     ctx.on('client/connection-change', () => this.sync())
     ctx.on('client/tab-closed', tabId => {
@@ -67,6 +81,17 @@ export class ClientSftp extends Service {
       this.sync()
     })
     this.sync()
+  }
+
+  /**
+   * 当前会话的文件面板开着吗。
+   *
+   * 和 current() 分开写：那个方法会顺手建一份状态，而状态栏每次重画都会问一次
+   * 这个问题 —— 一个 getter 不该有副作用。所以这里只读，不建。
+   */
+  get open(): boolean {
+    const sessionId = this.ctx.clientTerminal.sessionId
+    return !!sessionId && !!this.states.get(sessionId)?.open
   }
 
   private current(): FileState | null {
@@ -188,6 +213,7 @@ export class ClientSftp extends Service {
     }
     this.panel.setEnabled(!!state)
     const open = !!state?.open
+    if (open !== this.announced) { this.announced = open; this.ctx.emit('client/files-change', open) }
     view.element('sftp').hidden = !open
     if (this.grip) this.grip.hidden = !open
     this.paintSplit()

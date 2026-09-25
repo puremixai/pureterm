@@ -37,10 +37,21 @@ export const NOTICES = {
   appDispose: 'app:dispose-client',
 } as const
 
-/** Minimal Electron shell coordination; business traffic always uses WebSocket. */
+/**
+ * Minimal Electron shell coordination; business traffic always uses WebSocket.
+ *
+ * The three window channels exist because the top bar draws its own minimize,
+ * maximize and close buttons. Only the main process can move a window, so the
+ * renderer has to ask — and because it draws them, the shell must not also ask
+ * Windows or Linux to paint a second set (see shell.ts). macOS keeps its traffic
+ * lights, so it never asks for these three.
+ */
 export const DESKTOP_CHANNELS = {
   bootstrap: 'desktop:bootstrap',
   ready: 'desktop:renderer-ready',
+  windowMinimize: 'desktop:window-minimize',
+  windowToggleMaximize: 'desktop:window-toggle-maximize',
+  windowClose: 'desktop:window-close',
 } as const
 
 /** 服务端推给客户端的事件。客户端只订阅，不回应。 */
@@ -238,6 +249,23 @@ export interface DesktopBootstrap {
 export interface DesktopBridge {
   bootstrap(): Promise<DesktopBootstrap>
   signalReady(payload: RendererReadyPayload): void
+  /**
+   * The top bar's three self-drawn window buttons, where the platform draws none.
+   *
+   * Optional, and absent for two different reasons that the renderer treats the
+   * same way — by not drawing the cluster at all rather than drawing it inert:
+   * a browser tab (the standalone Web entry) has no window to minimize, and macOS
+   * keeps its own traffic lights under titleBarStyle: 'hidden'. Which platform
+   * gets them is `drawsOwnWindowControls` in the Desktop's platform plan.
+   *
+   * `toggleMaximize` is one call rather than maximize/restore because the main
+   * process is the only side that knows which of the two the window is in.
+   */
+  windowControls?: {
+    minimize(): void
+    toggleMaximize(): void
+    close(): void
+  }
 }
 
 /** 宿主能力与入口无关：Desktop 的浏览器入口也支持系统凭据与原生选文件。 */

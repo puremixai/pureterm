@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { once } from 'node:events'
-import { resolvePlatformPlan, collectSwitches } from '../dist/electron/runtime/platform-plan.js'
+import { resolvePlatformPlan, collectSwitches, drawsOwnWindowControls } from '../dist/electron/runtime/platform-plan.js'
 import { createReadinessGate, normalizeReadyPayload } from '../dist/electron/runtime/readiness.js'
 import { relaunchSelf } from '../dist/electron/runtime/relaunch.js'
 import { createFrameDecoder, encodeFrame, OPCODES, WsProtocolError } from '@pureterm/transport/ws-frame'
@@ -16,7 +16,24 @@ test('platform defaults keep sandbox/GPU intact and use a compact native shell',
     assert.equal(plan.quitOnAllWindowsClosed, platform !== 'darwin')
     assert.equal(plan.includeAppMenu, platform === 'darwin')
     assert.equal(plan.autoHideMenuBar, platform !== 'darwin')
-    assert.equal(plan.useWindowControlsOverlay, platform !== 'darwin')
+    assert.equal(plan.selfDrawnWindowControls, platform !== 'darwin')
+  }
+})
+
+// Who draws minimize/maximize/close is one question with one answer, and this is it. The
+// sandboxed preload calls the same function to decide whether to expose `windowControls`
+// at all, so a platform that keeps its own buttons cannot end up with two sets, and a
+// platform that has none cannot end up with zero. It is asserted here rather than through
+// Electron because a preload cannot be unit-tested inside the sandbox it runs in.
+test('only platforms with no caption buttons of their own get the self-drawn set', () => {
+  assert.equal(drawsOwnWindowControls('darwin'), false,
+    "macOS keeps its traffic lights under titleBarStyle: 'hidden'; a second set beside them is the bug")
+  assert.equal(drawsOwnWindowControls('win32'), true,
+    "the same setting leaves Windows with no native buttons, so the top bar draws them")
+  assert.equal(drawsOwnWindowControls('linux'), true, 'and Linux likewise')
+  for (const platform of ['win32', 'linux', 'darwin']) {
+    assert.equal(resolvePlatformPlan({ platform, env: {} }).selfDrawnWindowControls, drawsOwnWindowControls(platform),
+      'the plan and the preload must answer this from one function rather than two copies of the rule')
   }
 })
 

@@ -53,6 +53,27 @@ export function cell(className: string, text: string, title?: string): HTMLSpanE
 }
 
 /**
+ * 身份块里的两个字，取自名称的词首 —— 原型里的 PW / BL / SE / DG。
+ *
+ * 为什么不再写「SSH / KEY」：认证方式在隔壁那一列已经用中文说了一遍（密码 /
+ * 密钥库 · ed25519 / 本机文件），同一个格子里说两次，就把这张表上唯一一块能
+ * 「一眼认出这是哪台」的位置让给了重复信息。中文名没有词首字母，取前两个字。
+ *
+ * 失败页也用同一个函数：那一屏的头像和列表里的是同一个东西，两处各写一份，
+ * 同一台主机在两个屏幕上就会显示成两个缩写。
+ */
+export function initialsOf(label: string): string {
+  const words = label.trim().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  // 纯数字的词不算一个词：prod-web-01 的第三个词是 01，取它的首字母只会得到
+  // 「P0」，那不是这台机器的名字。全部是数字时（标签直接写成 IP）才退回按字取。
+  const named = words.filter(word => /\p{L}/u.test(word))
+  const letters = named.length > 1
+    ? named.slice(0, 2).map(word => [...word][0]!)
+    : [...(named[0] ?? words[0] ?? '')].slice(0, 2)
+  return letters.join('').toLocaleUpperCase()
+}
+
+/**
  * 认证列要说的是「这台机器能不能连上」：凭据在密钥库里，还是在本机一个文件路径上。
  * 算法名不在 HostRecord 上，只在 KeyRecord.type 上，所以传进来的密钥清单可能查不到
  * ——查不到就只说「密钥库」，而不是编一个算法名。
@@ -91,7 +112,7 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   main.title = '单击选中，双击连接'
   main.setAttribute('aria-label', `${record.label}，${record.username}@${record.host}:${record.port}，单击选中，双击连接`)
 
-  const avatar = span('host-avatar', record.authMethod === 'privateKey' ? 'KEY' : 'SSH')
+  const avatar = span('host-avatar', initialsOf(record.label || record.host))
   avatar.setAttribute('aria-hidden', 'true')
   const content = document.createElement('span')
   content.className = 'host-content'
@@ -106,7 +127,7 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   listeners.add(main, 'dblclick', () => handlers.onConnect(record))
 
   const auth = authFor(record, keys)
-  const saved = record.hasSecret ? span('tag saved', '已存凭据') : null
+  const saved = record.hasSecret ? span('chip ok', '已存凭据') : null
   if (saved) saved.title = '凭据已加密保存在本机，连接时可留空'
 
   const actions = document.createElement('span')

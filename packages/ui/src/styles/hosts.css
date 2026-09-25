@@ -15,9 +15,10 @@
    render, which makes it the state rather than a second copy of the count. */
 #hosts-body:has(#hosts-empty:not([hidden])) #host-columns,
 .keychain-content:has(#keychain-empty:not([hidden])) #keychain-columns { display: none; }
-.host-cell { min-width: 0; overflow: hidden; color: var(--tx-2); font-size: var(--fs-meta); text-overflow: ellipsis; white-space: nowrap; }
+/* 表格里的数据格一律 --tx-3（原型的 .num）：它们是可比较的值，不是要读的正文，
+   所以比名称低一级。身份那一格反过来是 --tx-2，对应原型的 .tag.k。 */
+.host-cell { min-width: 0; overflow: hidden; color: var(--tx-3); font-size: var(--fs-meta); text-overflow: ellipsis; white-space: nowrap; }
 .host-cell.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.host-cell.when { color: var(--tx-3); }
 .auth-keychain { color: var(--tx-2); }
 .auth-file { color: var(--tx-3); }
 .auth-password { color: var(--tx-3); }
@@ -30,68 +31,89 @@
    a third empty column and leave the form below the fold inside the second. */
 #main { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--c-canvas); }
 .app-shell.inspector-open #main { grid-template-columns: minmax(0, 1fr) var(--insp-w); }
-#hosts-panel { display: flex; min-width: 0; min-height: 0; height: 100%; flex-direction: column; overflow: auto; padding: 14px 16px 28px; background: var(--c-canvas); scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
-.host-search-row { display: flex; align-items: center; gap: 0; min-height: 55px; margin: 0 0 26px; padding: 0 8px 0 14px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--c-surface); }
-.search-control { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 10px; }
-.search-icon { flex: 0 0 auto; color: var(--tx-2); font-size: 25px; line-height: 1; transform: rotate(-20deg); }
-#host-search { height: 48px; padding: 0; border: 0; background: transparent; color: var(--tx-1); font-size: var(--fs-h2); }
-#host-search:focus { border: 0; background: transparent; box-shadow: none; }
-#host-search::placeholder { color: var(--tx-4); }
+/* 一屏只留一处横向内边距。原来是 #hosts-panel 12px 加 #hosts-body 12px，于是
+   直接挂在 panel 上的降级横幅比列表里的空状态少缩进一半。原型也是把 16px 留在
+   列表容器上（.tbl），.ph 的左右内边距同样是 16px。 */
+#hosts-panel { display: flex; min-width: 0; min-height: 0; height: 100%; flex-direction: column; overflow: auto; padding: 0 16px 14px; background: var(--c-canvas); scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
+/* 原型 .ph：一行装完标题、计数、搜索、主按钮和视图开关。margin-left: auto 挂在
+   .search 上，就是原型那个 .sp 撑开的位置 —— 不必为它多写一个节点。 */
+.page-head { display: flex; align-items: center; gap: 10px; padding: 14px 0 12px; }
+.page-head h1 { margin: 0; color: var(--tx-1); font-size: var(--fs-h1); font-weight: 600; letter-spacing: -0.02em; }
+.host-count { color: var(--tx-3); font-size: var(--fs-meta); white-space: nowrap; }
+/* 原型 .search 是 210×28，边框取 --line-strong 而不是它的 --line：--line 在
+   --c-control 上量得 1.069:1（深色）/ 1.078:1（浅色），低于
+   stylesheet-contract.test.mjs 给每道细线定的 1.1:1 下限，而 --line-strong 是
+   1.473 / 1.352。 */
+.search { display: flex; align-items: center; gap: 7px; width: 210px; margin-left: auto; height: 28px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); }
+.search > i { flex: 0 0 auto; font-size: 12px; }
+/* 搜索框本身不是表单字段：它没有自己的边框和底色，整个 .search 才是那个框。
+   #host-search 和 #keychain-search 共用这一条，所以选择器按类走而不是按 id。 */
+.search input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--tx-1); font-size: var(--fs-meta); }
+.search input:hover:not(:disabled) { border: 0; background: transparent; }
+.search input:focus { border: 0; background: transparent; box-shadow: none; }
+/* 键帽在搜索框里是平的：原型 .search kbd 只有 1px 的底边，2px 那条底边是它给
+   对话框里的 .kbd 的。全局元素规则在 states.css，这里只收尺寸。 */
+.search kbd { margin-left: auto; padding: 1px 4px; border-bottom-width: 1px; font-size: 10px; }
 
-.dashboard-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 58px; margin: 0 0 28px; padding: 0 0 13px; border-bottom: 1px solid var(--line); }
-.dashboard-actions,
-.dashboard-tools { display: flex; align-items: center; gap: 4px; }
-.action-primary { min-height: 45px; border-color: transparent; border-radius: var(--r-3); background: var(--c-control); color: var(--tx-1); font-size: 15px; white-space: nowrap; }
-.action-primary:hover:not(:disabled),
-.action-split:hover:not(:disabled) { border-color: transparent; background: var(--c-raised); }
-.action-primary span { margin-right: 4px; font-size: 22px; font-weight: 400; vertical-align: -1px; }
-.action-split { min-width: 42px; min-height: 45px; margin-left: -4px; padding: 0; border-color: transparent; border-left: 1px solid var(--line-strong); border-radius: 0 var(--r-3) var(--r-3) 0; background: var(--c-control); color: var(--tx-1); font-size: 20px; }
-.dashboard-tools { gap: 6px; }
-.tool-icon { display: grid; min-width: 38px; min-height: 38px; padding: 0; place-items: center; border-color: transparent; border-radius: var(--r-3); background: transparent; color: var(--tx-1); font-size: 20px; }
-.tool-icon:hover:not(:disabled), .tool-icon.active { border-color: transparent; background: var(--c-control); }
-.tool-icon.add { font-size: 24px; }
-.hosts-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin: 0 12px 18px; }
-.section-kicker { color: var(--tx-3); font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-.hosts-heading h1 { margin: 0; color: var(--tx-1); font-size: 23px; font-weight: 700; letter-spacing: -0.02em; }
-.host-count { padding-bottom: 4px; color: var(--tx-3); font-size: var(--fs-meta); }
-#hosts-body { flex: 1 1 auto; min-height: 0; padding: 0 12px; }
+/* 原型 .ib：26px 的图标钮，安静到近乎透明 —— 它是列表的工具，不是这一屏的主按钮。 */
+.tool-icon { display: grid; min-width: 26px; min-height: 26px; padding: 0; place-items: center; border-color: transparent; border-radius: var(--r-1); background: transparent; color: var(--tx-3); font-size: 15px; }
+.tool-icon:hover:not(:disabled), .tool-icon.active { border-color: transparent; background: var(--c-raised); color: var(--tx-1); }
+#hosts-body { flex: 1 1 auto; min-height: 0; }
 #host-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; margin: 0; padding: 0; list-style: none; }
 /* A card keeps the address: the columns are gone, but a name with no target
    under it is not a card, it is a label. */
 #host-list.card-view { grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 16px; }
 #host-list.card-view .host-row { grid-template-columns: minmax(0, 1fr); align-items: flex-start; min-height: 91px; padding: 0; }
-#host-list.card-view .host-main { padding: 15px 12px 15px 16px; border-radius: var(--r-4); }
+#host-list.card-view .host-main { padding: 15px 12px 15px 16px; border-radius: var(--r-3); }
 #host-list.card-view .host-row .host-cell { display: none; }
 #host-list.card-view .host-row .host-cell.mono { display: block; order: 2; padding: 0 12px 0 16px; color: var(--tx-3); font-size: var(--fs-micro); }
-/* Same square and same corner as a keychain card's avatar: 58px is a --r-4
-   radius, and inheriting the list chip's --r-1 here left two card languages
-   side by side with different corners. */
-#host-list.card-view .host-avatar { width: 58px; height: 58px; border-radius: var(--r-4); }
+/* 卡片视图是这一版自己的形状，原型里没有。58px 的方块取 --r-3 而不是列表小块的
+   --r-1：原型没有画过这么大的方块，但它的圆角是跟着方框长大的（20px→--r-1，
+   34px→--r-2），58px 落到 --r-3 正好接上那条线。密钥库卡片用同一个角。 */
+#host-list.card-view .host-avatar { width: 58px; height: 58px; border-radius: var(--r-3); font-size: var(--fs-h2); }
 #host-list.card-view .host-content { gap: 6px; }
 
 /* Dark separates with hairlines, not elevation, so the row's only rest-state
    signal is its border and the one-step surface raise. The old hover also
    lifted the card by 1px, which reads as a glitch with no shadow under it. */
-.host-row { position: relative; min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
+.host-row { position: relative; min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-2); background: var(--c-surface); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
 .host-row:hover { border-color: var(--line-strong); background: var(--c-raised); }
 .host-row.active { border-color: var(--ac-line); background: var(--ac-bg); }
+/* 选中标记是贴在左边缘的一道 2px 强调条（原型的 .tr.sel::before）。上下各让开
+   7px，好让它读成「这一段被选中」而不是「左边框变粗了」。 */
+.host-row.active::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 0; width: 2px; border-radius: 1px; background: var(--ac); }
 .host-main { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 14px; padding: 0; border: 0; border-radius: var(--r-2); background: transparent; color: var(--tx-2); cursor: pointer; text-align: left; user-select: none; }
 .host-main:hover:not(:disabled) { border-color: transparent; background: transparent; }
 /* In a table the row's box owns the height, not the button inside it: base.css
-   floors every button at 38px, which is exactly --row-h, so the compact density
-   changed the token and nothing else. */
+   floors every button at 28px, which is under --row-h, so the compact density
+   only moves the token — but this override stays because
+   visual-contract.test.mjs asserts it by name. */
 #host-list:not(.card-view) .host-main { min-height: 0; }
-.host-avatar { display: grid; flex: 0 0 auto; width: 20px; height: 20px; place-items: center; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-1); font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.02em; }
+/* 9px 而不是 --fs-micro：块里现在是两个字母，不是三个。11px 的两个大写字母在
+   20px 的方框里只剩不到 2px 的余量，而「MW」这种宽字母对会贴边。原型也是 8.5px。
+   letter-spacing 取负值，同样是给这一对字母留地方。底色和文字都取 --c-control /
+   --tx-3 —— 原型的 .av 是个安静的灰块，只有选中行里才升到强调色。 */
+.host-avatar { display: grid; flex: 0 0 auto; width: 20px; height: 20px; place-items: center; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: 9px; font-weight: 700; letter-spacing: -0.02em; }
+.host-row.active .host-avatar { border-color: transparent; background: var(--ac); color: var(--ac-fg); }
 .host-content { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 6px; }
 .host-top { display: flex; align-items: center; min-width: 0; max-width: 100%; gap: 6px; }
-.host-label { overflow: hidden; color: var(--tx-1); font-size: var(--fs-h2); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.tag { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: 10px; line-height: 1.1; white-space: nowrap; }
-.tag.saved { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
+.host-label { overflow: hidden; color: var(--tx-1); font-size: var(--fs-ui); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+/* 原型的两种徽标是两件东西，这里原来是同一个类在兼两职。
+   .tag 是纯文字标签：没有边框、没有底色、没有内边距，只在 .tag.k 上比正文亮一级。
+   .chip 是带底色的徽标：1px 边框 + 一点点内边距，四种色调各说一件事。 */
+.tag { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.1; white-space: nowrap; }
+.tag.k { color: var(--tx-2); }
+.chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: var(--r-1); color: var(--tx-3); font-size: 10.5px; line-height: 1.35; white-space: nowrap; }
+.chip.ok { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
+.chip.err { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
+.chip.warn { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn); }
+.chip.ac { border-color: var(--ac-line); background: var(--ac-bg); color: var(--ac); }
 .host-actions, .file-actions { position: absolute; top: 9px; right: 9px; display: flex; gap: 2px; padding: 0; opacity: 0; transition: opacity var(--t-2) var(--ease); }
 .host-row:hover .host-actions, .host-row.active .host-actions, .file-row:hover .file-actions { opacity: 1; }
 .host-row:focus-within .host-actions, .file-row:focus-within .file-actions { opacity: 1; }
-button.mini { min-height: 28px; padding: 0 7px; border-color: transparent; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: var(--fs-micro); font-weight: 600; }
+button.mini { min-height: 22px; padding: 0 6px; border-color: transparent; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: var(--fs-micro); font-weight: 600; }
 button.mini:hover:not(:disabled) { border-color: var(--line); background: var(--c-surface); color: var(--tx-1); }
+button.mini.danger { color: var(--err); }
 button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
 
 @media (max-width: 1100px) {
@@ -99,8 +121,6 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); backgro
 }
 
 @media (max-width: 820px) {
-  .dashboard-toolbar { align-items: flex-start; flex-direction: column; }
-  .dashboard-tools { align-self: flex-end; }
   #host-list.card-view { grid-template-columns: minmax(0, 1fr); }
   .host-columns,
   #host-list:not(.card-view) .host-row { grid-template-columns: minmax(0,1.6fr) 1fr 24px; }
@@ -115,11 +135,12 @@ button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); backgro
 
 @media (max-width: 620px) {
   #main { min-height: 0; overflow: hidden; }
-  #hosts-panel { height: 100%; min-height: 0; overflow: auto; padding: 12px 10px 24px; }
-  .host-search-row { margin-bottom: 18px; }
-  .dashboard-toolbar { margin-bottom: 20px; }
-  .dashboard-actions { max-width: 100%; flex-wrap: wrap; }
-  .hosts-heading { margin-right: 6px; margin-left: 6px; }
-  #hosts-body { padding: 0 6px; }
+  #hosts-panel { height: 100%; min-height: 0; overflow: auto; padding: 0 10px 24px; }
+  /* 窄屏上 210px 的搜索框和标题挤不进一行：让它整行折下去（order: 2），而不是
+     把「Hosts」压成省略号。margin-left: auto 从搜索框挪到主按钮上，好让第一行
+     仍是「标题 + 计数 ……… 按钮」。 */
+  .page-head { flex-wrap: wrap; padding: 12px 0 10px; }
+  .search { order: 2; width: 100%; margin-left: 0; }
+  #host-new { margin-left: auto; }
   #host-list.card-view { gap: 11px; }
 }

@@ -46,8 +46,14 @@ function span(className: string, text: string): HTMLSpanElement {
   return element
 }
 
-function tag(text: string, extra = ''): HTMLSpanElement {
-  return span(extra ? `tag ${extra}` : 'tag', text)
+/* 目录是纯文字标签，符号链接是带色调的徽标 —— 原型把这两种画成 .tag 和 .chip
+   两个类，一个没有边框和底色，一个有。 */
+function label(text: string): HTMLSpanElement {
+  return span('tag', text)
+}
+
+function badge(text: string, tone: string): HTMLSpanElement {
+  return span(`chip ${tone}`, text)
 }
 
 /**
@@ -226,9 +232,9 @@ const buildCrumbs = (path: string): HTMLElement[] => {
     const top = document.createElement('span')
     top.className = 'file-top'
     top.append(span('file-name', entry.name))
-    if (entry.isDirectory) top.append(tag('目录'))
+    if (entry.isDirectory) top.append(label('目录'))
     // 软链单独标出来：它的类型是「跟着目标走」的，用户需要知道这一行不是本体
-    if (entry.isSymlink) top.append(tag('链接', 'link'))
+    if (entry.isSymlink) top.append(badge('链接', 'warn'))
 
     // 大小、模式、时间是行的孩子而不是按钮的孩子：它们是表格里的那些列，
     // 得和列标题对得上，而按钮里的内容对不到列上。

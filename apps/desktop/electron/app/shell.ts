@@ -27,8 +27,6 @@ export interface ShellGenerationOptions {
   preloadPath: string
   /** Windows/Linux 保留菜单快捷键，但默认不让菜单栏占据内容高度。 */
   autoHideMenuBar: boolean
-  /** Windows/Linux 隐藏原生标题栏后叠回系统窗口控制按钮。 */
-  useWindowControlsOverlay: boolean
   /** Page query, for example 'smoke=1' in isolated diagnostics. */
   search?: string
   /** 页面没能起来（超时 / 加载失败 / 渲染进程崩溃）。只在「还没加载完」时触发。 */
@@ -63,13 +61,11 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
     title: 'PureTerm',
     titleBarStyle: 'hidden',
     autoHideMenuBar: options.autoHideMenuBar,
-    ...(options.useWindowControlsOverlay ? {
-      titleBarOverlay: {
-        color: '#0e1013',
-        symbolColor: '#7d838d',
-        height: 40,
-      },
-    } : {}),
+    // 故意不设 titleBarOverlay：Windows/Linux 上顶栏自己画那三个按钮（见 main.ts 的
+    // 三条窗口通道），再让系统叠一层就会画出两套。代价是 Windows 11 的贴靠布局浮层
+    // （那是系统按钮才有的东西），换来的是按钮点下去真的动窗口。
+    // macOS 不走这条路：titleBarStyle:'hidden' 在那里保留系统红绿灯，顶栏因此不画，
+    // 谁画由 platform-plan.ts 的 drawsOwnWindowControls 一处回答。
     webPreferences: {
       preload: options.preloadPath,
       nodeIntegration: false,

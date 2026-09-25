@@ -1,12 +1,27 @@
 /* Nothing-to-show and something-went-wrong — the empty placeholder, the
    shortcuts dialog, and the connection-failure page with its route and log. */
-.shortcuts-dialog { width: min(460px, calc(100vw - 40px)); padding: 28px; border: 1px solid var(--line-strong); border-radius: var(--r-4); background: var(--c-surface); color: var(--tx-2); box-shadow: var(--shadow-pop); }
+/* 原型 .dlg：392px、--r-3、没有外层内边距。标题和底栏各自是一条 --c-chrome 的横带，
+   所以这个对话框读起来是一张卡片而不是一页留白。--c-chrome 上画 --line 是 1.323
+   （深）/ 1.128（浅），两道细线都过得了 1.1:1。 */
+.shortcuts-dialog { width: min(392px, calc(100vw - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-3); background: var(--c-surface); color: var(--tx-2); box-shadow: var(--shadow-pop); }
 .shortcuts-dialog::backdrop { background: var(--scrim); }
-.shortcuts-dialog h2 { margin: 0 0 24px; font-size: var(--fs-h1); }
-.shortcuts-dialog dl { margin: 0; }
-.shortcuts-dialog dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
-.shortcuts-dialog dd { margin: 0; color: var(--tx-3); }
-.shortcuts-dialog p { color: var(--tx-3); line-height: 1.7; }
+.shortcuts-dialog h2 { margin: 0; padding: 13px 15px; border-bottom: 1px solid var(--line); background: var(--c-chrome); font-size: var(--fs-em); font-weight: 600; }
+.shortcuts-dialog dl { margin: 0; padding: 6px 15px 13px; }
+.shortcuts-dialog dl > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
+.shortcuts-dialog dl > div:last-child { border-bottom: 0; }
+.shortcuts-dialog dt { font-size: var(--fs-meta); }
+.shortcuts-dialog dd { display: flex; align-items: center; gap: 3px; margin: 0; color: var(--tx-3); font-size: var(--fs-meta); }
+.shortcuts-foot { display: flex; align-items: center; gap: 12px; padding: 11px 15px; border-top: 1px solid var(--line); background: var(--c-chrome); }
+.shortcuts-foot p { flex: 1 1 auto; margin: 0; color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.5; }
+/* 底栏的说明有五行，按钮不能被它挤扁 —— 默认的 flex-shrink: 1 会把「知道了」
+   压成三个竖排的字。 */
+.shortcuts-foot button { flex: 0 0 auto; }
+
+/* 一个键一个块。这是元素规则而不是某个组件的类：对话框和主机搜索框里的提示键
+   是同一个东西，各写一份就会出现两套键位样式。原型在这两处写的是 --tx-4，
+   而第四级是 2.25:1，文字不能用（见 docs/design-system.md 的合法矩阵），
+   所以这里取 --tx-2：在 --c-control 上量得 8.25:1（深色）/ 7.37:1（浅色）。 */
+kbd { flex: 0 0 auto; padding: 2px 5px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-2); font-family: var(--font-ui); font-size: 10px; line-height: 1.5; white-space: nowrap; }
 
 /* 右下角，用 --status-h 把自己从状态栏下面让开，而不是抄一个 38px ——
    状态栏改高度那一天，抄的那个数字只会安静地飘在栏上面。 */
@@ -19,10 +34,22 @@
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 
-.empty { margin: 12px; padding: 20px 18px; border: 1px dashed var(--line-strong); border-radius: var(--r-4); color: var(--tx-3); font-size: var(--fs-ui); line-height: 1.75; }
+/* 空状态是「这里没有东西」加「下一步按哪个键」，所以它是一列居中的内容，而不是
+   一段灰字。只给描述不给动作的话，用户要自己回到工具栏去找那个按钮。 */
+/* 空状态有两种：.empty 是文件表里的一行灰字（sftp-panel.ts 的 #sftp-hint），
+   .empty-state 是原型 .es 的那个 118px 虚线框。同一句话在 322px 的表格里和在整页
+   中央要占的地方不一样，所以是两个类而不是一个类加一堆覆盖。 */
+.empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); margin: 8px 0; padding: 16px 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-2); color: var(--tx-3); font-size: var(--fs-meta); line-height: 1.6; text-align: center; }
+.empty p { margin: 0; }
+/* 结论在上、说明在下、动作最后 —— 原型的 .es 就是这个顺序，而「下一步按哪个键」
+   必须留在这块里，用户不该回到工具栏去找它。 */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 118px; padding: 16px; border: 1px dashed var(--line-strong); border-radius: var(--r-2); color: var(--tx-3); text-align: center; }
+.empty-state p { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.empty-state b { color: var(--tx-2); font-size: var(--fs-meta); font-weight: 500; }
+.empty-state span { color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.5; }
 /* 骨架行的高就是真行的高（--row-h 跟着密度走），所以数据到了以后没有一行会跳。
    条子 22px，剩下的空隙是行自己的。 */
-.skeleton-row { display: flex; min-height: var(--row-h); align-items: center; padding: 0 10px; border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); }
+.skeleton-row { display: flex; min-height: var(--row-h); align-items: center; padding: 0 10px; border: 1px solid var(--line-soft); border-radius: var(--r-2); background: var(--c-surface); }
 .skeleton-bar { display: block; height: 22px; border-radius: var(--r-2); background: linear-gradient(90deg, var(--c-surface) 0%, var(--c-raised) 45%, var(--c-surface) 90%); background-size: 200% 100%; animation: skeleton-shimmer 1.5s linear infinite; }
 .skeleton-bar.w1 { width: 44%; }
 .skeleton-bar.w2 { width: 70%; }
@@ -38,17 +65,18 @@
 @media (prefers-reduced-motion: reduce) { .skeleton-bar { animation: none; } }
 
 .connection-failure { position: absolute; inset: 0; z-index: 12; display: flex; min-width: 0; min-height: 0; overflow: auto; background: var(--c-canvas); }
-.failure-shell { width: min(100%, 650px); margin: auto; padding: 58px 20px 34px; }
-.failure-head { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
-.failure-host { display: flex; align-items: center; min-width: 0; gap: 15px; }
-/* 58px and the card radius, same as the two library cards: 60px was a third
-   avatar size and it inherited the 20px table chip's --r-1 corner. */
-.failure-host .host-avatar { width: 58px; height: 58px; border-radius: var(--r-4); }
-.failure-host h1 { margin: 0 0 5px; overflow: hidden; color: var(--tx-1); font-size: 18px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+/* 原型 .fail 铺满整页，不是居中的一栏：它的左边沿就是日志块的左边沿，诊断的四个
+   部分（结论、路由、日志、动作）左对齐成一条线。 */
+.failure-shell { width: 100%; margin: 0; padding: 20px 22px; }
+.failure-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.failure-host { display: flex; align-items: flex-start; min-width: 0; gap: 12px; }
+/* 34px 的方块，取 --err 一族：原型 .favi 里那两个字母是失败本身，不是主机徽标。
+   58px 加卡片圆角是两张库卡片的尺寸，用在这里等于把「连不上」画成一枚徽章。 */
+.failure-host .host-avatar { width: 34px; height: 34px; border: 1px solid var(--err-line); border-radius: var(--r-2); background: var(--err-bg); color: var(--err); font-size: var(--fs-micro); }
+.failure-host h1 { margin: 0 0 3px; overflow: hidden; color: var(--tx-1); font-size: var(--fs-h2); font-weight: 600; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
 .failure-host p { margin: 0; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); }
-.failure-copy { flex: 0 0 auto; min-height: 45px; padding: 0 15px; font-size: var(--fs-ui); }
-.failure-copy i { margin-right: 5px; }
-.failure-route { display: flex; align-items: center; margin: 40px 0 14px; }
+.failure-copy { flex: 0 0 auto; }
+.failure-route { display: flex; align-items: center; margin: 18px 0; }
 /* Unclassified: the route says nothing true, so it says nothing at all and the
    page degrades to the log block. */
 .route-collapsed .failure-route, .route-collapsed .failure-stage { display: none; }
@@ -57,40 +85,44 @@
    information is the break in the link, and that needs the nodes either side of
    it to stay neutral. --r-full rather than 999px, which is the same circle and
    is on the ladder. */
-.failure-route-node { display: grid; flex: 0 0 auto; width: 36px; height: 36px; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-full); background: var(--c-surface); color: var(--tx-3); font-size: 17px; }
+.failure-route-node { display: grid; flex: 0 0 auto; width: 28px; height: 28px; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-full); background: var(--c-surface); color: var(--tx-3); font-size: var(--fs-micro); }
 .failure-route-node.is-passed { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
 .failure-route-node.is-failed { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
-.failure-route-line { flex: 1 1 auto; height: 2px; background: var(--line); }
+/* 原型 .link 是一条 1px 的 --line-strong；四个节点是 28px 的圆，两侧各让 6px，
+   所以这条线比它连接的两个圆心之间的直线更长一点，读起来是「一段连接」而不是
+   「两点之间的空隙」。 */
+.failure-route-line { flex: 1 1 auto; height: 1px; margin: 0 -6px; background: var(--line-strong); }
 .failure-route-line.is-through { background: var(--ok-line); }
 .failure-route-line.is-break { height: 0; background: none; border-top: 2px dashed var(--err); }
-.failure-stage { margin: 0 0 30px; color: var(--tx-2); font-size: var(--fs-meta); text-align: center; }
-.failure-suggestion { margin: 20px 0 0; padding: 11px 13px; border-left: 2px solid var(--ac); background: var(--ac-bg); color: var(--tx-2); font-size: var(--fs-meta); line-height: 1.6; }
+.failure-stage { margin: 0 0 16px; color: var(--tx-2); font-size: var(--fs-meta); text-align: center; }
+.failure-suggestion { margin: 12px 0 0; padding: 9px 11px; border-left: 2px solid var(--ac); background: var(--ac-bg); color: var(--tx-2); font-size: var(--fs-micro); line-height: 1.6; }
 .failure-suggestion:empty { display: none; }
-.failure-shell > h2 { margin: 0 0 34px; color: var(--err); font-size: 17px; font-weight: 700; text-align: center; }
-.failure-log { overflow: hidden; padding: 18px 24px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--c-inset); }
-.failure-log { font-family: var(--font-mono); font-size: var(--fs-meta); line-height: 1.65; }
+/* max-height 是原型的 118px，但 overflow 取 auto 而不是原型的 hidden：原型那个日志
+   块是一段写死的样例，这里是一个真的诊断日志，「复制日志」能把全文复制走而页面上
+   只看得见前六行，那是把数据藏起来。 */
+.failure-log { max-height: 118px; overflow-y: auto; padding: 9px 0; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--c-inset); font-family: var(--font-mono); font-size: var(--fs-micro); line-height: 1.75; }
 /* The gutter is its own node with user-select: none, so "Copy logs" carries the
    log and not the numbers; the block is mono because every line of it is
    machine output. */
-.failure-log-entry { display: grid; grid-template-columns: 2.5ch 16px minmax(0, 1fr); gap: 10px; color: var(--tx-1); font-size: var(--fs-em); line-height: 1.55; }
+.failure-log-entry { display: grid; grid-template-columns: 2.5ch 16px minmax(0, 1fr); gap: 10px; padding: 0 11px; color: var(--tx-1); font-size: var(--fs-micro); line-height: 1.75; }
 /* --tx-2, not --tx-3: the block's ground is --c-inset and the muted step is
    4.16:1 on it, which is under the floor for text at this size. */
 .failure-log-no { color: var(--tx-2); font-variant-numeric: tabular-nums; text-align: right; user-select: none; }
-.failure-log-entry + .failure-log-entry { margin-top: 10px; }
-.failure-log-entry i { flex: 0 0 auto; color: var(--tx-2); font-size: 16px; }
+.failure-log-entry + .failure-log-entry { margin-top: 4px; }
+.failure-log-entry i { flex: 0 0 auto; color: var(--tx-2); font-size: 14px; }
 /* The whole failing line takes --err, not just its marker: 5.09:1 on this ground
    in the light group and 5.90:1 in the dark one, so the tint can carry text and
    the eye lands on the right row. The rule used to paint an <i> that the log
    never built, which is why no error line had ever been coloured. */
 .failure-log-entry.is-error, .failure-log-entry.is-error i { color: var(--err); }
 .failure-log-entry span { min-width: 0; overflow-wrap: anywhere; }
-.failure-actions { display: flex; justify-content: flex-end; gap: 14px; margin-top: 66px; }
-.failure-actions button { min-width: 108px; min-height: 53px; border-radius: var(--r-4); font-size: var(--fs-em); }
-.failure-actions .primary { min-width: 144px; }
+/* 原型 .acts：gap 8px、margin-top 16px、一排 28px 的按钮 —— 三个 53px 的方块加 66px
+   的留白，把「再试一次」推到了页面最底下。 */
+.failure-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .failure-secondary { background: var(--c-surface); }
 
 @media (max-width: 620px) {
-  .failure-shell { padding-top: 36px; }
-  .failure-actions { justify-content: stretch; margin-top: 42px; }
+  .failure-shell { padding: 16px 12px; }
+  .failure-actions { justify-content: stretch; }
   .failure-actions button { flex: 1 1 0; min-width: 0; }
 }

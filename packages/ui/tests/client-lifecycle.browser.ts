@@ -16,6 +16,20 @@ const assert = (value: unknown, message: string): void => { if (!value) throw ne
 
 const tick = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
 
+// Some nodes are built after a stylesheet lands rather than shipped in index.html, so a
+// tick is not enough to see them: this waits for the node, and fails loudly rather than
+// asserting on a race. `absent` is the mirror image, for the cases where the whole point
+// is that nothing appears.
+async function waitFor<T>(read: () => T | null | undefined, description: string, timeout = 2000): Promise<T> {
+  const deadline = Date.now() + timeout
+  for (;;) {
+    const value = read()
+    if (value) return value
+    if (Date.now() > deadline) throw new Error(`等待超时：${description}`)
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
+}
+
 const input = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement
 
 const click = (id: string): void => input(id).click()
@@ -408,7 +422,7 @@ async function runChecks() {
 
     await tick()
 
-    assert(gestures.stats.opens === 1 && document.querySelectorAll('[role="tab"]').length === 2,
+    assert(gestures.stats.opens === 1 && document.querySelectorAll('[role="tab"]').length === 1,
 
       'double-clicking a host must open a new terminal tab')
 
@@ -486,6 +500,56 @@ async function runChecks() {
 
     checks.push('the status bar renders real fields, and both chrome switches persist across a remount')
 
+    // 窗口按钮整组是桌面独有的，而且只在系统自己不画按钮的平台上出现（macOS 的红绿灯
+    // 由系统画，桥因此不带这一项）。所以这一节先断言「没有桥就一个节点都没有」，再断言
+    // 桥来了之后它出现、点得动、并且随客户端一起走。
+    assert(!document.getElementById('window-controls'), '独立 Web 入口不该有窗口按钮，一个节点都不该有')
+
+    const windowCalls: string[] = []
+
+    window.puretermDesktop = {
+      bootstrap: async () => ({ webSocketUrl: 'ws://127.0.0.1:1/ws' }),
+      signalReady() {},
+      windowControls: {
+        minimize: () => windowCalls.push('minimize'),
+        toggleMaximize: () => windowCalls.push('maximize'),
+        close: () => windowCalls.push('close'),
+      },
+    }
+
+    client = createClient({ api: chrome.api, terminalFactory: chrome.terminalFactory })
+
+    assert((await client.ready).ok, 'desktop chrome client failed readiness')
+
+    // 节点是等 desktop.css 落地之后才建的，所以这里等它而不是赌一个 tick 够用。
+    const cluster = await waitFor(() => document.getElementById('window-controls'), 'the caption cluster')
+
+    assert(cluster.parentElement?.classList.contains('topbar-actions') === true,
+      'the cluster belongs to the top bar action row, which is the only thing it may append to')
+
+    assert([...cluster.querySelectorAll('button')].map(button => button.id).join(',')
+      === 'window-minimize,window-maximize,window-close',
+      'the cluster is minimize, maximize and close, in that order')
+
+    assert(cluster.querySelectorAll('.window-control').length === 3, 'every button in the cluster takes the caption style')
+
+    click('window-minimize')
+
+    click('window-maximize')
+
+    click('window-close')
+
+    assert(windowCalls.join(',') === 'minimize,maximize,close', 'each button must reach its own window command')
+
+    await client.dispose()
+
+    assert(!document.getElementById('window-controls'),
+      '释放客户端要把这一组一起收走，否则重挂一次就会在顶栏里叠出第二组同 id 的按钮')
+
+    delete window.puretermDesktop
+
+    checks.push('the caption cluster exists only with the desktop bridge, and its three buttons reach the window commands')
+
 
 
     const multiple = fixture()
@@ -530,7 +594,7 @@ async function runChecks() {
     assert(input('status').textContent === '', 'the form line goes quiet once the news moved out of it')
     toast.click()
     assert(!document.querySelector('.toast'), 'a notice you have read gets out of the way when clicked')
-    click('shortcuts-open')
+    click('nav-shortcuts')
 
     assert((input('shortcuts-dialog') as unknown as HTMLDialogElement).open, 'shortcuts action must open its help dialog')
 
@@ -540,11 +604,17 @@ async function runChecks() {
 
     fill(); click('connect'); await tick()
 
-    assert(document.querySelectorAll('[role="tab"]').length === 2, 'connecting a host must create a separate tab next to Hosts')
+    assert(document.querySelectorAll('[role="tab"]').length === 1, 'the tab strip holds only session tabs; the library has none')
 
-    click('hosts-tab'); click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+    click('workspace-home'); click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
 
-    assert(multiple.stats.opens === 2 && document.querySelectorAll('[role="tab"]').length === 3, 'second host must open independently')
+    assert(multiple.stats.opens === 2 && document.querySelectorAll('[role="tab"]').length === 2, 'second host must open independently')
+
+    // 会话不该把外壳拆掉。这条以前在 chrome.css 里：`.session-mode` 隐藏 `#primary-nav`
+    // 并把 `.app-body` 收成一列，于是连上主机之后主框架看起来丢了。harness 剥掉了样式表，
+    // 所以这里量 DOM —— `#app` 上没有那个类，轨道节点也就没有 hidden。
+    assert(!input('app').classList.contains('session-mode'), 'a session must not put the shell into a rail-less mode')
+    assert(!input('primary-nav').hidden, 'the rail stays on screen while a session is open')
 
     multiple.emit('data', 'test-1', new Uint8Array([65]))
 
@@ -682,7 +752,7 @@ async function runChecks() {
 
     assert(multiple.stats.closes === 1 && multiple.terminals[0]!.disposed === 1 && multiple.terminals[1]!.disposed === 0, 'closing one tab must only release its session')
 
-    click('hosts-tab')
+    click('workspace-home')
 
     assert(!input('hosts-panel').hidden && input('session-workspace').hidden, 'Hosts must remain a separate usable page')
 

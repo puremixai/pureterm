@@ -1,0 +1,10 @@
+/* 桌面端独有的那片样式，第二个 manifest。
+   它不在 style.css 里，也不被 app.ts import，所以它不进 app.css：只有
+   services/chrome.ts 在拿到 window.puretermDesktop.windowControls 时把这个文件作为
+   一个 <link> 插进页面。独立 Web 入口因此既不下它的字节，也没有一条「点得动却什么
+   都不做」的窗口按钮规则。
+
+   它的 import 规则和 style.css 一样：只 @import 本地分片，分片自己不许 @import。
+   partial-list.mjs 把两个 manifest 一起读，所以 stylesheet-contract.test.mjs 对这里
+   的每一片同样有效 —— 不能有颜色字面量，var() 必须指向 tokens.css 声明过的名字。 */
+@import "./styles/window-controls.css";

@@ -8,7 +8,7 @@
 
 ## 唯一规则
 
-在共享样式表**内部**，颜色字面量只允许出现在一个文件里。`packages/ui/src/styles/tokens.css` 就是体系本身：中性明度阶梯及其三档线色、文字阶梯、强调色与语义色集、那十四道让颜色能够作为填充与边框使用的半透明档、终端组，以及与主题无关的度量。在当前代码树上实测，`styles/` 目录里有 50 个十六进制字面量与 30 处函数式 `rgb()`/`rgba()`，而它们全部位于该文件之内；其余八个分片一个都没有。改版前的色板曾经是第二个被认可的家 —— 一份受守卫的删除清单，名为 `legacy.css` —— 而配色翻转清掉了它剩下的 99 个引用、把它缩到只剩一条孤儿，然后删掉了文件，没有留下一份等着被复活的别名表。
+在共享样式表**内部**，颜色字面量只允许出现在一个文件里。`packages/ui/src/styles/tokens.css` 就是体系本身：中性明度阶梯及其三档线色、文字阶梯、强调色与语义色集、那十四道让颜色能够作为填充与边框使用的半透明档、终端组，以及与主题无关的度量。在当前代码树上实测，`styles/` 目录里有 50 个十六进制字面量与 30 处函数式 `rgb()`/`rgba()`，而它们全部位于该文件之内；其余九个分片一个都没有。改版前的色板曾经是第二个被认可的家 —— 一份受守卫的删除清单，名为 `legacy.css` —— 而配色翻转清掉了它剩下的 99 个引用、把它缩到只剩一条孤儿，然后删掉了文件，没有留下一份等着被复活的别名表。
 
 这个限定语是承重的，因为这条规则说的是 CSS，而守卫读取的是分片。级联之外有两处持有颜色字面量：`packages/ui/src/terminal-view.ts` 里那份十六项的 `ANSI` 数组，这是刻意的，见[终端色板](#终端色板)；以及 `packages/ui/src/index.html:15` 的 `<meta name="theme-color" content="#0e1013">`，它在样式表之外，因而也在字面量规则之外 —— 是 `theme-sync.test.mjs` 把它拴在 `--c-chrome` 上。把它们点明在这里，才让"一个文件"这句话既成立又不越界。
 
@@ -20,33 +20,35 @@
 
 - `SANCTIONED = ['tokens']` 与运行时的 `EXEMPT` 集合比对，因此想豁免第二个分片必须显式改动测试里的常量。从拆分之日起到翻转为止，这张清单一直装着 `legacy` 和 `tokens` 两个名字；把它缩到一个，就是那个计划的完工判据。
 - `EXEMPT` 的每个成员仍必须是清单导入的分片，过期的豁免会失败。
-- `totalImports(manifest)` 必须等于解析出的分片数加一（外部 Tabler 那一行），这堵住了 `url(...)` 导入形式：它解析不出名字，否则一个分片就会进入级联却永远不被扫描。
+- `totalImports(manifest)` 必须等于解析出的分片数加一 —— 外部 Tabler 那一行只有 `style.css` 携带，`desktop.css` 则是一个分片一行导入、别无其他。这堵住了 `url(...)` 导入形式：它解析不出名字，否则一个分片就会进入级联却永远不被扫描。
 - 颜色测试统计自己扫描了多少分片，并断言总数等于 `names.length - EXEMPT.size`，所以漏掉一个文件是失败而不是通过。
-- 任何分片里的每一个 `var(--x)` —— 登记表本身也不例外 —— 都必须指向 `tokens.css` 声明过的 token，这条测试的名字就是 `every var() reference names a token the register declares`。这是声明自身存活检查的反方向，也是配色翻转期间最要紧的一条：未知自定义属性并不是错误，它在计算值阶段被替换掉，于是一个写错的 `var(--fs-metax)`（在分片里）或 `var(--c-canvasx)`（在某个 token 取值里）会让那条声明悄悄从页面上消失。级联当前 359 处调用点里，大约 300 处是配色翻转在一次计划里写下的 —— 一次提交造成全部敞口，这正是这根守卫存在的全部理由。
+- 任何分片里的每一个 `var(--x)` —— 登记表本身也不例外 —— 都必须指向 `tokens.css` 声明过的 token，这条测试的名字就是 `every var() reference names a token the register declares`。这是声明自身存活检查的反方向，也是配色翻转期间最要紧的一条：未知自定义属性并不是错误，它在计算值阶段被替换掉，于是一个写错的 `var(--fs-metax)`（在分片里）或 `var(--c-canvasx)`（在某个 token 取值里）会让那条声明悄悄从页面上消失。两份清单当前 524 处调用点里，大约 300 处是配色翻转在一次计划里写下的 —— 一次提交造成全部敞口，这正是这根守卫存在的全部理由。
 
 匹配式是 `/#[0-9a-fA-F]{3,8}\b|\brgba?\(/`，逐分片作用在去掉注释之后的文本上。注释是被抹空而不是删除的，因此违规行保留读者在文件里看到的那个行号。同一个文件还钉住了字体侧的规则：只有 `fonts.css` 可以声明字面；每个 `font-family` 与 `font` 简写必须透过 `var(--font-ui)`、`var(--font-mono)` 或 `var(--font-term)`（或 CSS 全域关键字）解析；每个 `font-weight` 必须是本应用提供的四个字重之一。这些普查所依赖的 `@font-face` 豁免之所以诚实，正是因为另一条测试断言只有恰好一个文件可以持有字面。
 
 ## 样式表布局
 
-`packages/ui/src/style.css` 只是一份 `@import` 清单，别无其他：二十三行，先是一段级联契约注释，随后十行导入 —— 第一行是 `@tabler/icons-webfont/dist/tabler-icons.min.css`，其后九行按级联顺序导入本地分片。
+`packages/ui/src/style.css` 只是一份 `@import` 清单，别无其他：二十三行，先是一段级联契约注释，随后十行导入 —— 第一行是 `@tabler/icons-webfont/dist/tabler-icons.min.css`，其后九行按级联顺序导入本地分片。`packages/ui/src/desktop.css` 是第二份清单，它存在的理由只有一个：有一张样式表，独立 Web 入口不能携带。
 
 | # | 分片 | 字节（工作副本） | 职责 |
 | --- | --- | --- | --- |
 | 1 | `styles/fonts.css` | 2,469 | 随包分发的字面。唯一可以在字面声明里写出字体族名的文件。 |
 | 2 | `styles/tokens.css` | 6,227 | Token 体系与主题组。 |
-| 3 | `styles/base.css` | 3,024 | 元素默认值：重置、继承的字号、按钮与输入框、焦点环、reduced motion。 |
-| 4 | `styles/chrome.css` | 9,094 | 应用外壳：`#app` 网格、顶栏、工作区与会话标签、导航轨道、状态栏，以及 `.app-shell` 上的状态类。 |
-| 5 | `styles/hosts.css` | 10,780 | 主机面板：页面标题、搜索行、工具栏，以及已保存主机所渲染出的表格与卡片形态。 |
-| 6 | `styles/inspector.css` | 7,964 | 连接表单：嵌入的编辑面外壳与标题栏、分区、字段、底栏，以及密钥库编辑器复用的共享控件。 |
-| 7 | `styles/keychain.css` | 9,062 | 在共享主机表格语言之上的密钥库与编辑器。 |
-| 8 | `styles/terminal.css` | 10,899 | 终端表面：xterm 面板及其覆盖样式、会话工具栏、SFTP 抽屉。 |
-| 9 | `styles/states.css` | 8,870 | 无内容与非正常：空占位、快捷键对话框、连接失败页面。 |
+| 3 | `styles/base.css` | 4,579 | 元素默认值：重置、继承的字号、按钮与输入框、焦点环、reduced motion。 |
+| 4 | `styles/chrome.css` | 12,727 | 应用外壳：`#app` 网格、顶栏、工作区与会话标签、导航轨道、状态栏，以及 `.app-shell` 上的状态类。 |
+| 5 | `styles/hosts.css` | 13,064 | 主机面板：页面标题、搜索行、工具栏，以及已保存主机所渲染出的表格与卡片形态。 |
+| 6 | `styles/inspector.css` | 10,314 | 连接表单：嵌入的编辑面外壳与标题栏、分区、字段、底栏，以及密钥库编辑器复用的共享控件。 |
+| 7 | `styles/keychain.css` | 10,464 | 在共享主机表格语言之上的密钥库与编辑器。 |
+| 8 | `styles/terminal.css` | 11,998 | 终端表面：xterm 面板及其覆盖样式、会话工具栏、SFTP 抽屉。 |
+| 9 | `styles/states.css` | 12,617 | 无内容与非正常：空占位、快捷键对话框、连接失败页面。 |
 
-这一列字节取自 Windows 上的工作副本，并且刻意这样标注，因为它并非到处都能复现：`core.autocrlf` 为 `true`，仓库里又没有 `.gitattributes`，于是提交的 blob 是 LF，而这里九个文件里有七个在磁盘上是 CRLF。保留 blob 形态的检出会读到每个这样的文件恰好少它的行数 —— `tokens.css` 175、`base.css` 73、`chrome.css` 196、`hosts.css` 125、`inspector.css` 99、`keychain.css` 105、`states.css` 96 —— 而 `fonts.css` 与 `terminal.css` 本身已按 LF 存储，两处读数一致。`style.css` 自己也是 CRLF，磁盘上 1,363 字节对 blob 的 1,340 字节。把这些数字当作每个职责承载了多少的一个量级参考，不要当作校验和。
+`desktop.css` 只承载一个分片 `styles/window-controls.css` —— 磁盘上 2,001 字节、38 行，装着顶栏最小化/最大化/关闭的规则。拆开是目的，不是文件大小的偶然：`index.html` 与构建后的 `app.css` 是两个入口共享的东西，而 Web 入口没有窗口可管，所以它既不该带那份标记，也不该带这些规则。标记根本不在 `index.html` 里 —— 是 `services/chrome.ts` 链接 `./desktop.css` 并建出这三个按钮，且只在 `window.puretermDesktop.windowControls` 存在时这么做。至于哪些平台会有它，是一个只有一个答案的平台问题（桌面端平台计划里的 `drawsOwnWindowControls`）：Windows 与 Linux，它们的 `titleBarStyle: 'hidden'` 没有留下原生按钮；但不包括 macOS，它保留自己的红绿灯，绝不能在旁边再画一套。在构建产物上实测，`app.css` 里没有任何选择器提到 `.window-control` 的规则，而 `desktop.css` 里的每一条规则都是。
 
-清单拥有级联顺序，因为各分片在同一特异度下相互竞争，后导入者获胜。这正是任何分片都不得 `@import` 的原因：嵌套导入会把顺序决定权分散到九个地方，而 `visual-contract.test.mjs` 会对每个分片自己的文本断言 `!/@import/`。顺序本身由同一条测试钉住：它断言的名字列表恰好是 `['fonts', 'tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states']` —— 并且这份列表是透过 `packages/ui/tests/partial-list.mjs` 从清单本身推导出来的，不是第二份拷贝，所以新增、改名或调换顺序都必须带着一份明确的意图去改动那条断言。
+这一列字节取自 Windows 上的工作副本，并且刻意这样标注，因为它并非到处都能复现：`core.autocrlf` 为 `true`，仓库里又没有 `.gitattributes`，于是提交的 blob 是 LF，而这里十个文件里有八个在磁盘上是 CRLF。保留 blob 形态的检出会读到每个这样的文件恰好少它的行数 —— `tokens.css` 175、`base.css` 93、`chrome.css` 233、`hosts.css` 146、`inspector.css` 116、`keychain.css` 121、`states.css` 128、`window-controls.css` 38 —— 而 `fonts.css` 与 `terminal.css` 本身已按 LF 存储，两处读数一致。`style.css` 自己也是 CRLF，磁盘上 1,363 字节对 blob 的 1,340 字节，`desktop.css` 也是 CRLF，磁盘上 765 字节对 blob 的 755 字节。把这些数字当作每个职责承载了多少的一个量级参考，不要当作校验和。
 
-`style.css` 透过两道门抵达页面：`packages/ui/src/index.html:17` 链接的是 `./app.css`，即构建后的样式表；`packages/ui/src/app.ts:2` 导入的是 `./style.css`，于是 esbuild 会把每一个 `@import` —— 九个分片加上外部的 Tabler 与 xterm 表 —— 摊平成两个入口所提供的那一份 `packages/ui/dist/app.css`。
+清单拥有级联顺序，因为各分片在同一特异度下相互竞争，后导入者获胜。这正是任何分片都不得 `@import` 的原因：嵌套导入会把顺序决定权分散到九个地方，而 `visual-contract.test.mjs` 会对每个分片自己的文本断言 `!/@import/`。顺序本身由同一条测试钉住：它断言的名字列表恰好是 `['fonts', 'tokens', 'base', 'chrome', 'hosts', 'inspector', 'keychain', 'terminal', 'states']`（`style.css`）与 `['window-controls']`（`desktop.css`）—— 并且这两份列表都是透过 `packages/ui/tests/partial-list.mjs` 从清单本身推导出来的，不是第二份拷贝，所以新增、改名或调换顺序都必须带着一份明确的意图去改动那条断言。那个助手会读每一份清单，各项普查扫的是并集：一个只被 `desktop.css` 导入的分片，否则就会从一扇没有守卫看着的门发货，而这是这套布局唯一还能藏住文件的方式。
+
+`style.css` 透过两道门抵达页面：`packages/ui/src/index.html:18` 链接的是 `./app.css`，即构建后的样式表；`packages/ui/src/app.ts:2` 导入的是 `./style.css`，于是 esbuild 会把每一个 `@import` —— `style.css` 点名的九个分片加上外部的 Tabler 与 xterm 表 —— 摊平成两个入口所提供的那一份 `packages/ui/dist/app.css`。`desktop.css` 还有第三道更窄的门：没有任何东西导入它，是 `packages/ui/src/services/chrome.ts` 在运行时把 `<link rel="stylesheet" href="./desktop.css">` 追加到文档上，只追加一次，且只在桌面桥提供 `windowControls` 时。它由 `scripts/build-ui.mjs` 作为第二个 esbuild 入口构建，因此 Web 入口的 `app.css` 永远不含它。
 
 ## Token
 
@@ -86,7 +88,9 @@
 
 `--tx-1` 与 `--tx-2` 是正文和次级文字，`--tx-3` 是弱化档，`--tx-4` 是第四档。`design-tokens.test.mjs` 对两个主题下 `--c-surface` 上的 `--tx-1`、`--tx-2`、`--tx-3` 断言 AA，而把 `--tx-4` 当作排序守卫而非 AA 上限：它必须弱于 `--tx-3` 且不低于 1.5:1，因此把它抬进 AA 是进步，任它淡到不可见则不是。
 
-正因为它不是 AA 档，`--tx-4` 就不能当作文字来用。唯一被认可的位置是 `::placeholder`：它说明的是一个标签已经在屏幕上的字段，并且第一次按键就会消失。`stylesheet-contract.test.mjs` 会读取级联里的每一条规则，任何选择器不是 placeholder 的 `color: var(--tx-4)` 都会让它失败。主机表与密钥表的列标题曾经是第一条这样的规则 —— 11px 的真实文字，暗色 2.88:1、浅色 2.61:1 —— 现在它们取 `--tx-3`（在各自底面上是 5.16:1 与 4.55:1）。
+正因为它不是 AA 档，`--tx-4` 就不能当作文字来用。通用的位置只有 `::placeholder`：它说明的是一个标签已经在屏幕上的字段，并且第一次按键就会消失。`stylesheet-contract.test.mjs` 会读取级联里的每一条规则，任何选择器不是 placeholder 的 `color: var(--tx-4)` 都会让它失败。主机表与密钥表的列标题曾经是第一条这样的规则 —— 11px 的真实文字，暗色 2.88:1、浅色 2.61:1 —— 现在它们取 `--tx-3`（在各自底面上是 5.16:1 与 4.55:1）。
+
+只有一条选择器被豁免，而且测试是**点名**它而不是描述它：顶栏品牌的分区名（`/ Vault`、`/ Session`），在 `--c-chrome` 上暗色 2.79:1、浅色 2.28:1。它是装饰性的 —— 它重复的是轨道上高亮的那一格和面板自己的标题已经说过的事，拿掉它不丢任何信息 —— 而原型在那里写的就是 `--tx-4`，所以对齐在这一处取原型的档位，在列标题那里取 `--tx-3`。这条豁免像 `EXEMPT` 一样受审计：`DECORATIVE_TX4` 必须仍然是某个分片真的用 `--tx-4` 画的选择器，于是豁免活不过它为之而写的那条规则。原型其余十六处 `--tx-4` 文字仍然取 `--tx-3`。
 
 ### 强调色与语义色
 
@@ -164,36 +168,36 @@
 | 焦点环 | `--ring: 0 0 0 2px var(--c-canvas), 0 0 0 4px var(--ac)` |
 | 浮层阴影 | `--shadow-pop: 0 8px 24px -6px rgba(0, 0, 0, 0.5)`（深色），`0 8px 24px -6px rgba(16, 24, 40, 0.28)`（浅色） |
 
-`--r-4` 与 `--ease` 是两颗来迟且有具体缘由的成员：它们在被删除的登记簿里原名 `--radius-lg: 15px` 与 `--motion-standard: cubic-bezier(0.32, 0.72, 0, 1)`，是带着 22 个活引用、却会被 `git rm legacy.css` 随手带走的非颜色条目。四条圆角与动效条目都在文件删除**之前**迁了家，落到新阶梯最近的一档上 —— 7px 到 `--r-2`、10px 到 `--r-3`、15px 到 `--r-4`、那条曲线到 `--ease` —— 每一处都是刻意可见的改动而非取值不变的搬移：新的档位更紧，而 `--ease` 以同样的 1 收尾却更快落定。翻转之后四档圆角共承载 42 个引用、`--ease` 承载 14 个，这正是一个没有登记簿的几何该有的样子。
+`--r-4` 与 `--ease` 是两颗来迟且有具体缘由的成员：它们在被删除的登记簿里原名 `--radius-lg: 15px` 与 `--motion-standard: cubic-bezier(0.32, 0.72, 0, 1)`，是带着 22 个活引用、却会被 `git rm legacy.css` 随手带走的非颜色条目。四条圆角与动效条目都在文件删除**之前**迁了家，落到新阶梯最近的一档上 —— 7px 到 `--r-2`、10px 到 `--r-3`、15px 到 `--r-4`、那条曲线到 `--ease` —— 每一处都是刻意可见的改动而非取值不变的搬移：新的档位更紧，而 `--ease` 以同样的 1 收尾却更快落定。对齐之后这把刻度共承载 50 个引用 —— `--r-1` 22、`--r-2` 21、`--r-3` 4、`--r-full` 3 —— 外加 `--ease` 16 个，这正是一个没有登记簿的几何该有的样子。`--r-4` 现在是**零**，这是对齐的结果而不是疏忽：原型从不画 12px 圆角，所以这一档像 `--z-drawer` 与 `--t-1` 一样退役了，而 `visual-contract.test.mjs` 里的 `the control language is the prototype's 28px scale` 会在任何再次伸手去取它的声明上失败。
 
-三道几何档是"外壳高度只写一次"的理由。`--chrome-h` 同时也是 Electron 被告知要为标题按钮预留的高度，于是 `theme-sync.test.mjs` 从本文件读它，并拿它去比对 `apps/desktop/electron/app/shell.ts` 里的 `titleBarOverlay.height` 与 `chrome.css` 里的 `env(titlebar-area-height, 40px)` 回退值。那个回退值是这个数字在整个代码库里唯一一处刻意的重复：`env()` 读不到自定义属性，所以字面量留下，靠断言把两者钉在一起。
+几何档是"外壳高度只写一次"的理由。`--chrome-h` 是顶栏的高度，也是 `#app` 网格的第一行，`theme-sync.test.mjs` 从本文件读它，并把它拿去比对 `chrome.css` 花掉它的两个地方 —— 那条网格模板与 `.app-topbar` 的高度 —— 所以这个数字是一份布局契约，而不是一个碰巧看着对的巧合。顶部已经不再有别的预留：桌面窗口跑的是 `titleBarStyle: 'hidden'` 且没有 `titleBarOverlay`，同一条测试断言了这两半，因为一条系统覆盖层若在 `window-controls.css` 自绘按钮旁边再占一条，就是同一条栏上两套标题按钮。这也正是本段原先描述的那个 `env(titlebar-area-height, 40px)` 回退值消失的原因：它存在的意义是让预留条与 token 保持一致，覆盖层一去，就没有需要同步的条了。
 
 `--shadow-pop` 是度量不可变性唯一被认可的例外：它由主题色派生，因此必须逐主题重算而非继承。测试同时断言它是颜色和终端类别之外浅色组里唯一的声明，并且它的浅色值不同于深色值。它也是仅存的阴影：翻转拿掉了卡片、行与面板上的高度阴影，改由线色承担，于是这颗留了下来，专给那个必须离开自己的容器、并要能在身后一切之上被分辨出来的浮层使用。
 
-`[data-density="compact"]` 是与主题正交的另一个维度，只重映射一个 token：`--row-h: var(--row-h-compact)`。要让这次重映射真的落到列表行上，行内那个按钮就不能再把它托住：`base.css` 给每个 `button` 都设了 `min-height: 38px`，而 38px 恰好就是舒适档的 `--row-h`，所以表格行里的 `.host-main` 与 `.keychain-card-main` 无论 token 说什么都保持原高。两者都在表格视图里被解除下限 —— 那里行自己的盒子才是点击目标，按钮只是把它填满。
+`[data-density="compact"]` 是与主题正交的另一个维度，只重映射一个 token：`--row-h: var(--row-h-compact)`。要让这次重映射真的落到列表行上，行内那个按钮就不能再把它托住。`base.css` 给每个 `button` 都设了 `min-height: 28px` —— 原型的控件尺度 —— 现在已经落在 `--row-h`（38px）与 `--row-h-compact`（30px）两者之下，于是行自己的盒子才是目标，按钮只是把它填满。那三条 `min-height: 0` 覆盖在下限还是舒适行高时确实承重 —— `#host-list:not(.card-view) .host-main`、`.keychain-list:not(.card-view) .keychain-card-main` 与 `.file-row .file-main` —— 但依旧保留：`theme-sync.test.mjs` 与 `visual-contract.test.mjs` 逐条按名断言它们，而每条旁边的注释都写明守卫才是它留下的理由。
 
 ### 字号阶梯
 
 | Token | 取值 | 当前消费者 |
 | --- | --- | --- |
-| `--font-ui` | `Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif` | 1 处 `var()`：`base.css` 的 `body` |
-| `--font-mono` | `"JetBrains Mono", "Cascadia Mono", Consolas, monospace` | 8 处 `var()`，分布于 `base`、`chrome`、`hosts`、`inspector`、`terminal`、`states` |
+| `--font-ui` | `Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif` | 2 处 `var()`：`base.css` 的 `body`、`states.css` 的 `kbd` 规则 |
+| `--font-mono` | `"JetBrains Mono", "Cascadia Mono", Consolas, monospace` | 16 处 `var()`，分布于 `base`、`chrome`、`hosts`、`inspector`、`states`、`terminal` |
 | `--font-term` | `"Cascadia Mono", Consolas, "Sarasa Mono SC", "Microsoft YaHei Mono", monospace` | `terminal-view.ts` 里 1 处 `read()` |
-| `--fs-micro` | `11px` | 13 处 `var()` |
-| `--fs-meta` | `12px` | 18 处 `var()` |
-| `--fs-ui` | `13px` | 7 处 `var()` |
-| `--fs-em` | `14px` | 6 处 `var()` |
-| `--fs-h2` | `16px` | 4 处 `var()` |
+| `--fs-micro` | `11px` | 34 处 `var()` |
+| `--fs-meta` | `12px` | 30 处 `var()` |
+| `--fs-ui` | `13px` | 5 处 `var()` |
+| `--fs-em` | `14px` | 2 处 `var()` |
+| `--fs-h2` | `16px` | 2 处 `var()` |
 | `--fs-h1` | `20px` | 1 处 `var()` |
 | `--fs-term` | `13.5px` | 无 —— 见[已知缺口](#已知缺口) |
 
-这是一份普查而不是承诺：七个内容分片持有 474 处 `var()` 引用，`tokens.css` 在自己的派生值里另有 3 处，`terminal-view.ts` 做出 6 次 `read()` 调用。已经接通的、以及各屏还欠的：
+这是一份普查而不是承诺：八个内容分片持有 521 处 `var()` 引用，`tokens.css` 在自己的派生值里另有 3 处，`terminal-view.ts` 做出 6 次 `read()` 调用。已经接通的、以及各屏还欠的：
 
 - **颜色：35 个里有 32 个有调用点。** 没有的那三个是 `--overlay-soft`、`--overlay-press` 与 `--ac-focus` —— 一个静止提升、一个按下提升、一个焦点环第二档，它们都得先有一个能承载它们的控件才有意义。
 - **字体类：10 个全部有交代**，三套字体栈加七档 `--fs-*` 里的六档；例外是 `--fs-term`，记在[已知缺口](#已知缺口)里。
 - **终端：1 个 CSS 消费者，4 次 TS 读取。** `--term-bg` 如今既被 xterm 读取，也被 `terminal.css:6` 绘制，这两者之间的接缝正是那条规则上方注释解释的内容；其余三个只经 `getComputedStyle` 抵达页面，任何 CSS 守卫都看不见它们，`terminal-theme.test.mjs` 是那根连线。
-- **度量：五档圆角、`--ease`、五道外壳几何与 `--row-h` 合计 80 个引用，另有八档一个都没有** —— 六道间距里的三道（`--s-2`、`--s-3`、`--s-4` 由通知堆绘制）、四档层叠里的三档（`--z-toast` 已接通，`--z-drawer`、`--z-popover`、`--z-dialog` 没有），以及三段时长里的两段。两张表都把行高交给 `--row-h` 之后它就有了调用点，而等到行内按钮不再把它托在 38px 上，它才第一次真的能够推动一行：在此之前密度开关改的是一个 token，改不动任何几何。`--row-h-compact` 除了被那条把 `--row-h` 映射到它的 `[data-density="compact"]` 规则读取之外，仍无分片调用点。时长曾经是唯一一处「没有消费者」并不中立的：分片确实在设时长，设的却是字面量 —— 四个文件里的 `180ms`、第五个文件里的 `160ms` —— 于是曲线走了 token，紧挨着它的数字却站在刻度之外，离某一档差 20ms。这一条已经闭合：级联里每个时长现在都读 `--t-2`，也就是 180ms 当初差 20ms 的那一档，于是 `--t-1` 与 `--t-3` 是干净的未使用，不再被悄悄反驳。
-- **派生：`--ring` 有两个调用点**（焦点在 `base.css`，轨道自身的焦点环在 `chrome.css`），**`--shadow-pop` 有一个**（失败对话框的浮层在 `states.css`），这很单薄但不是零，而且两者都由构成它们的那几对取值来计量。
+- **度量：五档圆角、`--ease`、四道外壳几何与 `--row-h` 合计 79 个引用，另有八档一个都没有** —— 圆角刻度承载 50 个（`--r-1` 22、`--r-2` 21、`--r-3` 4、`--r-full` 3，`--r-4` 为零）、`--ease` 16 个、外壳几何 10 个（`--chrome-h` 3、`--rail-w` 1、`--status-h` 3、`--insp-w` 3）以及 `--row-h` 3 个。`--r-4` 在原型的对齐中归零 —— 没有任何一屏画 12px 圆角 —— 而 `visual-contract.test.mjs` 里的守卫 `the control language is the prototype's 28px scale` 会在任何再次伸手去取它的声明上失败。那八档未使用的是六道间距里的三道（`--s-2` 由顶栏的动作区与空状态绘制，`--s-3` 与 `--s-4` 由通知堆绘制）、四档层叠里的三档（`--z-toast` 已接通，`--z-drawer`、`--z-popover`、`--z-dialog` 没有），以及三段时长里的两段。两张表都把行高交给 `--row-h` 之后它就有了调用点，而等到行内按钮不再把它托在舒适档上，它才第一次真的能够推动一行：在此之前密度开关改的是一个 token，改不动任何几何。`--row-h-compact` 除了被那条把 `--row-h` 映射到它的 `[data-density="compact"]` 规则读取之外，仍无分片调用点。时长曾经是唯一一处「没有消费者」并不中立的：分片确实在设时长，设的却是字面量 —— 四个文件里的 `180ms`、第五个文件里的 `160ms` —— 于是曲线走了 token，紧挨着它的数字却站在刻度之外，离某一档差 20ms。这一条已经闭合：级联里每个时长现在都读 `--t-2`，也就是 180ms 当初差 20ms 的那一档，于是 `--t-1` 与 `--t-3` 是干净的未使用，不再被悄悄反驳。
+- **派生：`--ring` 有三个调用点**（`base.css` 的焦点环、`chrome.css` 的导航项、`terminal.css` 的会话抓握条）**，`--shadow-pop` 有两个**（快捷键对话框与通知），虽薄但不是零，且两者都由它们所组成的那些配对来度量。
 
 ### 合法性是按底面、按主题判定的
 
@@ -237,7 +241,7 @@
 
 `--c-surface` 上那个接近 1.27 的数值是设计目标，而阶梯在相邻两级之间只以 1.04–1.19 承载深度，所以一根 1.2–1.4 的细线属于同一种"几乎察觉不到"。*不*属于设计的是一根画在离自己一档之远的底面上的分隔线：`--line-soft` 在 `--c-raised` 上测得 1.034，而在浅色主题里同一个 token 在 `--c-inset` 上恰好是 1.000 —— 与底面同一个 RGB 值，也就是一条什么都画不出来的边框声明。浅色组的 `--line-soft` 是 `#eceef1`，与它自己的 `--c-inset` 一模一样，而这次冲突正是分隔线审计初稿找出来的东西。
 
-`stylesheet-contract.test.mjs` 因此断言 `every hairline stays perceptible against the ground it is drawn on`。它读取的是样式表真正画出来的那几对 —— 同一条规则里同时设了 `--line*` 边框与 `--c-*` 背景 —— 而不是上面那整张矩阵：那会为三十六条没人画得到的组合作保，却在那唯一一条真实存在的组合消失时照样通过。它收集 28 条规则，逐条在两个主题下测量，低于 1.1:1 即失败。拿着这道守卫回头修翻转自己的产出时，四处分隔线从 `--line-soft` 提到了 `--line`（密钥库外壳的边、`terminal.css` 里的两条规则、主机卡片分隔线），而 `.tag` 与 `.action-split` 从 `--line` 提到了 `--line-strong`，因为在 `--c-control` 那片填充上 1.07 算不上边框。让一根细线去通过文字对比度测试是相反方向的错误，而两道守卫合起来才是这套纪律的全部：不是 AA，但也不是零。
+`stylesheet-contract.test.mjs` 因此断言 `every hairline stays perceptible against the ground it is drawn on`。它读取的是样式表真正画出来的那几对 —— 同一条规则里同时设了 `--line*` 边框与 `--c-*` 背景 —— 而不是上面那整张矩阵：那会为三十六条没人画得到的组合作保，却在那唯一一条真实存在的组合消失时照样通过。它收集 36 条规则，逐条在两个主题下测量，低于 1.1:1 即失败。拿着这道守卫回头修翻转自己的产出时，四处分隔线从 `--line-soft` 提到了 `--line`（密钥库外壳的边、`terminal.css` 里的两条规则、主机卡片分隔线），而 `.tag` 与 `.action-split` 从 `--line` 提到了 `--line-strong`，因为在 `--c-control` 那片填充上 1.07 算不上边框。让一根细线去通过文字对比度测试是相反方向的错误，而两道守卫合起来才是这套纪律的全部：不是 AA，但也不是零。
 
 ## 主题机制
 
@@ -259,7 +263,7 @@ const read = (name: string) => getComputedStyle(probe).getPropertyValue(name).tr
 
 `theme:` 持有 `background`、`foreground`、`cursor`、`cursorAccent` 与 `selectionBackground`，每一项都只是一次 `read()`；`terminal-theme.test.mjs` 会扫描这个对象里的十六进制字面量，发现即失败。`cursorAccent: read('--term-bg')` 保留下来，因为 xterm 用它来反转光标之下的字形，而块状光标下的那一格就是画布。`fontFamily: read('--font-term')` 取代了第五份手工拷贝的字体栈，于是 CJK 回退如今只活在一处。
 
-`read()` 不带回退值是刻意的。`app.ts:2` 导入 `style.css`，而 `index.html:17` 以构建后的 `app.css` 把它送达，因此构造任何终端之前自定义属性早已解析完毕；一个回退字符串只会增加一条未经测试的路径，把改了名的 token 藏起来，并且会把颜色字面量塞回守卫所读取的那个文件。真正拴住这些名字的是 `terminal-theme.test.mjs`，它断言四个 `--term-*` 名字逐一出现在源码里。
+`read()` 不带回退值是刻意的。`app.ts:2` 导入 `style.css`，而 `index.html:18` 以构建后的 `app.css` 把它送达，因此构造任何终端之前自定义属性早已解析完毕；一个回退字符串只会增加一条未经测试的路径，把改了名的 token 藏起来，并且会把颜色字面量塞回守卫所读取的那个文件。真正拴住这些名字的是 `terminal-theme.test.mjs`，它断言四个 `--term-*` 名字逐一出现在源码里。
 
 十六个 ANSI 条目，按 `ANSI` 数组顺序，并给出每条在 `--term-bg` 上的实测比例：
 
@@ -290,7 +294,7 @@ xterm 的 `ITheme` 逐个命名这十六项 —— `black`、`red`…… `bright
 
 第二个理由是一个名字。该包把自己的字体族命名为 `Inter Variable`，而 `--font-ui` 索取的是 `Inter`。一张不应答 token 所索取之名的字面会把字节发出去、却照样渲染 Segoe UI，而且是静默的 —— 找不到任何条目的字体栈只会向下穿透。所以字面在这里以那个确切名字声明，描述符与 unicode-range 沿用包内原值；测试会从 `--font-ui` 里读出被索取的族名，并要求每张字面都携带它 —— 外加每块的 `font-weight: 100 900`、`font-style: normal` 与 `unicode-range`。这里使用 `format('woff2')` 而非旧的 `woff2-variations` 写法，因为后者可能被用户代理跳过；真正解锁权重轴的是同一块里的权重范围描述符。
 
-四个字重，不再多：普查允许 400、500、600、700（以及 `normal`/`bold` 关键字）。今天各分片里那 20 处字重声明的分布是 400 三次、500 一次、600 五次、700 十一次。Inter 是可变的，能渲染 650 或 750，而这恰恰是问题：`--font-ui` 里的 CJK 与系统回退不能，于是越界的取值是在向一张回退字体索要它并不拥有的字重，浏览器只好合成一个。13px 界面文字上的合成粗体正是这份清单要防的那种糊。改动之前分片里确实有 650、750 和 800；随后配色翻转把一处 700 的标签降到了 500 —— 当一份 token 体系旁边就摆着合法字重清单时，这类改动是一个决定，而不是一次偶然。
+四个字重，不再多：普查允许 400、500、600、700（以及 `normal`/`bold` 关键字）。今天各分片里那 23 处字重声明的分布是 400 五次、500 十一次、600 六次、700 一次 —— 唯一那处 700 是 `.host-avatar` 里的两个字母主机缩写。Inter 是可变的，能渲染 650 或 750，而这恰恰是问题：`--font-ui` 里的 CJK 与系统回退不能，于是越界的取值是在向一张回退字体索要它并不拥有的字重，浏览器只好合成一个。13px 界面文字上的合成粗体正是这份清单要防的那种糊。改动之前分片里确实有 650、750 和 800；配色翻转把一处 700 的标签降到了 500，而原型的对齐随后把其余的搬到了原型那套 500 与 600 的尺度上 —— 当一份 token 体系旁边就摆着合法字重清单时，这类改动是一个决定，而不是一次偶然。
 
 `.ti` 在 `base.css` 里被钉为 `font-weight: 400`，而不是任其继承。Tabler 只拥有一档字重，它周围的外壳索取 600–700，而定义 `.ti` 的外部导入排在级联第一位，所以任何后续分片都能撤销厂商自带的钉子。测试断言这颗钉子以及配套的 `font-style: normal` 和 `-webkit-font-smoothing: antialiased`，因为图标上的合成斜体是变形的字形，不是样式。
 
@@ -321,14 +325,14 @@ OFL 声明必须是一个 `/*!` 块，不能是 `/*` 注释，也不能只是一
 - `visual-contract.test.mjs` 曾断言合并后的级联仍然声明 `--topbar`、`--nav`、`--card`、`--text-strong` 与 `--accent` —— 五个只存在于登记簿里的名字，于是删文件会弄挂一条与颜色归属毫无关系的测试。这些断言迁到了新阶梯上；那条"退役别名"的循环随后也一并删掉，因为它与从清单推导分片列表的那部分重复。
 - 平行名这个陷阱已经关闭，但值得重述，因为同样的形状会在每一个未来的别名上重现。登记簿里七道活着的细线跑在 `.05` 到 `.17` 的 alpha 上，而新阶梯是三档不透明值。于是 `--line-strong` 与 `--legacy-line-strong` 是两个平行名字对应着两个不同取值，一活一待，一次盲目的 `s/--legacy-//` 就会把活的 alpha 落到那个不透明台阶该在的位置。**请按实测取值配对，绝按名字配对。**
 
-`.ssh-section` 就是这段说明所举的那条分隔线：`1px solid var(--legacy-line-faint)`，抽屉底面上的一层 `rgba(222, 226, 255, 0.05)`，实测 1.14:1 —— 一件只在名字上叫分隔线的东西。它现在是 `var(--line)`（`inspector.css:41`），而细线下限守卫会把它按在那里。
+连接抽屉里的那条分隔线 —— 它装着端口框时叫 `.ssh-section`，端口并到地址旁边之后叫 `.general-section` —— 就是这段说明所举的那条：`1px solid var(--legacy-line-faint)`，抽屉底面上的一层 `rgba(222, 226, 255, 0.05)`，实测 1.14:1 —— 一件只在名字上叫分隔线的东西。它现在是 `var(--line)`（`inspector.css:47`），而细线下限守卫会把它按在那里。
 
 ## 已知缺口
 
-- `#keychain-fingerprint` —— 页面里唯一的 `<code>` 元素（`index.html:101`）—— 没有 `font-family` 规则。`keychain.css:47` 给它定尺寸、给颜色，然后就此收手，于是密钥指纹以用户代理的默认等宽渲染，而不是 `--font-mono`。族名普查看不见这件事：它拒绝的是"写了字体栈而没走 token"的声明，而一条缺席的声明算不上声明。
+- `#keychain-fingerprint` —— 页面里唯一的 `<code>` 元素（`index.html:134`）—— 没有 `font-family` 规则。`keychain.css:81` 给它定尺寸、给颜色，然后就此收手，于是密钥指纹以用户代理的默认等宽渲染，而不是 `--font-mono`。族名普查看不见这件事：它拒绝的是"写了字体栈而没走 token"的声明，而一条缺席的声明算不上声明。
 - `--fs-term: 13.5px` 没有消费者。`terminal-view.ts` 向 `Terminal` 构造器传的是 `fontSize: 14`，那里的注释记录了原因：13.5px 会在没有重新度量的情况下改变 xterm 的单元格度量。这个 token 是意图的陈述，不是生效的取值。
 - 具名颜色对字面量规则是不可见的。匹配式是 `/#[0-9a-fA-F]{3,8}\b|\brgba?\(/`，只命中十六进制与函数式 `rgb()`/`rgba()`，所以今天 `color: white` 或 `color: tomato` 能通过守卫。这是一个潜伏的洞，而不是现行的缺陷：翻转之后 `white` 一词在各内容分片里仍然出现 13 次，每一次都在 `white-space` 属性内部，46 处 `transparent` 都是有意的边框与填充，而扫描取值位置上标准 CSS 颜色词的结果为零命中。要补这个洞需要一条能识别取值位置的规则，而不是一张更宽的词表 —— 因为 `\bwhite\b` 作为模式同样会匹配 `white-space`，那会把 13 行清白代码报成违规。
-- 有十一个 token 至今无法被屏幕上的任何东西触达：颜色里的 `--overlay-soft`、`--overlay-press` 与 `--ac-focus`；度量里的三道间距（`--s-1`、`--s-5`、`--s-6`）、三档层叠（`--z-drawer`、`--z-popover`、`--z-dialog`）与两段时长（`--t-1`、`--t-3`）。它们由 `design-tokens.test.mjs` 孤立验证，而不是被渲染出的像素验证，这正是等待各屏的那把刻度应有的状态 —— 但它也意味着这十一个取值里任何一个的错误，浏览器都还没有开口反驳。
+- 有十二个 token 至今无法被屏幕上的任何东西触达：颜色里的 `--overlay-soft`、`--overlay-press` 与 `--ac-focus`，圆角里的 `--r-4`（被原型对齐退役，原型不画 12px 圆角），以及度量里的三道间距（`--s-1`、`--s-5`、`--s-6`）、三档层叠（`--z-drawer`、`--z-popover`、`--z-dialog`）与两段时长（`--t-1`、`--t-3`）。它们由 `design-tokens.test.mjs` 孤立验证，而不是被渲染出的像素验证，这正是等待各屏的那把刻度应有的状态 —— 但它也意味着这十二个取值里任何一个的错误，浏览器都还没有开口反驳。
 - 生成的 `packages/ui/src/lib/changelog.ts` 没有任何导入方。`packages/`、`apps/`、`scripts/` 下都没有代码导入它，构建出的 `packages/ui/dist/app.js` 里也找不到任何变更日志字符串。它的姊妹 `lib/version.ts` 现在有了：`services/chrome.ts` 把它渲染进状态栏，而 `client-lifecycle.browser.ts` 断言的正是那次渲染，而不是一份拷贝来的版本字符串。`npm run release:check` 会解析这两个文件并与 `CHANGELOG.md`、`VERSION.txt` 比对，因此两者都不会悄悄过期，但今天变更日志那一半仍是构建期的发布元数据，而不是页面内容。
 - `--font-mono` 以 `"JetBrains Mono"` 开头，而它并未随包发布；本机只安装了 `@fontsource-variable/inter`。因此界面里的等宽文字会按机器落到 Cascadia Mono 或 Consolas。这是普通字体栈行为，不是缺陷，但它意味着 `--font-mono` 与 `--font-term` 今天的差别只是终端那两个 CJK 回退加上缺席的 JetBrains Mono。
 - 620px 以下两个嵌入编辑器都会逃出它们的轨道。`.keychain-editor` 与 `.connection-workspace` 在 900px 处改成 `position: absolute; inset: …`，只要 `#main` 的高度仍由 `.app-body` 网格给出确定值，这就是准确的；但 620px 那条块把 `.app-body` 变成可滚动的纵向 flex 列，`#main` 的高度于是由内容决定，绝对定位的编辑器所解析的包含块就变成背后的列表而不是视口。两个编辑器都不曾低于 1080px 被测过：内置视口是固定的，而回环主机拒绝被嵌入。这条作为缺口记录，没有闭眼修改。

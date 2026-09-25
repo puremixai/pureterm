@@ -1,8 +1,6 @@
 /* Application shell — the #app grid, top bar, workspace and session tabs, the
    navigation rail, the status bar, and the state classes on .app-shell that
-   reshape them. Heights come from --chrome-h and --status-h; the one literal
-   inside env() below is the number Electron reserves for its overlay, and
-   theme-sync.test.mjs is what keeps it equal to the token. */
+   reshape them. Heights come from --chrome-h and --status-h and nowhere else. */
 #app {
   display: grid;
   grid-template-rows: var(--chrome-h) minmax(0, 1fr) var(--status-h);
@@ -12,15 +10,18 @@
   background: var(--c-canvas);
 }
 
-/* Application chrome */
+/* Application chrome.
+   这里曾经写的是 width/height/margin-left 三条 env(titlebar-area-*)，因为
+   Windows/Linux 的窗口按钮由 titleBarOverlay 交给系统画、顶栏要让出那块地方。
+   现在没有覆盖层了，env() 在三个平台上都取不到值 —— 留着就是三条永远走回退分支的
+   死声明。高度改回 token；顶栏右端那组自绘窗口按钮要装得下，由 theme-sync.test.mjs
+   拿 --chrome-h 去卡（规则本身不在这个文件，见 styles/window-controls.css）。 */
 .app-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   min-width: 0;
-  width: env(titlebar-area-width, 100%);
-  height: env(titlebar-area-height, 40px);
-  margin-left: env(titlebar-area-x, 0px);
+  height: var(--chrome-h);
   padding: 0 8px 0 12px;
   background: var(--c-chrome);
   border-bottom: 1px solid var(--line);
@@ -29,40 +30,56 @@
 
 .app-topbar button { -webkit-app-region: no-drag; }
 
+/* 原型 .tb 的 gap 是 14px，量的就是品牌最后一个字到标签栏的距离。我们的品牌是一个
+   按钮，它的边框盒比文字右沿还多出 6px 悬停内边距 + 1px 边框，所以这里写 --s-2
+   （8px）：8 + 7 才是眼睛看到的 14px。 */
 .topbar-leading,
-.topbar-actions { display: flex; align-items: center; min-width: 0; gap: 10px; }
+.topbar-actions { display: flex; align-items: center; min-width: 0; gap: var(--s-2); }
 .topbar-actions { gap: 4px; }
 
+/* 原型 .ib：26px 见方、--r-1、无边框。原来 36px/22px 的字号是 Plan 1 那套「粗壮」
+   语言留下的，一个图标按钮占掉了顶栏三分之二的高度。 */
 .icon-button {
   display: grid;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 26px;
+  min-height: 26px;
   padding: 0;
   place-items: center;
   border-color: transparent;
+  border-radius: var(--r-1);
   background: transparent;
   color: var(--tx-3);
-  font-size: 22px;
+  font-size: 15px;
   line-height: 1;
 }
 
 .icon-button:hover:not(:disabled) { background: var(--overlay-hover); color: var(--tx-1); }
 
+/* 顶栏里还有一组窗口按钮，但不在这个文件里，也不在这个级联里：它只属于桌面端，样式
+   在 styles/window-controls.css，由 desktop.css 单独交付（见那一篇的头注）。这里
+   只留下这两个应用开关。 */
+
+/* 原型里品牌是一段文字，不是一块填充：它贴着顶栏左沿，靠 --c-chrome 的底色呼吸。
+   负的 margin-left 把 6px 的内边距抵消掉，这样悬停时有一块可读的底，而图标本身
+   仍然落在 .app-topbar 那 12px 的内边距上。
+   这里刻意不写 min-width：button 自带 justify-content: center，一旦给一个比内容
+   宽的盒子，品牌就会被推离左沿 —— 量出来是两侧各 34px 的死白，而原型里图标是
+   贴着 12px 内边距的。 */
 .workspace-switcher {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  min-width: 208px;
-  gap: 9px;
-  padding: 0 11px;
+  gap: 8px;
+  margin-left: -6px;
+  padding: 0 6px;
   border-color: transparent;
-  background: var(--c-surface);
+  background: transparent;
   color: var(--tx-1);
   text-align: left;
 }
 
 .workspace-switcher:hover:not(:disabled) { border-color: transparent; background: var(--c-raised); }
-.workspace-mark,
-.app-tab-mark {
+.workspace-mark {
   display: grid;
   flex: 0 0 auto;
   width: 18px;
@@ -74,26 +91,34 @@
   color: var(--ac);
 }
 
-.workspace-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
-.workspace-copy strong { font-size: var(--fs-em); line-height: 1.1; }
-.workspace-copy small { color: var(--tx-3); font-size: 10px; line-height: 1.1; }
+/* 原型 .brand 是一行：[mark] PureTerm / Vault —— 品牌名和它的分区名并排，不是
+   上下两行。原来那套 column + gap 1px 是 Plan 1 的「标题 + 副标题」语言留下的，
+   量出来品牌盒高 28.3px，原型是 18px。 */
+.workspace-copy { display: flex; align-items: center; min-width: 0; gap: 8px; }
+.workspace-copy strong { font-size: var(--fs-meta); font-weight: 600; letter-spacing: -0.01em; }
+/* 原型这里写 --tx-4，照做。第四级在 --c-chrome 上量得 2.79:1（深色）/ 2.28:1
+   （浅色），低于 AA —— 它站得住，是因为这段后缀是**装饰性**的：它在重复屏上已经
+   写着的事（轨道上高亮的那一格、面板自己的标题），拿掉它不会丢任何信息。
+   stylesheet-contract.test.mjs 因此只对这一个选择器开口子，别的选择器照样判失败。
+   字重必须显式写 400：这个 <small> 住在 <button> 里，会继承 base.css 给按钮的 500，
+   而原型里它是一段普通文字。 */
+.workspace-copy small { color: var(--tx-4); font-size: var(--fs-micro); font-weight: 400; }
 
+/* min-height as well as the flex box's own height: base.css floors every button
+   at 28px, and theme-sync.test.mjs reads this number to prove the tab fits the
+   40px bar it lives in. The floor is why the number is written rather than left
+   to the content. */
 .app-tab {
   display: flex;
   align-items: center;
   min-height: 28px;
-  gap: 9px;
-  padding: 0 17px;
-  border-radius: var(--r-4);
+  gap: 7px;
+  padding: 0 10px;
+  border-radius: var(--r-2);
   color: var(--tx-3);
-  font-size: var(--fs-em);
-  font-weight: 600;
+  font-size: var(--fs-meta);
+  font-weight: 500;
 }
-
-.app-tab.is-active { background: var(--c-control); color: var(--tx-1); }
-/* The library tab's mark still holds a Tabler glyph rather than the brand SVG,
-   so it needs a font-size; the box itself comes from the shared rule. */
-.app-tab-mark { color: var(--tx-2); font-size: 8px; }
 
 .app-body { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); min-height: 0; overflow: hidden; }
 /* The editor's track is not here: .app-body holds the rail and one workspace
@@ -103,6 +128,8 @@
    than by two different tints, which is how the old palette read as a skin. */
 .primary-nav { display: flex; min-height: 0; flex: none; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--c-chrome); border-right: 1px solid var(--line); }
 .nav-divider { width: 20px; height: 1px; margin: 6px 0; background: var(--line); }
+/* 原型 .ri：34px 见方、--r-2。min-height 和 height 一起写：base.css 给每个 button
+   垫了 28px，theme-sync.test.mjs 读这个数来证明轨道项装得进它所在的那条栏。 */
 .nav-item { position: relative; display: grid; width: 34px; min-height: 34px; height: 34px; place-items: center; padding: 0; border-color: transparent; border-radius: var(--r-2); background: transparent; color: var(--tx-3); font-size: 18px; line-height: 1; }
 .nav-item:hover:not(:disabled) { color: var(--tx-1); border-color: transparent; background: var(--c-raised); }
 .nav-item.active { color: var(--ac); background: var(--ac-bg); }
@@ -112,15 +139,16 @@
 .nav-item:focus-visible { outline: none; box-shadow: var(--ring); }
 .nav-icon { display: grid; place-items: center; width: auto; color: inherit; font-size: inherit; font-weight: 400; }
 
-/* A session owns the whole content column: the rail and the library pages step
-   out of the way, and the failure view is one of the session's own states rather
-   than a shell mode, driven by #connection-failure's hidden attribute. */
-.app-shell.session-mode .app-body { grid-template-columns: minmax(0, 1fr); }
-.app-shell.session-mode #primary-nav { display: none; }
+/* A session owns the content column, not the shell: the rail stays where it is
+   and keeps switching library pages, because the prototype's shell is always
+   rail + main (+ inspector) and a session that made the rail vanish read as a
+   lost frame rather than as a narrowed one. The library pages still step out of
+   the way — that half is #main's own grid, and the failure view is one of the
+   session's own states rather than a shell mode, driven by #connection-failure's
+   hidden attribute. */
 
 @media (max-width: 820px) {
   .app-topbar { padding-left: 10px; }
-  .app-tab { padding: 0 10px; }
 }
 
 @media (max-width: 620px) {
@@ -133,28 +161,34 @@
 /* Persistent workspace tabs and independent terminal pages. */
 .topbar-leading { flex: 1 1 auto; overflow: hidden; }
 .topbar-actions { flex: 0 0 auto; margin-left: 14px; }
-.workspace-switcher { flex: 0 0 auto; min-width: 148px; }
-.workspace-tabs { display: flex; align-items: center; gap: 7px; min-width: 0; overflow-x: auto; padding: 0 2px; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
-.workspace-tabs > .app-tab { flex: 0 0 auto; border-color: transparent; background: transparent; }
-.workspace-tabs > .app-tab.is-active { background: var(--c-control); }
-.session-tab { flex: 0 0 auto; display: flex; align-items: center; width: clamp(150px, 17vw, 250px); min-width: 0; border: 1px solid transparent; border-radius: var(--r-4); background: var(--c-canvas); }
+.workspace-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; padding: 0 2px; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+/* 这里原来还有两条 `.workspace-tabs > .app-tab`：把库标签压成透明底、透明描边。
+   它们和 `.app-tab.is-active` 同权重、靠后生效，于是那个**活动**的库标签连
+   `--line` 描边都丢了 —— 原型 .tab.on 是有的。库标签走了，这两条就没有主语了，
+   删掉；会话标签的描边归 .session-tab.is-active 管。 */
+.session-tab { flex: 0 0 auto; display: flex; align-items: center; width: clamp(150px, 17vw, 250px); min-width: 0; border: 1px solid transparent; border-radius: var(--r-2); background: var(--c-surface); }
 .session-tab.is-active { background: var(--ok-bg); border-color: var(--ok-line); }
-.session-tab .app-tab { min-width: 0; flex: 1 1 auto; border: 0; padding: 0 10px 0 13px; background: transparent; font-size: var(--fs-ui); }
+.session-tab .app-tab { min-width: 0; flex: 1 1 auto; border: 0; padding: 0 8px 0 10px; background: transparent; font-size: var(--fs-meta); }
 .session-tab.is-active .app-tab { color: var(--tx-1); }
 .tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* --r-full, not a private 999px: the token is 999px already, so this is the same
    circle, and the ladder is the reason a second one cannot be written. */
-.tab-state-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: var(--r-full); background: var(--idle); }
+.tab-state-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: var(--r-full); background: var(--idle); }
 .session-tab[data-state="connected"] .tab-state-dot { background: var(--ok); }
 .session-tab[data-state="connecting"] .tab-state-dot { background: var(--warn); }
 .session-tab[data-state="failed"] .tab-state-dot { background: var(--err); }
 .session-tab[data-state="failed"].is-active { background: var(--err-bg); border-color: var(--err-line); }
-.tab-close { flex: 0 0 auto; display: grid; place-items: center; min-width: 26px; min-height: 26px; margin-right: 5px; padding: 0; border: 0; border-radius: var(--r-2); color: var(--tx-3); background: transparent; font-size: 16px; }
+.tab-close { flex: 0 0 auto; display: grid; place-items: center; min-width: 22px; min-height: 22px; margin-right: 3px; padding: 0; border: 0; border-radius: var(--r-1); color: var(--tx-3); background: transparent; font-size: 14px; }
 
-.session-workspace > .connection-failure { top: 44px; }
+/* 失败页是会话的一个状态，所以它从会话栏下面开始 —— 那一栏要一直看得见，结论和
+   它的依据就住在里面。会话栏和顶栏是同一个 40px（原型里它们本来就是同一条横线），
+   所以这里取 --chrome-h 而不是再抄一个 40。 */
+.session-workspace > .connection-failure { top: var(--chrome-h); }
 
 @media (max-width: 820px) {
-  .topbar-actions { display: none; }
+  /* 藏的是那两个应用开关，不是整个动作区：窗口按钮是桌面端的关窗入口，而它们本来也
+     不在这个级联里，不会被这条规则碰到。 */
+  .topbar-actions > .icon-button { display: none; }
   .workspace-switcher { min-width: 44px; width: 44px; padding: 0 10px; }
   .workspace-copy { display: none; }
 }
@@ -188,8 +222,11 @@
 /* Tabular figures, because the size field changes width as you resize. */
 .status-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .status-fill { flex: 1 1 auto; }
+/* 没有提示的时候不要留下一个空的间隔：:empty 就是「这一格没话说」。 */
+#status-hint:empty { display: none; }
+#status-hint { margin-right: 4px; }
 .status-sep { color: var(--line-strong); }
-.status-dot { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--idle); }
+.status-dot { width: 6px; height: 6px; border-radius: var(--r-full); background: var(--idle); }
 .status-dot[data-state="connected"] { background: var(--ok); }
 .status-dot[data-state="connecting"] { background: var(--warn); }
 .status-dot[data-state="failed"],

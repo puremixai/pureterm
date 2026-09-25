@@ -187,7 +187,6 @@ function startGeneration(): ElectronShellGeneration {
     pageUrl: DESKTOP_PAGE,
     preloadPath: preloadScript,
     autoHideMenuBar: platform.autoHideMenuBar,
-    useWindowControlsOverlay: platform.useWindowControlsOverlay,
     search: process.env.SSH_CORDIS_SMOKE ? 'smoke=1' : '',
     onLoadFailure: (reason) => fallbackToNoSandbox(reason),
   })
@@ -347,6 +346,27 @@ function installDesktopBridge(): void {
     try { assertApplicationSender(event); handleReady(normalizeReadyPayload(payload)) }
     catch (error) { console.error('[main] 拒绝就绪上报:', error instanceof Error ? error.message : String(error)) }
   })
+  // The top bar draws its own minimize/maximize/close, so these three are the
+  // only window commands in the app. Each one re-reads currentWindow() rather
+  // than closing over a window: a generation swap between the click and the
+  // command must not move a destroyed window.
+  const windowCommand = (channel: string, act: (window: BrowserWindow) => void): void => {
+    ipcMain.on(channel, event => {
+      try {
+        assertApplicationSender(event)
+        const window = currentWindow()
+        if (window) act(window)
+      } catch (error) { console.error('[main] 拒绝窗口命令:', error instanceof Error ? error.message : String(error)) }
+    })
+  }
+  windowCommand(DESKTOP_CHANNELS.windowMinimize, window => window.minimize())
+  // One channel for both directions: which of maximize/restore applies is the
+  // window's own state, and only this side can read it.
+  windowCommand(DESKTOP_CHANNELS.windowToggleMaximize, window => {
+    if (window.isMaximized()) window.unmaximize()
+    else window.maximize()
+  })
+  windowCommand(DESKTOP_CHANNELS.windowClose, window => window.close())
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*'] }, (details, callback) => {
     const window = currentWindow()
     callback(authorizeDesktopSocket({ ...details, isMainFrame: !!window && details.frame === window.webContents.mainFrame }, host && window ? {
@@ -429,6 +449,9 @@ function shutdown(preserveUpdater = false): Promise<void> {
     bootCheck.cancel()
     ipcMain.removeHandler(DESKTOP_CHANNELS.bootstrap)
     ipcMain.removeAllListeners(DESKTOP_CHANNELS.ready)
+    for (const channel of [DESKTOP_CHANNELS.windowMinimize, DESKTOP_CHANNELS.windowToggleMaximize, DESKTOP_CHANNELS.windowClose]) {
+      ipcMain.removeAllListeners(channel)
+    }
     session.defaultSession.webRequest.onBeforeSendHeaders(null)
     protocol.unhandle('pureterm-app')
     try {

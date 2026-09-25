@@ -44,7 +44,7 @@ export class ClientHosts extends Service {
     })
     this.scope.listen(view.element('toolbar'), 'submit', event => { event.preventDefault(); void this.connect() })
     this.scope.listen(view.element('connect'), 'click', () => void this.connect())
-    this.scope.listen(view.element('host-new'), 'click', () => this.startNew())
+    for (const id of ['host-new', 'hosts-empty-new']) this.scope.listen(view.element(id), 'click', () => this.startNew())
     this.scope.listen(view.element('hosts-retry'), 'click', () => { void this.refresh().catch(() => {}) })
     this.scope.listen(view.element('connection-close'), 'click', () => this.closeWorkspace())
     for (const id of ['workspace-home', 'nav-hosts']) this.scope.listen(view.element(id), 'click', () => { ctx.clientTerminal.select(null); this.closeWorkspace() })
@@ -55,12 +55,23 @@ export class ClientHosts extends Service {
       view.element('host-view-toggle').setAttribute('aria-pressed', String(cards))
     })
     const shortcuts = view.element<HTMLDialogElement>('shortcuts-dialog')
-    for (const id of ['shortcuts-open', 'nav-shortcuts']) this.scope.listen(view.element(id), 'click', () => shortcuts.showModal())
+    // 只有导航轨道上那一个入口。工具栏里原来还有一个「快捷键」图标钮，原型那一行
+    // 只收一个图标，而且轨道上那个做的是同一件事 —— 同一个动作两处入口，只会让
+    // 用户猜它们是不是不一样。
+    this.scope.listen(view.element('nav-shortcuts'), 'click', () => shortcuts.showModal())
     this.scope.listen(view.element('shortcuts-close'), 'click', () => shortcuts.close())
     this.scope.onDispose(() => shortcuts.close())
     this.scope.listen(view.document, 'keydown', event => {
       const key = event as KeyboardEvent
       if (shortcuts.open) return
+      // Ctrl/Cmd+K 只属于主机库那一屏：会话开着的时候 hosts-panel 是 hidden 的，
+      // 于是终端里的 Ctrl+K（readline 的删到行尾）不会被这条抢走。
+      if ((key.ctrlKey || key.metaKey) && key.key.toLowerCase() === 'k' && !view.element('hosts-panel').hidden) {
+        key.preventDefault()
+        this.input('host-search').focus()
+        this.input('host-search').select()
+        return
+      }
       if (key.key === 'Escape' && !view.element('connection-workspace').hidden) this.closeWorkspace()
     }, true)
     ctx.on('client/edit-connection', (request, title) => this.editConnection(request, title))
@@ -78,7 +89,17 @@ export class ClientHosts extends Service {
     })
     this.scope.listen(view.element('host-delete'), 'click', () => { if (this.editingId) void this.remove(this.editingId) })
     this.scope.listen(view.element('auth'), 'change', () => { this.formRevision++; this.clearBrowserKey(); this.syncAuth(); this.updateButtons() })
-    for (const id of ['host', 'port', 'user']) this.scope.listen(view.element(id), 'input', () => { this.formRevision++; this.clearBrowserKey(); this.updateButtons() })
+    // 分段开关只是 #auth 的代理：写值、派发同一条 change，表单其余部分不需要知道
+    // 屏幕上有两套控件。反方向由 syncAuth() 同步 —— 测试和快捷键直接改 select 时，
+    // 按钮的按下态也得跟着走。
+    for (const [id, method] of [['auth-key', 'privateKey'], ['auth-password', 'password']] as const) {
+      this.scope.listen(view.element(id), 'click', () => {
+        if (this.auth() === method) return
+        this.input('auth').value = method
+        this.input('auth').dispatchEvent(new Event('change'))
+      })
+    }
+    for (const id of ['host', 'port', 'user']) this.scope.listen(view.element(id), 'input', () => { this.formRevision++; this.clearBrowserKey(); this.updateButtons(); this.renderAddressHint() })
     for (const id of ['pass', 'key-pass', 'remember', 'host-label']) {
       this.scope.listen(view.element(id), 'input', () => { this.formRevision++ })
       this.scope.listen(view.element(id), 'change', () => { this.formRevision++ })
@@ -102,7 +123,7 @@ export class ClientHosts extends Service {
       this.syncKeys('')
       this.renderHostList()
     })
-    ctx.on('client/connection-change', () => this.updateButtons())
+    ctx.on('client/connection-change', () => { this.updateButtons(); this.renderCount() })
     this.clearForm()
     this.updateButtons()
     this.ready = this.initialize()
@@ -121,6 +142,7 @@ export class ClientHosts extends Service {
     if (!this.scope.alive) return
     this.input('remember').checked = this.capabilities.credentialPersistence === 'encrypted'
     this.ctx.clientView.element('credential-hint').hidden = this.capabilities.credentialPersistence !== 'session'
+    this.ctx.clientView.element('credential-lock').hidden = this.capabilities.credentialPersistence !== 'encrypted'
     // 能力关着不是失败：这台机器上「密码留空也能连」这件事不成立，得常驻说一句，
     // 而不是等用户每次保存都撞上一次。
     const degraded = this.input('hosts-degraded')
@@ -158,6 +180,8 @@ export class ClientHosts extends Service {
   private syncAuth(): void {
     const method = this.auth()
     const view = this.ctx.clientView
+    view.element('auth-key').setAttribute('aria-pressed', String(method === 'privateKey'))
+    view.element('auth-password').setAttribute('aria-pressed', String(method === 'password'))
     view.element('cred-password').hidden = method !== 'password'
     view.element('cred-key').hidden = method !== 'privateKey'
     const keychain = method === 'privateKey' && !!this.input('host-keychain').value
@@ -211,6 +235,7 @@ export class ClientHosts extends Service {
       this.input('key-path').value = '当前会话私钥'
     }
     this.syncAuth()
+    this.renderAddressHint()
     this.list.select(this.selectedId)
     this.syncMode()
     this.updateButtons()
@@ -226,12 +251,42 @@ export class ClientHosts extends Service {
     const visible = this.visibleHosts()
     const empty = this.ctx.clientView.element('hosts-empty')
     empty.hidden = visible.length > 0
-    empty.innerHTML = this.hosts.length > 0 && visible.length === 0
+    const filtered = this.hosts.length > 0 && visible.length === 0
+    this.ctx.clientView.element('hosts-empty-text').innerHTML = filtered
       ? '没有匹配的主机。<br />换个关键词再试试。'
-      : '还没有保存的主机。<br />点击「新建主机」开始建立连接。'
-    const count = this.ctx.clientView.element('host-count')
-    count.textContent = this.query && visible.length !== this.hosts.length ? `${visible.length} / ${this.hosts.length} hosts` : `${this.hosts.length} hosts`
+      : '还没有保存的主机。<br />新建一条记录，之后双击就能连上。'
+    // 筛不中的时候「新建主机」是个错的动作：用户要的是清掉关键词，不是再加一条。
+    this.ctx.clientView.element('hosts-empty-new').hidden = filtered
+    this.renderCount(visible.length)
     this.list.render(visible, this.selectedId, this.ctx.clientKeychain.records)
+  }
+
+  /**
+   * 「N saved · M connected」。
+   *
+   * 一条记录算「已连接」，靠的是它和某个已连上标签页指向同一个端点。不用
+   * `request.hostId` 判定：那个字段只在桌面载体上随凭据一起发（Web 载体上
+   * `connectionCredentials` 会把它丢掉，因为没有要解析的已存凭据），拿它当唯一
+   * 依据会让 Web 这一半永远显示 0 —— 而用户看到的是同一个事实。
+   */
+  private renderCount(visible = this.visibleHosts().length): void {
+    const connected = this.hosts.filter(record => this.connected(record)).length
+    const saved = this.query && visible !== this.hosts.length ? `${visible} / ${this.hosts.length} saved` : `${this.hosts.length} saved`
+    this.ctx.clientView.element('host-count').textContent = `${saved} · ${connected} connected`
+  }
+
+  private connected(record: HostRecord): boolean {
+    return this.ctx.clientTerminal.tabs.some(tab => tab.state === 'connected'
+      && (tab.request.hostId === record.id || (tab.request.host === record.host
+        && (tab.request.port ?? 22) === record.port && tab.request.username === record.username)))
+  }
+
+  /** 表单当前会发出的那条命令。地址或用户名还空着时整行退场，而不是显示半句话。 */
+  private renderAddressHint(): void {
+    const host = this.input('host').value.trim()
+    const user = this.input('user').value.trim()
+    const port = Number(this.input('port').value) || 22
+    this.ctx.clientView.element('address-hint').textContent = host && user ? `ssh ${user}@${host}:${port}` : ''
   }
 
   private syncMode(): void {
@@ -312,6 +367,7 @@ export class ClientHosts extends Service {
     this.syncKeys(record.keyId ?? '')
     this.input('pass').value = this.input('key-pass').value = ''
     this.syncAuth()
+    this.renderAddressHint()
     this.list.select(this.selectedId)
     this.syncMode()
     this.updateButtons()
@@ -332,6 +388,7 @@ export class ClientHosts extends Service {
     this.input('port').value = '22'
     this.input('auth').value = 'password'
     this.syncAuth()
+    this.renderAddressHint()
   }
 
   private startNew(): void {

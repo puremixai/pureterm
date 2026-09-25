@@ -4,7 +4,7 @@
    from that token through getComputedStyle, so anything behind it must be the
    same value or the pane padding shows a seam of a third colour. */
 #terminal { position: relative; display: block; min-width: 0; min-height: 0; background: var(--term-bg); }
-.terminal-pane { position: absolute; inset: 0; padding: 12px 16px; }
+.terminal-pane { position: absolute; inset: 0; padding: 10px 12px; }
 #terminal .xterm { height: 100%; }
 .xterm .xterm-viewport { background-color: transparent !important; scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
 
@@ -14,24 +14,27 @@
    after .files-open started painting the same element into a grid track, so two
    blocks described one box and only one of them could ever win. */
 #sftp { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; background: var(--c-surface); border-left: 1px solid var(--line); }
-#sftp > .panel-head { min-height: 52px; padding: 9px 18px; background: var(--c-surface); }
+/* 原型 .sh：32px 高、0 10px、gap 8px。原来是 52px 加 9px 18px 的内边距 —— 光面板头
+   就吃掉了一条文件行的高度，而这一屏要的是「一屏九行」。 */
+#sftp > .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 32px; padding: 0 10px; background: var(--c-surface); }
 #sftp > .panel-head .panel-title { flex: 0 0 auto; color: var(--tx-1); font-size: var(--fs-meta); letter-spacing: 0.04em; }
-#sftp-path { flex: 1 1 240px; width: auto; min-width: 120px; height: 32px; padding: 0 9px; border-radius: var(--r-2); color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); }
+#sftp > .panel-head button { flex: 0 0 auto; white-space: nowrap; }
+#sftp-path { flex: 1 1 240px; width: auto; min-width: 120px; height: 28px; padding: 0 8px; border-radius: var(--r-1); color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); }
 #sftp-path:disabled { opacity: 0.55; }
 /* 路径是一段一段可点的，所以它是导航而不是标题：底色退到 canvas，让它读起来
    像浏览器地址栏下面那条，而不是面板头的一部分。分隔线取 --line 而不是 --line-soft：
    它的底面是 canvas（比 surface 更暗的一层），--line-soft 在那上面只有 1.093:1，
    过不了每道细线各自对着自己底面量的那道下限。没有额外的 [hidden] 规则 ——
    base.css 的全局 !important 已经管住了。 */
-.sftp-crumbs { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; min-width: 0; padding: 5px 10px; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--c-canvas); font-family: var(--font-mono); font-size: var(--fs-micro); scrollbar-width: thin; }
+.sftp-crumbs { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; min-width: 0; padding: 4px 10px; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--c-canvas); font-family: var(--font-mono); font-size: var(--fs-micro); scrollbar-width: thin; }
 button.sftp-crumb { min-height: 20px; padding: 0 4px; border-color: transparent; border-radius: var(--r-1); background: transparent; color: var(--tx-3); font-family: inherit; font-size: inherit; }
 button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: var(--c-control); color: var(--tx-1); }
 .sftp-crumb + .sftp-crumb::before { content: '/'; margin-right: 2px; color: var(--tx-3); }
 .sftp-crumb.is-current { color: var(--tx-1); font-weight: 500; }
-#sftp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 14px 14px; scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
-#sftp-create { display: flex; align-items: center; gap: 8px; padding: 7px 18px; background: var(--c-raised); border-bottom: 1px solid var(--line); }
+#sftp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 10px 14px; scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
+#sftp-create { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--c-raised); border-bottom: 1px solid var(--line); }
 #sftp-create .panel-title { flex: 0 0 auto; }
-#sftp-create-name { flex: 1 1 auto; min-width: 120px; height: 32px; padding: 0 9px; border-radius: var(--r-2); font-size: var(--fs-meta); }
+#sftp-create-name { flex: 1 1 auto; min-width: 120px; height: 28px; padding: 0 8px; border-radius: var(--r-1); font-size: var(--fs-meta); }
 #sftp-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: 0; padding: 0; list-style: none; }
 /* Name, size, mode, modified, then the 24px action track: the hosts table's
    shape, so a user who has read one screen's table reads this one too. Header
@@ -39,16 +42,18 @@ button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: 
    the columns can be trusted to line up. */
 .file-columns,
 .file-row { display: grid; grid-template-columns: minmax(0,1fr) 62px 42px 74px 24px; align-items: center; gap: 8px; padding: 0 10px; }
-.file-columns { height: 26px; border: 1px solid transparent; border-bottom-color: var(--line-soft); color: var(--tx-3); font-size: var(--fs-micro); letter-spacing: .06em; text-transform: uppercase; }
+.file-columns { height: 24px; border: 1px solid transparent; border-bottom-color: var(--line-soft); color: var(--tx-3); font-size: var(--fs-micro); letter-spacing: .06em; text-transform: uppercase; }
 /* A file row is tighter than a host row on purpose: scanning a directory wants
    nine rows where 38px would fit four. */
-.file-row { position: relative; min-width: 0; min-height: 28px; border: 1px solid transparent; border-radius: var(--r-3); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
+.file-row { position: relative; min-width: 0; min-height: 27px; border: 1px solid transparent; border-radius: var(--r-2); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
 .file-row:hover { background: var(--overlay-hover); }
-.file-main { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 0; border: 0; border-radius: var(--r-3); background: transparent; color: var(--tx-2); cursor: pointer; font-size: var(--fs-meta); text-align: left; user-select: none; }
+.file-main { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 0; border: 0; border-radius: var(--r-2); background: transparent; color: var(--tx-2); cursor: pointer; font-size: var(--fs-meta); text-align: left; user-select: none; }
 .file-main:hover:not(:disabled) { border-color: transparent; background: transparent; }
 /* The row's box owns its height, not the button inside it: base.css floors every
-   button at 38px, which quietly turned a 28px row into a 39px one — the same trap
-   the density switch fell into on the host and key tables. */
+   button at 28px, which would push this 27px row back up — the same trap the
+   density switch fell into on the host and key tables. The override stays even
+   though the two numbers are one pixel apart, because
+   visual-contract.test.mjs names it as the reason a row is allowed to shrink. */
 .file-row .file-main { min-height: 0; }
 /* Size and time are compared by magnitude, so they are right-aligned; mode is
    compared by shape — 755 against 644 — so it is not. */
@@ -56,25 +61,31 @@ button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: 
 .file-size, .file-time { text-align: right; }
 .file-top { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 6px; }
 .file-name { overflow: hidden; color: var(--tx-1); text-overflow: ellipsis; white-space: nowrap; }
-.tag.link { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn); }
 #sftp-hint.ok { color: var(--ok); }
 #sftp-hint.err { color: var(--err); }
 #sftp-hint.pending { color: var(--ac); }
 
 @media (max-width: 620px) {
-  #terminal { padding: 16px 10px 10px; }
   #sftp { height: min(50dvh, 360px); max-height: none; }
-  #sftp > .panel-head { flex-wrap: wrap; padding-right: 14px; padding-left: 14px; }
+  /* 折下去就不再是 32px 的一条，所以内边距换回上下 4px。 */
+  #sftp > .panel-head { padding: 4px 10px; }
 }
 
 .session-workspace { position: absolute; inset: 0; display: flex; min-height: 0; flex-direction: column; overflow: hidden; background: var(--c-canvas); }
-.session-toolbar { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 16px; min-height: 44px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--c-chrome); }
-.session-context { display: flex; align-items: center; gap: 14px; min-width: 0; overflow: hidden; font-size: var(--fs-meta); }
+/* 原型 ④ 的会话栏是 40px：和顶栏、抽屉头同一条横线。原来 44px 加 6px 16px 的内边距，
+   一个只放状态和三个按钮的条子占了 56px。 */
+.session-toolbar { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); background: var(--c-chrome); }
+.session-context { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; font-size: var(--fs-meta); }
 #session-state { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-3); }
 #session-state.connected { color: var(--ok); }
 #session-state.connecting { color: var(--warn); }
 #session-state.failed, #session-state.disconnected { color: var(--err); }
 #session-address { overflow: hidden; color: var(--tx-3); text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+/* 结论和它依据的那句原文跟着会话走，所以它们住在这一栏里而不是失败页里（见
+   index.html 的注释）。原文截断而不是换行：它是日志里的一行，完整的那份就在失败页
+   的日志块里，这里只是让用户一眼看到是哪一类失败。 */
+.failure-raw { max-width: 240px; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); text-overflow: ellipsis; white-space: nowrap; }
+.failure-raw:empty { display: none; }
 .session-actions { display: flex; flex: 0 0 auto; gap: 6px; }
 .session-content { display: grid; flex: 1 1 auto; min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); }
 /* 1.35fr : 1fr is the prototype's ratio (.term flex:1.35 against .sftp width:38%),
@@ -124,9 +135,9 @@ button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: 
 #sftp > .panel-head button { flex: 0 0 auto; white-space: nowrap; }
 
 @media (max-width: 620px) {
-  #terminal { padding: 0; }
   .terminal-pane { padding: 8px; }
-  .session-toolbar { gap: 6px; padding: 6px 8px; }
+  .session-toolbar { gap: 6px; padding: 4px 8px; }
   .session-context { gap: 6px; }
   #session-address { font-size: 10px; }
+  .failure-raw { max-width: 120px; }
 }

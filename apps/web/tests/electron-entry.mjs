@@ -93,7 +93,7 @@ async function main() {
     const visibleText = 'document.querySelector(".terminal-pane:not([hidden]) .xterm-rows").textContent'
     await paste('beta-only')
     await until(() => evaluate(`${visibleText}.includes('echo:beta-only')`), 'Beta output')
-    await evaluate('document.getElementById("hosts-tab").click()')
+    await evaluate('document.getElementById("workspace-home").click()')
     assert.equal(await evaluate('document.getElementById("session-workspace").hidden && !document.getElementById("hosts-panel").hidden'), true)
     await evaluate('[...document.querySelectorAll(".session-tab [role=tab]")].find(tab => tab.textContent === "Alpha terminal").click()')
     await paste('alpha-only')

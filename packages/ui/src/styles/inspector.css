@@ -17,65 +17,82 @@
    dark has no elevation language, and a shadow on a full-height panel only
    reads as a smudge. */
 #toolbar { display: flex; width: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; padding: 0; border-left: 1px solid var(--line); background: var(--c-surface); }
-.toolbar-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 18px; min-height: 86px; padding: 17px 17px 15px 22px; border-bottom: 1px solid var(--line-soft); }
-.form-context { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
-.mode { overflow: hidden; color: var(--tx-1); font-size: 17px; font-weight: 700; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
+/* 原型 .ih：40px 高的一条，左边一个 --fs-micro 的标签，右边一个 26px 图标按钮。
+   这里原来是 86px —— 17px 的标题加一行副标题再加 17/22px 的内边距。 */
+.toolbar-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); }
+.form-context { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+/* 原型把这条写成 .micro：11px、500、.07em、大写、--tx-4。第四级按登记簿不能当正文
+   （见 docs/design-system.md 的合法矩阵），所以取 --tx-2：在 --c-surface 上两个主题
+   都过 AA，而这一行是面板的标题，本来也不该是全场最弱的一档。 */
+.mode { overflow: hidden; color: var(--tx-2); font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
 .mode.editing { color: var(--ac); }
-.drawer-subtitle { color: var(--ac); font-size: var(--fs-meta); }
-.drawer-subtitle i { margin-left: 3px; color: var(--tx-3); font-size: 14px; vertical-align: -1px; }
-.toolbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 3px; }
-.drawer-action { min-width: 34px; min-height: 34px; font-size: 20px; }
-.drawer-close { font-size: 21px; }
-.drawer-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px 22px 28px; scrollbar-color: var(--scroll-thumb-strong) transparent; scrollbar-width: thin; }
-.drawer-section { padding: 0 0 23px; }
-.drawer-section + .drawer-section { padding-top: 2px; }
-.drawer-section h2 { margin: 0 0 14px; color: var(--tx-1); font-size: var(--fs-h2); font-weight: 700; letter-spacing: -0.01em; }
-.address-control { display: flex; align-items: center; gap: 14px; min-height: 153px; padding: 20px 21px 20px 22px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--c-surface); }
-.connection-type { display: grid; flex: 0 0 auto; width: 55px; height: 55px; place-items: center; border-radius: var(--r-4); background: var(--c-control); color: var(--tx-1); font-size: 28px; }
-.address-control input { flex: 1 1 auto; height: 55px; background: var(--c-inset); font-size: var(--fs-h2); }
-.address-control input:focus { border-color: var(--ac); box-shadow: none; }
-.drawer-placeholder { display: flex; align-items: center; gap: 9px; min-height: 54px; margin-top: 12px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--c-inset); color: var(--tx-3); }
-.drawer-placeholder:first-of-type { margin-top: 0; }
-.drawer-placeholder i { flex: 0 0 auto; font-size: 20px; }
-.drawer-placeholder input { height: 50px; padding: 0; border: 0; background: transparent; color: var(--tx-3); font-size: var(--fs-em); }
-.drawer-placeholder input:disabled { opacity: 1; }
-.drawer-placeholder-split input { flex: 1 1 auto; }
-.drawer-placeholder-split span { color: var(--tx-3); font-size: var(--fs-ui); }
-.ssh-section { padding-top: 0; padding-bottom: 23px; border-bottom: 1px solid var(--line); }
-.ssh-port-row { display: flex; align-items: center; gap: 8px; color: var(--tx-1); font-size: 15px; }
-.ssh-port-row strong { font-weight: 700; }
-.port-control { display: block; width: 118px; }
-.port-control input { height: 44px; text-align: center; }
-.credentials-section { padding-top: 19px; }
-.row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
-.field { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
-.field > span { color: var(--tx-3); font-size: var(--fs-micro); font-weight: 600; }
+.drawer-subtitle { color: var(--tx-3); font-size: var(--fs-micro); white-space: nowrap; }
+.drawer-subtitle i { margin-left: 3px; color: var(--tx-3); font-size: 12px; vertical-align: -1px; }
+.toolbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; }
+.drawer-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px; scrollbar-color: var(--scroll-thumb-strong) transparent; scrollbar-width: thin; }
+/* 原型 .sec：靠 margin-bottom 分开，标题是一条 --fs-micro 的微标签加一道细线，
+   而不是 16px 的 h2。 */
+.drawer-section { padding: 0 0 16px; }
+.drawer-section h2 { margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft); color: var(--tx-3); font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; }
+/* 地址和端口是同一个决定的两半 —— 连到哪。分成「Address」和「SSH on … port」两个
+   区，等于让用户把一句话读两遍。端口框的 64px 和主机框的 mono 都照原型的 .row2 与
+   .port；这一行没有那个 55px 的图标方块，因为它一进来主机框就只剩 64px 了。两个框
+   都是原型 .in 的 28px 高，不再是原来那块 153px 的主视觉。 */
+.address-row { display: flex; align-items: center; gap: 7px; }
+.address-host { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); }
+.port-control { flex: 0 0 auto; width: 64px; text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* 身份与凭据之间的那道线：上面是「连到哪」，下面是「你是谁」。原先它挂在那个装着
+   端口框的 .ssh-section 上，端口并进 Address 之后，它跟着落到最后一个身份区下面，
+   位置没变。 */
+.general-section { padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.address-hint { margin: 6px 0 0; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); overflow-wrap: anywhere; }
+.address-hint:empty { display: none; }
+/* 两选一的分段开关，照原型 .switch：--c-inset 底、--r-1、选项 26px 高。
+   选项上写的是 min-height 而不是 height —— base.css 给每个 button 垫了 28px，
+   只写 height 会被那个下限盖掉，这个坑本仓库已经踩过三次。 */
+.switch { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--c-inset); }
+.switch-option { flex: 1 1 0; min-width: 0; min-height: 26px; padding: 0 10px; border-color: transparent; border-radius: var(--r-1); background: transparent; color: var(--tx-3); font-size: var(--fs-meta); white-space: nowrap; }
+.switch-option:hover:not(:disabled) { border-color: transparent; background: var(--overlay-hover); color: var(--tx-1); }
+.switch-option[aria-pressed="true"] { border-color: transparent; background: var(--c-control); color: var(--tx-1); }
+.row { display: flex; align-items: flex-end; gap: 7px; flex-wrap: wrap; }
+.field { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
+.field > span { color: var(--tx-3); font-size: var(--fs-meta); font-weight: 400; }
 .credentials-section > .field,
-.auth-field { margin-bottom: 12px; }
-input, select { width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: var(--r-4); outline: none; background: var(--c-control); color: var(--tx-1); font-size: var(--fs-em); transition: border-color var(--t-2) var(--ease), background-color var(--t-2) var(--ease), box-shadow var(--t-2) var(--ease); }
+.auth-field { margin-bottom: 10px; }
+/* 原型 .in：28px 高、0 8px 内边距、--c-inset 底、--r-1。原来是 46px 高、0 13px
+   内边距、--c-control 底、12px 圆角 —— 一个抽屉里放不下两个字段。 */
+input, select { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-1); outline: none; background: var(--c-inset); color: var(--tx-1); font-size: var(--fs-ui); transition: border-color var(--t-2) var(--ease), background-color var(--t-2) var(--ease), box-shadow var(--t-2) var(--ease); }
 input::placeholder { color: var(--tx-4); }
 input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--line-strong); background: var(--c-raised); }
 /* :focus carries no ring of its own: base.css owns the keyboard ring and does
    it through :focus-visible, so repeating a ring here would double up on every
    pointer click instead. */
-input:focus, select:focus { border-color: var(--ac); background: var(--c-inset); box-shadow: none; }
+input:focus, select:focus { border-color: var(--ac); background: var(--c-canvas); box-shadow: none; }
 input:disabled, select:disabled { cursor: not-allowed; opacity: 0.5; }
 #key-path { color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); text-overflow: ellipsis; }
 .credential-row { display: grid; grid-template-columns: minmax(220px, 1fr); margin-top: 2px; }
 .key-row { grid-template-columns: minmax(160px, 1fr) auto; }
 .key-row .field:last-child { grid-column: 1 / -1; }
-.key-row > button { align-self: end; min-height: 46px; }
-.check { display: flex; align-items: center; min-height: 34px; gap: 8px; padding: 10px 2px 0; color: var(--tx-3); font-size: var(--fs-meta); white-space: nowrap; }
-.check input { width: 15px; height: 15px; margin: 0; accent-color: var(--ac); }
-#credential-hint { max-width: 80ch; margin: 14px 0 0; color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.5; }
-.drawer-footer { flex: 0 0 auto; padding: 12px 22px 20px; border-top: 1px solid var(--line); background: var(--c-chrome); }
-.drawer-record-actions { display: flex; align-items: center; gap: 4px; margin-bottom: 11px; }
-.drawer-record-actions button { min-height: 30px; padding: 0 8px; font-size: var(--fs-micro); }
-.drawer-record-actions i { margin-right: 4px; }
-.drawer-record-actions .danger:hover:not(:disabled) { color: var(--err); }
-.drawer-connect { width: 100%; min-height: 54px; border-radius: var(--r-4); font-size: 15px; }
-.drawer-disconnect { width: 100%; margin-top: 8px; }
-#status { min-height: 20px; padding: 10px 0 0; color: var(--tx-3); font-size: var(--fs-meta); line-height: 1.5; overflow-wrap: anywhere; }
+.key-row > button { align-self: end; min-height: 28px; }
+/* 原型 .cb：一行「复选框 + 说明」，--tx-2、--fs-meta、10px 上边距。 */
+.check { display: flex; align-items: center; min-height: 0; gap: 7px; margin-top: 10px; padding: 0; color: var(--tx-2); font-size: var(--fs-meta); white-space: nowrap; }
+/* 复选框要把下面那条 input 规则整个推掉：它是 input，会继承 28px 高、--c-inset 底、
+   --r-1 圆角和一个边框。Chrome 画原生控件时本来就不理这些，但「靠浏览器忽略」不是
+   一条能读的规矩，写出来才是。 */
+.check input { width: 14px; height: 14px; margin: 0; padding: 0; border: 0; border-radius: var(--r-1); background: none; accent-color: var(--ac); }
+/* 原型 .lock 是一条 11px 的灰字加一把锁。这里保留了一圈边框：私钥不落明文是用户
+   无法从界面推断出来的那句话（密钥库那边为同一条理由用了横幅），在 322px 的抽屉里
+   一行 11px 的灰字会被直接读过去。 */
+.credential-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--c-inset); color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.5; }
+.credential-note i { flex: 0 0 auto; font-size: 14px; }
+#credential-hint { max-width: 80ch; margin: 8px 0 0; color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.5; }
+/* 原型 .if：一行 —— 删除在左，保存与连接在右。原型的按钮之间有一个 .sp，这里用
+   margin-left 顶开同一个位置，省掉那个只用来撑开的节点。#status 是这一屏自己的
+   实时区域，占满第二行，所以它是 flex: 1 1 100% 而不是一个绝对定位的浮层。 */
+.drawer-footer { display: flex; flex-wrap: wrap; align-items: center; flex: 0 0 auto; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--c-chrome); }
+#host-save { margin-left: auto; }
+.drawer-connect { min-height: 28px; border-radius: var(--r-1); font-size: var(--fs-ui); }
+#status { flex: 1 1 100%; min-height: 18px; color: var(--tx-3); font-size: var(--fs-meta); line-height: 1.5; overflow-wrap: anywhere; }
 #status.ok { color: var(--ok); }
 #status.err { color: var(--err); }
 #status.pending { color: var(--ac); }
@@ -94,6 +111,6 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: 0.5; }
   .credential-row { display: flex; align-items: stretch; }
   .credential-row .field { flex: 1 1 100%; }
   .key-row > button { flex: 1 1 120px; align-self: end; }
-  .toolbar-head { min-height: 76px; padding-left: 16px; }
-  .drawer-scroll, .drawer-footer { padding-right: 16px; padding-left: 16px; }
+  .toolbar-head { padding-left: 12px; }
+  .drawer-scroll, .drawer-footer { padding-right: 12px; padding-left: 12px; }
 }

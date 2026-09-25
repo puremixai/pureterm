@@ -1,15 +1,16 @@
 /* Keychain shares the host card language, with a reflowing library/editor split. */
 .keychain-dashboard { display: flex; height: 100%; min-height: 0; overflow: hidden; }
 .keychain-main { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; container-type: inline-size; }
-.keychain-toolbar.dashboard-toolbar { flex: 0 0 auto; align-items: center; flex-direction: row; min-height: 86px; margin: 0; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--c-chrome); gap: 16px; }
-.keychain-toolbar .action-primary { flex: 0 0 auto; }
-.keychain-toolbar .dashboard-tools { min-width: 0; align-self: center; margin-left: auto; }
-.keychain-search { position: relative; display: flex; align-items: center; min-width: 0; max-width: 260px; }
-.keychain-search > i { position: absolute; left: 12px; color: var(--tx-3); font-size: 18px; pointer-events: none; }
-.keychain-search input { height: 40px; padding-left: 37px; border-color: transparent; border-radius: var(--r-3); background: var(--c-control); }
-.keychain-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 28px 32px; scrollbar-color: var(--scroll-thumb-strong) transparent; scrollbar-width: thin; }
-.keychain-content .hosts-heading { margin: 0 0 8px; }
-.keychain-policy { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; padding: 8px 10px; color: var(--tx-2); font-size: var(--fs-meta); line-height: 1.6; background: var(--c-surface); border: 1px solid var(--line); border-left: 2px solid var(--ac); border-radius: var(--r-2); }
+/* 头部照原型 ③ 画成一条 40px 的 chrome 栏：那一屏在原型里是直接复用顶栏的 .tb 画的，
+   所以它的标题是 --fs-em/600 而不是主机页的 --fs-h1 —— 这道不对称是原型自己的，
+   照抄。--line 画在 --c-chrome 上是 1.323（深）/ 1.128（浅），过得去。 */
+.keychain-head { flex: 0 0 auto; min-height: 40px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); background: var(--c-chrome); }
+.keychain-head h1 { font-size: var(--fs-em); }
+.keychain-head .host-count { font-size: var(--fs-micro); }
+/* 原型的密钥库搜索框比主机页窄一档：180px 对 210px。 */
+.keychain-search { width: 180px; }
+.keychain-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px; scrollbar-color: var(--scroll-thumb-strong) transparent; scrollbar-width: thin; }
+.keychain-policy { display: flex; gap: 8px; align-items: center; margin: 0 0 10px; padding: 8px 10px; color: var(--tx-2); font-size: var(--fs-meta); line-height: 1.6; background: var(--c-surface); border: 1px solid var(--line); border-left: 2px solid var(--ac); border-radius: var(--r-2); }
 /* The never-plaintext guarantee is the one thing a user cannot infer from the UI,
    so it is a banner above the list rather than a line of small text under it. */
 .keychain-policy:empty { display: none; }
@@ -19,11 +20,13 @@
 /* Six tracks, the last one the edit button: five columns of data plus the
    action, exactly the hosts table's shape. */
 #keychain-columns,
-.keychain-card { display: grid; grid-template-columns: minmax(0,1.2fr) 1fr 1.5fr 62px 74px 24px; align-items: center; gap: 12px; padding: 0 10px; }
-.keychain-card { min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
+.keychain-card { display: grid; grid-template-columns: minmax(0,1.2fr) 1fr 1.5fr 62px 74px 24px; align-items: center; gap: 10px; padding: 0 10px; }
+.keychain-card { position: relative; min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-2); background: var(--c-surface); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
 .keychain-card:hover { border-color: var(--line-strong); background: var(--c-raised); }
-.keychain-card.active { border-color: var(--ac); }
-.keychain-card-main { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 14px; padding: 0; border: 0; background: transparent; text-align: left; }
+.keychain-card.active { border-color: var(--ac-line); background: var(--ac-bg); }
+/* 与主机行同一道选中标记：原型给两张表的是同一条 2px 强调条。 */
+.keychain-card.active::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 0; width: 2px; border-radius: 1px; background: var(--ac); }
+.keychain-card-main { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 8px; padding: 0; border: 0; background: transparent; text-align: left; }
 .keychain-card-main:hover:not(:disabled) { background: transparent; }
 /* The row's box owns the height — see hosts.css, where the same floor on every
    button made the compact density do nothing. */
@@ -33,14 +36,15 @@
    row came out 59px tall next to a 39px host row. The icon needs 26px where the
    hosts table's "SSH" chip gets by with 20px, and the card keeps the 58px
    square at the card radius. */
-.keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 26px; height: 26px; border-radius: var(--r-2); color: var(--tx-1); background: var(--c-control); font-size: 16px; }
+.keychain-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 26px; height: 26px; border-radius: var(--r-2); color: var(--tx-3); background: var(--c-control); font-size: 16px; }
+.keychain-card.active .keychain-avatar { background: var(--ac); color: var(--ac-fg); }
 .keychain-card .host-content { gap: 5px; }
 /* In the table the type is a column, so a "Type ed25519" line under the name
    says it twice and makes the row two lines tall next to a one-line host row.
    The card has no columns, so there it is the name's only companion. */
 .keychain-card-sub { display: none; color: var(--tx-3); font-size: var(--fs-meta); font-weight: 400; }
 .keychain-list.card-view .keychain-card-sub { display: block; }
-.keychain-card-edit { flex: 0 0 auto; min-width: 32px; margin-right: 10px; opacity: 0; }
+.keychain-card-edit { flex: 0 0 auto; min-width: 24px; margin-right: 0; opacity: 0; }
 .keychain-card:hover .keychain-card-edit, .keychain-card:focus-within .keychain-card-edit, .keychain-card.active .keychain-card-edit { opacity: 1; }
 .keychain-list.card-view { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .keychain-list.card-view .keychain-card { grid-template-columns: minmax(0, 1fr); align-items: flex-start; min-height: 91px; padding: 0; }
@@ -49,46 +53,49 @@
 /* A card keeps the fingerprint: type and dates are noise, the print is what you
    match against the server. */
 .keychain-list.card-view .keychain-card .host-cell.mono { display: block; order: 2; color: var(--tx-3); font-size: var(--fs-micro); }
-.keychain-list.card-view .keychain-avatar { width: 58px; height: 58px; font-size: 29px; border-radius: var(--r-4); }
+.keychain-list.card-view .keychain-avatar { width: 58px; height: 58px; font-size: 29px; border-radius: var(--r-3); }
 #keychain-view[aria-pressed="true"] { background: var(--c-control); }
-.keychain-empty { display: grid; justify-items: center; max-width: 450px; margin: 65px auto; text-align: center; color: var(--tx-3); }
-.keychain-empty > i { display: grid; place-items: center; width: 72px; height: 72px; margin-bottom: 18px; border-radius: var(--r-4); background: var(--c-surface); color: var(--ac); font-size: 34px; }
-.keychain-empty h2 { margin: 0; color: var(--tx-1); font-size: 19px; }
-.keychain-empty p { line-height: 1.8; }
+/* 原型 .es：一个 26px 的方框图标、一句 12px 的标题、一行 11px 的说明。
+   原来是 72px 的图标加 19px 的标题 —— 空状态比它要替代的那张表还抢眼。 */
+.keychain-empty { display: grid; justify-items: center; max-width: 450px; margin: 48px auto; text-align: center; color: var(--tx-3); }
+.keychain-empty > i { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 12px; border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--c-surface); color: var(--tx-3); font-size: 16px; }
+.keychain-empty h2 { margin: 0 0 6px; color: var(--tx-2); font-size: var(--fs-meta); font-weight: 500; }
+.keychain-empty p { margin: 0; font-size: var(--fs-micro); line-height: 1.6; }
 /* The editor recedes to the canvas ground so its sections read as raised
    cards; the register had them the same tint as the panel behind them. */
 .keychain-editor { display: flex; flex: 0 0 var(--insp-w); min-width: 0; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--c-canvas); }
 .keychain-editor .toolbar-head { background: var(--c-chrome); }
 .keychain-editor fieldset { min-inline-size: 0; margin: 0; border: 0; }
-.keychain-editor .drawer-scroll { padding: 18px 16px; }
-.keychain-form-section { padding: 22px; border: 1px solid var(--line-soft); border-radius: var(--r-4); background: var(--c-surface); }
-.keychain-form-section + .keychain-form-section { margin-top: 20px; }
-.keychain-form-section .field + .field { margin-top: 15px; }
-.keychain-form-section .field > span { font-size: var(--fs-meta); }
-.keychain-form-section input, .keychain-form-section textarea { background: transparent; }
+.keychain-editor .drawer-scroll { padding: 14px; }
+/* 原型的 .sec：分组靠一条 --fs-micro 的微标题加一道细线分开，不再是一个 22px
+   内边距的卡片 —— 322px 的抽屉里，卡片边框只是把可用的宽度又吃掉 24px。 */
+.keychain-form-section { padding: 0 0 16px; }
+.keychain-form-section h2 { margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft); color: var(--tx-3); font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; }
+.keychain-form-section .field + .field { margin-top: 10px; }
 
-#keychain-details { margin-top: 16px; }
-#keychain-fingerprint { display: block; margin: 12px 0; color: var(--tx-3); overflow-wrap: anywhere; font-size: var(--fs-micro); line-height: 1.7; }
-.keychain-drop { display: grid; justify-items: center; gap: 8px; padding: 25px 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-3); text-align: center; color: var(--tx-3); }
-.keychain-drop > i { color: var(--ac); font-size: 36px; }
-.keychain-drop p { margin: 5px 0; font-size: var(--fs-ui); }
+/* 已保存密钥的元信息：两个标签一行、指纹一行、动作一行。指纹单独占一行是因为
+   SHA256 指纹很长，和标签挤在一行会被压成省略号，而它正是要拿去和服务器比对的
+   那串字。 */
+#keychain-details { display: grid; gap: 8px; margin-top: 12px; }
+.keychain-detail-chips, .keychain-detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#keychain-fingerprint { margin: 0; color: var(--tx-3); overflow-wrap: anywhere; font-size: var(--fs-micro); line-height: 1.6; }
+/* 原型 .drop：16px 的内边距、--c-inset 底、--r-2、一句话加一行小字。 */
+.keychain-drop { display: grid; justify-items: center; gap: 6px; padding: 16px 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-2); background: var(--c-inset); text-align: center; color: var(--tx-3); }
+.keychain-drop > i { color: var(--ac); font-size: 20px; }
+.keychain-drop p { margin: 0; color: var(--tx-2); font-size: var(--fs-meta); }
 .keychain-drop > span { color: var(--tx-3); font-size: var(--fs-micro); }
 .keychain-drop.is-dragging { border-color: var(--ac); background: var(--ac-bg); }
-.keychain-import { width: 100%; min-height: 46px; margin-top: 18px; background: var(--c-control); }
-.keychain-help { margin: 14px 0 0; color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.7; }
-.keychain-message { margin: 0 0 12px; color: var(--tx-3); font-size: var(--fs-meta); line-height: 1.7; overflow-wrap: anywhere; }
+.keychain-import { width: 100%; min-height: 28px; margin-top: 12px; background: var(--c-control); }
+.keychain-help { margin: 10px 0 0; color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.6; }
+.keychain-message { margin: 0 0 10px; color: var(--tx-3); font-size: var(--fs-meta); line-height: 1.6; overflow-wrap: anywhere; }
 .keychain-message:empty { display: none; }
 .keychain-message.ok { color: var(--ok); }
 .keychain-message.err { color: var(--err); }
-.keychain-footer-actions { display: flex; gap: 12px; }
-.keychain-footer-actions .primary { flex: 1 1 auto; min-height: 46px; }
+.keychain-footer-actions { display: flex; gap: 8px; }
+.keychain-footer-actions .primary { flex: 1 1 auto; min-height: 28px; }
 .keychain-footer-actions .danger:hover { color: var(--err); }
 
 @media (max-width: 1100px) {
-  .keychain-toolbar.dashboard-toolbar { padding: 16px; flex-wrap: wrap; }
-  .keychain-content { padding: 24px 16px; }
-  .keychain-toolbar .dashboard-tools { flex: 1 1 auto; }
-  .keychain-search { flex: 1 1 auto; max-width: none; }
   /* Below this the dock would leave the list too narrow to read, so the editor
      goes back to an overlay — the one place in these screens that still is one. */
   .keychain-editor { position: absolute; inset: 0 0 0 auto; z-index: 6; width: min(var(--insp-w), 100%); }
@@ -101,5 +108,14 @@
   .keychain-list:not(.card-view) .keychain-card { grid-template-columns: minmax(0,1fr) 24px; }
   .keychain-list:not(.card-view) .keychain-card .host-cell,
   #keychain-columns span:not(:first-child) { display: none; }
+}
+
+@media (max-width: 620px) {
+  /* 与主机页同一条规矩：180px 的搜索框和标题挤不进一行时，整行折下去。折下去就不再
+     是 40px 的栏，所以内边距换成上下 8px。 */
+  .keychain-head { flex-wrap: wrap; padding: 8px 10px; }
+  .keychain-search { order: 2; width: 100%; margin-left: 0; }
+  #keychain-new { margin-left: auto; }
+  .keychain-content { padding: 12px 10px; }
 }
 @media (hover: none) { .keychain-card-edit { opacity: 1; } }

@@ -2,6 +2,13 @@ import { readFile } from 'node:fs/promises'
 
 const manifestUrl = new URL('../src/style.css', import.meta.url)
 
+// Two manifests, and the second one is the point. desktop.css carries the sheet the
+// standalone Web entry must not have — the top bar's caption buttons — so a partial
+// only that manifest imports would ship unscanned if these guards assumed style.css
+// was the whole cascade. Reading both is what keeps "an unchecked file is an escape
+// route" true for the file the Web entry does not load.
+const MANIFESTS = ['style.css', 'desktop.css']
+
 export async function readManifest() {
   return readFile(manifestUrl, 'utf8')
 }
@@ -27,8 +34,21 @@ export function totalImports(manifest) {
 }
 
 export async function readPartials() {
-  const manifest = await readManifest()
-  const names = partialNames(manifest)
-  const texts = await Promise.all(names.map((name) => readFile(new URL(`../src/styles/${name}.css`, import.meta.url), 'utf8')))
-  return { manifest, names, css: texts.join('\n'), texts }
+  const manifests = await Promise.all(MANIFESTS.map((name) => readFile(new URL(`../src/${name}`, import.meta.url), 'utf8')))
+  const cache = new Map()
+  const load = async (name) => {
+    if (!cache.has(name)) cache.set(name, await readFile(new URL(`../src/styles/${name}.css`, import.meta.url), 'utf8'))
+    return cache.get(name)
+  }
+  const groups = []
+  for (const [index, manifest] of manifests.entries()) {
+    const names = partialNames(manifest)
+    const texts = await Promise.all(names.map(load))
+    groups.push({ name: MANIFESTS[index], manifest, names, texts, css: texts.join('\n') })
+  }
+  // The flat view is every partial of every manifest, in manifest order: the censuses
+  // scan this, so a partial cannot be covered in one manifest and skipped in the other.
+  const names = groups.flatMap((group) => group.names)
+  const texts = groups.flatMap((group) => group.texts)
+  return { manifest: manifests[0], manifests, groups, names, texts, css: texts.join('\n') }
 }

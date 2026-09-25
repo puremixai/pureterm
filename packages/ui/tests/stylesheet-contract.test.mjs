@@ -71,7 +71,7 @@ function declarations(text, property) {
 }
 
 test('no partial hard-codes a colour', async () => {
-  const { manifest, names, texts } = await readPartials()
+  const { groups, names, texts } = await readPartials()
   assert.deepEqual([...EXEMPT].sort(), SANCTIONED,
     'only the two literal registers may be exempt; exempting a partial that resolves colour through tokens would make this test decorative')
   for (const name of EXEMPT) {
@@ -79,9 +79,13 @@ test('no partial hard-codes a colour', async () => {
       `EXEMPT still lists styles/${name}.css, which the manifest no longer imports; drop the exemption`)
   }
   // A url(...) import yields no name, so the file would ship in the cascade and
-  // never be scanned; the Tabler line is the manifest's only non-partial import.
-  assert.equal(totalImports(manifest), names.length + 1,
-    'every @import in style.css must be one partial plus the Tabler line; an import form the name parser drops escapes this test')
+  // never be scanned. The Tabler line is the only non-partial import and it is in
+  // style.css alone; desktop.css is one import per partial and nothing else.
+  for (const group of groups) {
+    const external = group.name === 'style.css' ? 1 : 0
+    assert.equal(totalImports(group.manifest), group.names.length + external,
+      `every @import in ${group.name} must be one partial, plus the Tabler line in style.css; an import form the name parser drops escapes this test`)
+  }
   const reports = []
   let scanned = 0
   for (const [name, text] of names.map((n, i) => [n, texts[i]])) {
@@ -219,9 +223,20 @@ test('base.css pins the icon font to the weight it actually has', async () => {
 // placeholder is the only sanctioned use: it names a field whose label is
 // already on screen and it disappears on the first keystroke. The column header
 // this catches was real text at 2.88:1.
+//
+// Exactly one selector is exempt, and it is named rather than described: the top
+// bar's brand suffix (`/ Vault`, `/ Session`, 2.79:1 on --c-chrome dark and
+// 2.28:1 light). It is decorative — it restates what the rail's active item and
+// the panel's own heading already say, so losing it costs no information — and
+// the prototype draws it at --tx-4. The exemption is audited the way EXEMPT is:
+// it has to still be a selector some partial declares, so an exemption cannot
+// outlive the rule it was written for.
+const DECORATIVE_TX4 = new Set(['.workspace-copy small'])
+
 test('the weakest text rung is only ever drawn on a placeholder', async () => {
   const { names, texts } = await readPartials()
   const offenders = []
+  const exempted = new Set()
   // Rule-by-rule rather than line-by-line: the selector lives before the brace,
   // and a media block's prelude cannot match because the selector class excludes
   // a second brace.
@@ -231,10 +246,19 @@ test('the weakest text rung is only ever drawn on a placeholder', async () => {
     for (const match of source.matchAll(RULE)) {
       const [, selector, body] = match
       if (/[:\s]color\s*:[^;]*var\(--tx-4\)/.test(body) && !selector.includes('::placeholder')) {
+        const subject = selector.trim()
+        if (DECORATIVE_TX4.has(subject)) {
+          exempted.add(subject)
+          continue
+        }
         const line = source.slice(0, match.index).split('\n').length
-        offenders.push(`  styles/${name}.css:${line}: "${selector.trim()}"`)
+        offenders.push(`  styles/${name}.css:${line}: "${subject}"`)
       }
     }
+  }
+  for (const exempt of DECORATIVE_TX4) {
+    assert.ok(exempted.has(exempt),
+      `"${exempt}" is exempt from the --tx-4 rule, but no partial draws it at --tx-4 any more; drop the exemption`)
   }
   assert.equal(offenders.length, 0,
     `--tx-4 is below AA as text; use --tx-3, or make the rule a ::placeholder:\n\n${offenders.join('\n')}`)

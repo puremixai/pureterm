@@ -1,6 +1,8 @@
 import { Service, type Context } from 'cordis'
 import { MAX_PRIVATE_KEY_BYTES, type KeyRecord, type KeySaveRequest } from '@pureterm/protocol'
 import { ClientScope, cleanError, DomListeners } from '../client-runtime.js'
+import { saveBytes } from '../local-file.js'
+import { formatBytes } from '../format.js'
 
 declare module 'cordis' { interface Context { clientKeychain: ClientKeychain } }
 
@@ -38,6 +40,7 @@ export class ClientKeychain extends Service {
       this.el('keychain-editor').hidden = true
       if (this.sessionOnly) this.keys = []
       this.setBusy(false)
+      this.renderSummary()
       this.render()
       this.el('keychain-list').setAttribute('aria-busy', 'false')
       this.notice(this.sessionOnly ? '与后端断开，临时密钥和草稿已清除。重新连接后请再次导入密钥。' : '与后端断开，未保存的草稿已清除。已加密保存的密钥不受影响。', true)
@@ -54,6 +57,7 @@ export class ClientKeychain extends Service {
     this.scope.listen(this.el('keychain-editor'), 'submit', event => { event.preventDefault(); void this.save() })
     this.scope.listen(this.el('keychain-delete'), 'click', () => void this.remove())
     this.scope.listen(this.el('keychain-copy'), 'click', () => void this.copyPublicKey())
+    this.scope.listen(this.el('keychain-download'), 'click', () => this.downloadPublicKey())
     this.scope.listen(this.el('keychain-reload'), 'click', () => void this.refresh())
     this.scope.listen(this.el('keychain-import'), 'click', () => { this.el<HTMLInputElement>('keychain-file').value = ''; this.el('keychain-file').click() })
     this.scope.listen(this.el('keychain-file'), 'change', () => {
@@ -83,6 +87,7 @@ export class ClientKeychain extends Service {
           this.el<HTMLInputElement>('keychain-passphrase').disabled = !!this.editingId && !this.value('keychain-private').trim()
         }
         if (id === 'keychain-label') this.render()
+        if (id !== 'keychain-label') this.renderSummary()
       })
     }
     this.scope.listen(ctx.clientView.document, 'keydown', event => {
@@ -251,6 +256,7 @@ export class ClientKeychain extends Service {
       this.el('keychain-type').textContent = `${key.type}${key.hasPassphrase ? ' · 有口令保护' : ''}`
     }
     this.status('')
+    this.renderSummary()
     this.render()
     this.el('keychain-label').focus()
   }
@@ -261,8 +267,30 @@ export class ClientKeychain extends Service {
     this.dirty = false
     this.clearPrivate()
     this.el('keychain-editor').hidden = true
+    this.renderSummary()
     this.render()
     this.el('keychain-new').focus()
+  }
+
+  /**
+   * 草稿阶段能诚实说出来的那几件事。
+   *
+   * 「PEM 有效」这句话页面说不了：解析私钥的是 Host，客户端只有一条 `BEGIN … PRIVATE
+   * KEY` 的正则，拿它当校验结论就是在编。所以这里只报手里真有的 —— 字节数、口令状态、
+   * 公钥的来源 —— 而「私钥有效」那枚标签只出现在已保存的密钥上，因为那是 Host 已经
+   * 校验过的事实。
+   */
+  private renderSummary(): void {
+    const summary = this.el('keychain-summary')
+    const privateKey = this.value('keychain-private')
+    const facts: string[] = []
+    if (privateKey) {
+      facts.push(formatBytes(new TextEncoder().encode(privateKey).length))
+      facts.push(this.value('keychain-passphrase') ? '有口令保护' : '未加密')
+      facts.push(this.value('keychain-public').trim() ? '已提供公钥，保存时校验是否匹配' : '公钥由私钥自动生成')
+    }
+    summary.textContent = facts.join(' · ')
+    summary.hidden = facts.length === 0
   }
 
   private setBusy(busy: boolean): void {
@@ -319,6 +347,7 @@ export class ClientKeychain extends Service {
       if (!this.value('keychain-label').trim()) this.value('keychain-label', file.name)
       this.el<HTMLInputElement>('keychain-passphrase').disabled = false
       this.dirty = true
+      this.renderSummary()
       this.render()
       this.status(`已读取「${file.name}」。若有口令请填写，然后保存。`)
       this.el('keychain-passphrase').focus()
@@ -349,5 +378,20 @@ export class ClientKeychain extends Service {
     if (!key) return
     try { await this.ctx.clientView.window.navigator.clipboard.writeText(key.publicKey); if (this.scope.alive) this.status('公钥已复制。', 'ok') }
     catch { if (this.scope.alive) this.status('复制失败，请选中公钥内容手动复制。', 'err') }
+  }
+
+  /**
+   * 导出成 .pub 文件，走的是和 SFTP 下载同一条路（Blob + `<a download>`），
+   * 所以桌面端和浏览器端不分叉，也不需要额外的原生能力。
+   */
+  private downloadPublicKey(): void {
+    const key = this.keys.find(key => key.id === this.editingId)
+    if (!key) return
+    // 标签是用户自己写的，可能带路径分隔符；带 `/` 的 download 值会被实现当成
+    // 路径处理，落下来的名字就不是用户看到的那个。
+    const name = `${key.label.replace(/[\\/]/g, '_')}.pub`
+    const bytes = new TextEncoder().encode(`${key.publicKey}\n`)
+    this.ctx.effect(() => saveBytes(bytes, name), 'keychain.pub')
+    this.status(`已导出 ${name}。`, 'ok')
   }
 }
