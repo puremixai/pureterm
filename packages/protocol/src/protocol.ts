@@ -26,6 +26,8 @@ export const METHODS = {
   sftpWrite: 'sftp:write',
   sftpMkdir: 'sftp:mkdir',
   sftpRemove: 'sftp:remove',
+  monitorStart: 'monitor:start',
+  monitorStop: 'monitor:stop',
 } as const
 
 /** 单向通知：客户端发完就走，不回值（回值了也没人接）。 */
@@ -59,6 +61,8 @@ export const EVENTS = {
   terminalOpened: 'terminal:opened',
   terminalData: 'terminal:data',
   terminalClosed: 'terminal:closed',
+  monitorUpdate: 'monitor:update',
+  sessionFacts: 'session:facts',
 } as const
 
 export type MethodName = (typeof METHODS)[keyof typeof METHODS]
@@ -235,6 +239,271 @@ export interface SftpWriteResult {
   size: number
 }
 
+// ── 会话监控 ──────────────────────────────────────────────────────
+//
+// 一台远端 Linux 主机的资源指标，以及它这条连接的握手事实。两者形状不同，
+// 因为生命周期不同：指标是每 5,000 ms 一次的快照，会变、需要订阅、会被取消；
+// 握手事实在一条连接内固定不变，只在 rekey 时重发，所以没有订阅也没有定时器
+// —— 把常量塞进轮询流里，只会让「每个 ready 字段都是新的」这句话同时有两个意思。
+
+export interface MonitorStartRequest {
+  sessionId: string
+  subscriptionId: string
+}
+
+export interface MonitorStartResult {
+  subscriptionId: string
+  /** 探测完成之后到下一次探测的间隔，不是周期起点之间的间隔 */
+  intervalMs: 5000
+}
+
+export interface MonitorStopResult {
+  stopped: boolean
+}
+
+/** 一条指标。null 表示这一次没量到，不等于 0；issues 里必须有对应的原因。 */
+export type MonitorMetric = 'cpu' | 'memory' | 'load' | 'disk' | 'net' | 'uptime'
+
+/** `warming-up` 只给 CPU 和网络：只有它们是两个样本的增量。 */
+export type MonitorIssue = 'warming-up' | 'unavailable' | 'invalid-data'
+
+export interface MonitorSnapshot {
+  /** 本地 Host 的 Unix 时间，毫秒 */
+  collectedAt: number
+  cpuPercent: number | null
+  memory: { usedBytes: number; totalBytes: number; usedPercent: number } | null
+  load: { one: number; five: number; fifteen: number } | null
+  disk: { mount: '/'; usedBytes: number; totalBytes: number; availableBytes: number; usedPercent: number } | null
+  net: { receivedBytesPerSecond: number; transmittedBytesPerSecond: number } | null
+  /** 远端**主机**的 uptime，不是本会话的时长 */
+  uptimeSeconds: number | null
+  issues: Partial<Record<MonitorMetric, MonitorIssue>>
+}
+
+export interface MonitorUpdate {
+  sessionId: string
+  subscriptionId: string
+  sequence: number
+  status: 'ready' | 'partial' | 'unsupported' | 'error'
+  snapshot: MonitorSnapshot | null
+  /** 远端可控文本：按文本渲染，绝不当作标记语言。上限 512 字符 */
+  message?: string
+}
+
+export interface SessionFacts {
+  sessionId: string
+  /** 每个会话每次握手自增，所以 rekey 会用更高的值取代更早的一组 */
+  revision: number
+  /** ssh2 协商出的算法名，不是指纹。用户在 TOFU 时确认过的指纹留在 known_hosts */
+  serverHostKey: string
+  /** 两个方向各自协商。打印时按 cs，只有两者不同才把 sc 也显示出来 */
+  cipher: { clientToServer: string; serverToClient: string }
+}
+
+export const MONITOR_METRICS: readonly MonitorMetric[] = ['cpu', 'memory', 'load', 'disk', 'net', 'uptime']
+export const MONITOR_ISSUES: readonly MonitorIssue[] = ['warming-up', 'unavailable', 'invalid-data']
+
+/** 会话 ID 的上下限，start 请求与事件用同一套。 */
+export const MAX_SESSION_ID_LENGTH = 128
+/** 订阅 ID 的字符集：UI 每次激活新建一个 UUID。 */
+export const SUBSCRIPTION_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+export const MAX_MESSAGE_LENGTH = 512
+/** 算法名由服务端选择，却要进状态栏，所以只收算法名真正会用的字符。 */
+const ALGORITHM_PATTERN = /^[A-Za-z0-9@._+-]{1,128}$/
+
+const isSafeInteger = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value)
+const isPositiveSafeInteger = (value: unknown): value is number => isSafeInteger(value) && value > 0
+const isNonNegativeSafeInteger = (value: unknown): value is number => isSafeInteger(value) && value >= 0
+const isNonNegativeFinite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+function fail(what: string): never {
+  throw new Error(`监控负载不合法：${what}`)
+}
+
+function checkIdentity(value: Record<string, unknown>, what: string): void {
+  if (typeof value.sessionId !== 'string' || !value.sessionId || value.sessionId.length > MAX_SESSION_ID_LENGTH) {
+    fail(`${what}的 sessionId`)
+  }
+  if (typeof value.subscriptionId !== 'string' || !SUBSCRIPTION_ID_PATTERN.test(value.subscriptionId)) {
+    fail(`${what}的 subscriptionId`)
+  }
+}
+
+/** 百分比只收 0..100 的有限值，且**拒绝**而不是夹紧：夹紧会把坏数据画成一个像样的数字。 */
+function checkPercent(value: unknown, what: string): asserts value is number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) fail(what)
+}
+
+function parseMemory(value: unknown): MonitorSnapshot['memory'] {
+  if (value === null) return null
+  if (!isRecord(value)) fail('memory')
+  const { usedBytes, totalBytes, usedPercent } = value
+  if (!isPositiveSafeInteger(totalBytes)) fail('memory.totalBytes')
+  if (!isNonNegativeSafeInteger(usedBytes) || usedBytes > totalBytes) fail('memory.usedBytes')
+  checkPercent(usedPercent, 'memory.usedPercent')
+  return { usedBytes, totalBytes, usedPercent }
+}
+
+function parseLoad(value: unknown): MonitorSnapshot['load'] {
+  if (value === null) return null
+  if (!isRecord(value)) fail('load')
+  for (const key of ['one', 'five', 'fifteen'] as const) {
+    if (!isNonNegativeFinite(value[key])) fail(`load.${key}`)
+  }
+  return { one: value.one as number, five: value.five as number, fifteen: value.fifteen as number }
+}
+
+function parseDisk(value: unknown): MonitorSnapshot['disk'] {
+  if (value === null) return null
+  if (!isRecord(value)) fail('disk')
+  const { mount, usedBytes, totalBytes, availableBytes, usedPercent } = value
+  if (mount !== '/') fail('disk.mount')
+  if (!isPositiveSafeInteger(totalBytes)) fail('disk.totalBytes')
+  // 保留块让 used + available 可以小于 total，但各自都不能超过它。
+  if (!isNonNegativeSafeInteger(usedBytes) || usedBytes > totalBytes) fail('disk.usedBytes')
+  if (!isNonNegativeSafeInteger(availableBytes) || availableBytes > totalBytes) fail('disk.availableBytes')
+  checkPercent(usedPercent, 'disk.usedPercent')
+  return { mount: '/', usedBytes, totalBytes, availableBytes, usedPercent }
+}
+
+function parseNet(value: unknown): MonitorSnapshot['net'] {
+  if (value === null) return null
+  if (!isRecord(value)) fail('net')
+  const { receivedBytesPerSecond, transmittedBytesPerSecond } = value
+  if (!isNonNegativeFinite(receivedBytesPerSecond)) fail('net.receivedBytesPerSecond')
+  if (!isNonNegativeFinite(transmittedBytesPerSecond)) fail('net.transmittedBytesPerSecond')
+  return { receivedBytesPerSecond, transmittedBytesPerSecond }
+}
+
+function parseIssues(
+  value: unknown,
+  available: Readonly<Record<MonitorMetric, boolean>>,
+): { issues: MonitorSnapshot['issues']; count: number } {
+  if (!isRecord(value)) fail('issues')
+  const issues: MonitorSnapshot['issues'] = {}
+  for (const key of Object.keys(value)) {
+    if (!(MONITOR_METRICS as readonly string[]).includes(key)) fail(`issues.${key}`)
+  }
+  let count = 0
+  for (const metric of MONITOR_METRICS) {
+    const issue = value[metric]
+    if (issue === undefined) continue
+    if (!(MONITOR_ISSUES as readonly string[]).includes(issue as string)) fail(`issues.${metric}`)
+    // 只有增量指标能说「预热中」：内存、负载、磁盘、uptime 一次就读得出来。
+    if (issue === 'warming-up' && metric !== 'cpu' && metric !== 'net') fail(`issues.${metric}`)
+    // 判定规则：可用指标不得带 issue，为 null 的指标必须恰好带一个。
+    // 于是 issues 的键集合与 null 指标的集合完全一致，谁多谁少都是坏数据。
+    if (available[metric]) fail(`issues.${metric}`)
+    issues[metric] = issue as MonitorIssue
+    count++
+  }
+  return { issues, count }
+}
+
+function parseSnapshot(value: unknown): { snapshot: MonitorSnapshot; available: number } {
+  if (!isRecord(value)) fail('snapshot')
+  if (!isNonNegativeSafeInteger(value.collectedAt)) fail('snapshot.collectedAt')
+  if (value.cpuPercent !== null) checkPercent(value.cpuPercent, 'cpuPercent')
+  if (value.uptimeSeconds !== null && !isNonNegativeFinite(value.uptimeSeconds)) fail('uptimeSeconds')
+  const snapshot: MonitorSnapshot = {
+    collectedAt: value.collectedAt,
+    cpuPercent: value.cpuPercent as number | null,
+    memory: parseMemory(value.memory),
+    load: parseLoad(value.load),
+    disk: parseDisk(value.disk),
+    net: parseNet(value.net),
+    uptimeSeconds: value.uptimeSeconds as number | null,
+    issues: {},
+  }
+  const present = {
+    cpu: snapshot.cpuPercent !== null,
+    memory: snapshot.memory !== null,
+    load: snapshot.load !== null,
+    disk: snapshot.disk !== null,
+    net: snapshot.net !== null,
+    uptime: snapshot.uptimeSeconds !== null,
+  }
+  const available = MONITOR_METRICS.filter(metric => present[metric]).length
+  const { issues, count } = parseIssues(value.issues, present)
+  // 每个为 null 的指标都要有原因，否则「没量到」会读成「没有这一项」。
+  if (count !== MONITOR_METRICS.length - available) fail('issues 与 null 指标不匹配')
+  snapshot.issues = issues
+  return { snapshot, available }
+}
+
+/**
+ * 校验一个监控事件。UI transport 捕获这里的异常并忽略整条事件。
+ *
+ * 状态与快照必须自洽，所以数量规则也在这里判定：`ready` 是六个指标全可用且
+ * issues 为空，`partial` 是一到五个可用，零个可用不是「全 null 的 partial」
+ * 而是 `snapshot: null` 的 `error`。
+ */
+export function parseMonitorUpdate(value: unknown): MonitorUpdate {
+  if (!isRecord(value)) fail('update')
+  checkIdentity(value, 'update')
+  if (!isPositiveSafeInteger(value.sequence)) fail('sequence')
+  const status = value.status
+  if (status !== 'ready' && status !== 'partial' && status !== 'unsupported' && status !== 'error') fail('status')
+  let message: string | undefined
+  if (value.message !== undefined) {
+    if (typeof value.message !== 'string' || value.message.length > MAX_MESSAGE_LENGTH) fail('message')
+    message = value.message
+  }
+  if (status === 'error' || status === 'unsupported') {
+    if (value.snapshot !== null) fail(`${status} 的 snapshot`)
+    if (!message) fail(`${status} 的 message`)
+    return {
+      sessionId: value.sessionId as string,
+      subscriptionId: value.subscriptionId as string,
+      sequence: value.sequence,
+      status,
+      snapshot: null,
+      ...(message ? { message } : {}),
+    }
+  }
+  if (value.snapshot === null || value.snapshot === undefined) fail(`${status} 的 snapshot`)
+  const { snapshot, available } = parseSnapshot(value.snapshot)
+  if (status === 'ready' && available !== MONITOR_METRICS.length) fail('ready 的指标数量')
+  if (status === 'partial' && (available < 1 || available >= MONITOR_METRICS.length)) fail('partial 的指标数量')
+  return {
+    sessionId: value.sessionId as string,
+    subscriptionId: value.subscriptionId as string,
+    sequence: value.sequence,
+    status,
+    snapshot,
+    ...(message ? { message } : {}),
+  }
+}
+
+/**
+ * 校验一组会话事实。和 `parseMonitorUpdate` 一样不得有任何导入。
+ *
+ * 返回的是**构建出来**的对象，不是原负载：`kex`、mac、compression、software
+ * 都在同一份 ssh2 负载里，但没有一个界面会渲染它们，没有读取方的字段就是
+ * 没有测试能钉住的字段。
+ */
+export function parseSessionFacts(value: unknown): SessionFacts {
+  if (!isRecord(value)) fail('session facts')
+  if (typeof value.sessionId !== 'string' || !value.sessionId || value.sessionId.length > MAX_SESSION_ID_LENGTH) {
+    fail('session facts 的 sessionId')
+  }
+  if (!isPositiveSafeInteger(value.revision)) fail('revision')
+  const serverHostKey = value.serverHostKey
+  if (typeof serverHostKey !== 'string' || !ALGORITHM_PATTERN.test(serverHostKey)) fail('serverHostKey')
+  if (!isRecord(value.cipher)) fail('cipher')
+  const { clientToServer, serverToClient } = value.cipher
+  if (typeof clientToServer !== 'string' || !ALGORITHM_PATTERN.test(clientToServer)) fail('cipher.clientToServer')
+  if (typeof serverToClient !== 'string' || !ALGORITHM_PATTERN.test(serverToClient)) fail('cipher.serverToClient')
+  return {
+    sessionId: value.sessionId,
+    revision: value.revision,
+    serverHostKey,
+    cipher: { clientToServer, serverToClient },
+  }
+}
+
 // ── 渲染层要用的那份 API ──────────────────────────────────────────
 //
 // Shared by the browser UI and the Desktop shell. Business operations use the
@@ -320,6 +589,20 @@ export interface SshApi {
     mkdir(sessionId: string, dir: string, name: string): Promise<void>
     /** 目录还是文件由后端 stat 决定，调用方不用报（它拿到的可能是过期信息） */
     remove(sessionId: string, path: string): Promise<void>
+  }
+  /**
+   * 远端主机指标与会话事实。
+   *
+   * `start`/`stop` 是请求，`onUpdate`/`onSessionFacts` 是两条**互相独立**的事件流：
+   * 事实没有请求侧——客户端没有什么要问的，而且无论有没有客户端想要，握手结果
+   * 都已经存在——所以这里没有 `sessionFacts()` 方法，事实也不会启动、停止或
+   * 门控任何订阅。取消订阅就是调用 `onUpdate`/`onSessionFacts` 返回的那个函数。
+   */
+  monitor: {
+    start(request: MonitorStartRequest): Promise<MonitorStartResult>
+    stop(subscriptionId: string): Promise<MonitorStopResult>
+    onUpdate(listener: (update: MonitorUpdate) => void): () => void
+    onSessionFacts(listener: (facts: SessionFacts) => void): () => void
   }
   signalReady(payload: RendererReadyPayload): void
 }

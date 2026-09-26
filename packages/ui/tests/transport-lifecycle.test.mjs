@@ -26,6 +26,44 @@ function environment(t) {
   return instances
 }
 
+/** A complete six-metric sample: `ready` means no metric is missing. */
+function readyUpdate() {
+  return {
+    sessionId: 's1',
+    subscriptionId: 'sub-1',
+    sequence: 2,
+    status: 'ready',
+    snapshot: {
+      collectedAt: 1_700_000_000_000,
+      cpuPercent: 25,
+      memory: { usedBytes: 614_400, totalBytes: 1_024_000, usedPercent: 60 },
+      load: { one: 0.5, five: 1, fifteen: 2 },
+      disk: { mount: '/', usedBytes: 40_960, totalBytes: 102_400, availableBytes: 51_200, usedPercent: 44.4 },
+      net: { receivedBytesPerSecond: 4096, transmittedBytesPerSecond: 2048 },
+      uptimeSeconds: 86_400.5,
+      issues: {},
+    },
+  }
+}
+
+function factsPayload(sessionId = 's1') {
+  return {
+    sessionId,
+    revision: 1,
+    serverHostKey: 'ssh-ed25519',
+    cipher: { clientToServer: 'chacha20-poly1305@openssh.com', serverToClient: 'chacha20-poly1305@openssh.com' },
+  }
+}
+
+/** Drive a transport to the point where events can be delivered. */
+async function open(api, instances) {
+  const capability = api.getCapabilities()
+  instances[0].open()
+  await Promise.resolve()
+  instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: {} })
+  await capability
+}
+
 test('WebSocket loss closes every live terminal tab once', async t => {
   const instances = environment(t)
   const api = createWebSocketTransport()
@@ -274,4 +312,135 @@ test('disposing during unresolved bootstrap promptly rejects callers and never c
   finish({ webSocketUrl: 'ws://127.0.0.1:43210/ws' })
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(instances.length, 0)
+})
+
+test('monitor start and stop use the declared wire names and params', async t => {
+  const instances = environment(t)
+  const api = createWebSocketTransport()
+  t.after(() => api.dispose())
+
+  const started = api.monitor.start({ sessionId: 's1', subscriptionId: 'sub-1' })
+  instances[0].open()
+  await Promise.resolve()
+  assert.deepEqual(instances[0].sent[0], {
+    kind: 'call', id: 1, method: 'monitor:start', params: [{ sessionId: 's1', subscriptionId: 'sub-1' }],
+  })
+  instances[0].message({ kind: 'reply', id: 1, ok: true, value: { subscriptionId: 'sub-1', intervalMs: 5000 } })
+  assert.deepEqual(await started, { subscriptionId: 'sub-1', intervalMs: 5000 })
+
+  const stopped = api.monitor.stop('sub-1')
+  await Promise.resolve()
+  const stopCall = instances[0].sent.at(-1)
+  assert.equal(stopCall.method, 'monitor:stop')
+  assert.deepEqual(stopCall.params, ['sub-1'])
+  instances[0].message({ kind: 'reply', id: stopCall.id, ok: true, value: { stopped: true } })
+  assert.deepEqual(await stopped, { stopped: true })
+})
+
+test('an update that overtakes the start reply still lands, and a malformed one never blocks terminal traffic', async t => {
+  const instances = environment(t)
+  const api = createWebSocketTransport()
+  t.after(() => api.dispose())
+  const updates = []
+  const data = []
+  api.monitor.onUpdate(update => updates.push(update))
+  api.onData((sessionId, chunk) => data.push([sessionId, [...chunk]]))
+
+  const started = api.monitor.start({ sessionId: 's1', subscriptionId: 'sub-1' })
+  instances[0].open()
+  await Promise.resolve()
+  // The event arrives before its reply: the listener was registered before start,
+  // so nothing is lost by waiting for the call to resolve.
+  instances[0].message({ kind: 'event', name: 'monitor:update', params: [readyUpdate()] })
+  assert.equal(updates.length, 1)
+  assert.equal(updates[0].snapshot.cpuPercent, 25)
+  instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: { subscriptionId: 'sub-1', intervalMs: 5000 } })
+  await started
+
+  // Both payloads ride the same onmessage queue, so a rejected update must not
+  // stop the terminal chunk behind it: the user would see a frozen terminal and
+  // the cause would be in another plugin.
+  instances[0].message({ kind: 'event', name: 'monitor:update', params: [{ ...readyUpdate(), sequence: 0 }] })
+  instances[0].message({ kind: 'event', name: 'terminal:data', params: ['s1', { $bytes: 'YQ==' }] })
+  assert.equal(updates.length, 1, 'a malformed update was delivered')
+  assert.deepEqual(data, [['s1', [97]]], 'a malformed update blocked the terminal chunk behind it')
+})
+
+test('session facts have their own path, independent of terminal sessions and of monitor updates', async t => {
+  const instances = environment(t)
+  const api = createWebSocketTransport()
+  t.after(() => api.dispose())
+  const facts = []
+  const updates = []
+  api.monitor.onSessionFacts(entry => facts.push(entry))
+  api.monitor.onUpdate(update => updates.push(update))
+  await open(api, instances)
+
+  // No terminal:opened ever arrived and no subscription exists, because the handshake
+  // completes before a session becomes usable.
+  instances[0].message({ kind: 'event', name: 'session:facts', params: [factsPayload('never-opened')] })
+  assert.equal(facts.length, 1)
+  assert.equal(facts[0].sessionId, 'never-opened')
+  assert.equal(facts[0].serverHostKey, 'ssh-ed25519')
+  assert.equal(updates.length, 0, 'facts must not be routed as a monitor update')
+
+  // A rekey carries a higher revision; a malformed set is dropped without disturbing the next one.
+  instances[0].message({ kind: 'event', name: 'session:facts', params: [{ ...factsPayload('never-opened'), revision: 2, serverHostKey: 'rsa-sha2-512' }] })
+  instances[0].message({ kind: 'event', name: 'session:facts', params: [{ ...factsPayload('never-opened'), revision: 0 }] })
+  assert.deepEqual(facts.map(entry => [entry.revision, entry.serverHostKey]), [[1, 'ssh-ed25519'], [2, 'rsa-sha2-512']])
+
+  // Dropping the monitor listener does not disturb the facts path, and vice versa.
+  api.monitor.onUpdate(() => {})()
+  instances[0].message({ kind: 'event', name: 'session:facts', params: [{ ...factsPayload('never-opened'), revision: 3 }] })
+  assert.equal(facts.length, 3)
+  assert.equal(updates.length, 0)
+})
+
+test('monitor subscriptions unsubscribe, and disposal clears both listener sets', async t => {
+  const instances = environment(t)
+  const api = createWebSocketTransport()
+  const updates = []
+  const facts = []
+  const stopUpdates = api.monitor.onUpdate(update => updates.push(update))
+  api.monitor.onSessionFacts(entry => facts.push(entry))
+  await open(api, instances)
+
+  instances[0].message({ kind: 'event', name: 'monitor:update', params: [readyUpdate()] })
+  instances[0].message({ kind: 'event', name: 'session:facts', params: [factsPayload()] })
+  assert.equal(updates.length, 1)
+  assert.equal(facts.length, 1)
+
+  stopUpdates()
+  instances[0].message({ kind: 'event', name: 'monitor:update', params: [readyUpdate()] })
+  assert.equal(updates.length, 1, 'an unsubscribed monitor update was still delivered')
+
+  const pending = api.hosts.list()
+  const rejected = assert.rejects(pending, /卸载/)
+  await Promise.resolve()
+  api.dispose()
+  api.dispose()
+  await rejected
+  instances[0].message({ kind: 'event', name: 'monitor:update', params: [readyUpdate()] })
+  instances[0].message({ kind: 'event', name: 'session:facts', params: [factsPayload()] })
+  assert.equal(updates.length, 1)
+  assert.equal(facts.length, 1)
+  // The request side is closed with the transport, exactly like every other call.
+  await assert.rejects(api.monitor.start({ sessionId: 's1', subscriptionId: 'sub-1' }), /卸载/)
+  await assert.rejects(api.monitor.stop('sub-1'), /卸载/)
+})
+
+test('a monitor update for a session that was never opened is still delivered, because the tab owns the filter', async t => {
+  const instances = environment(t)
+  const api = createWebSocketTransport()
+  t.after(() => api.dispose())
+  const updates = []
+  api.monitor.onUpdate(update => updates.push(update))
+  await open(api, instances)
+
+  // Transport deliberately keeps no per-session monitor state: deciding whether a
+  // session, subscription or sequence is still current belongs to the tab, which is
+  // the only side that knows which tab is selected.
+  instances[0].message({ kind: 'event', name: 'monitor:update', params: [{ ...readyUpdate(), sessionId: 'other-tab' }] })
+  assert.deepEqual(updates.map(entry => entry.sessionId), ['other-tab'])
+  assert.equal(instances[0].sent.length, 1, 'receiving an event opened a request')
 })

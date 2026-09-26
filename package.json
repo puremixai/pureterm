@@ -20,7 +20,7 @@
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "start:web": "npm run build:web && node apps/web/dist/main.js",
     "start:desktop": "npm run build:desktop && npm run start:built --workspace=@pureterm/desktop",
-    "test:unit": "node --test apps/desktop/tests/*.test.mjs packages/host/tests/*.test.mjs packages/ui/tests/*.test.mjs apps/web/tests/*.test.mjs",
+    "test:unit": "node --test apps/desktop/tests/*.test.mjs packages/host/tests/*.test.mjs packages/protocol/tests/*.test.mjs packages/ui/tests/*.test.mjs apps/web/tests/*.test.mjs",
     "verify": "npm run build && npm run typecheck && npm run test:unit && npm run smoke:node --workspace=@pureterm/desktop",
     "verify:electron": "npm run build && npm run verify:electron:built --workspace=@pureterm/desktop && node apps/web/tests/smoke-browser.mjs && node packages/ui/tests/smoke-client-lifecycle.mjs",
     "stage:desktop": "npm run build:desktop && node scripts/stage-desktop.mjs",

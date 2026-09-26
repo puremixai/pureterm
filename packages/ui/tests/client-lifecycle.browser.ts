@@ -6,7 +6,7 @@ import { ClientTransport } from '../src/services/transport.js'
 
 import { VERSION } from '../src/lib/version.js'
 
-import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, RendererReadyPayload, SftpDir, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
+import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, MonitorStartRequest, MonitorStartResult, MonitorStopResult, MonitorUpdate, RendererReadyPayload, SessionFacts, SftpDir, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
 
 import type { TerminalView } from '../src/terminal-view.js'
 
@@ -40,13 +40,32 @@ const deferred = <T>() => { let resolve!: (value: T) => void; const promise = ne
 
 function fixture() {
 
-  const listeners = { opened: new Set<(...args: any[]) => void>(), data: new Set<(...args: any[]) => void>(), closed: new Set<(...args: any[]) => void>(), disconnected: new Set<(...args: any[]) => void>() }
+  const listeners = { opened: new Set<(...args: any[]) => void>(), data: new Set<(...args: any[]) => void>(), closed: new Set<(...args: any[]) => void>(), disconnected: new Set<(...args: any[]) => void>(), updates: new Set<(...args: any[]) => void>(), facts: new Set<(...args: any[]) => void>() }
 
   const stats = { disposed: 0, opens: 0, inputs: 0, closes: 0, lists: 0, ready: [] as RendererReadyPayload[] }
 
   const subscribe = (name: keyof typeof listeners, listener: (...args: any[]) => void) => { listeners[name].add(listener); return () => { listeners[name].delete(listener) } }
 
   const emit = (name: keyof typeof listeners, ...args: unknown[]) => { for (const listener of listeners[name]) listener(...args) }
+
+  /*
+   * 监控 fixture。Task 1 只把它接到 SshApi 上，让契约完整、类型编得过；
+   * 具体行为断言由 ClientMonitor 落地时（Task 5）补，那时这里会长出可控的
+   * start 回复、更新序列和 stop 记录。默认行为是「立刻同意」，因为一个不存在的
+   * 消费者不该让现有生命周期测试出现新的等待。
+   */
+  const monitor = {
+    starts: [] as MonitorStartRequest[],
+    stops: [] as string[],
+    start: async (request: MonitorStartRequest): Promise<MonitorStartResult> => {
+      monitor.starts.push(request)
+      return { subscriptionId: request.subscriptionId, intervalMs: 5000 }
+    },
+    stop: async (subscriptionId: string): Promise<MonitorStopResult> => {
+      monitor.stops.push(subscriptionId)
+      return { stopped: true }
+    },
+  }
 
   const hosts: HostRecord[] = [{ id: 'fixture', label: 'Fixture', host: 'localhost', username: 'demo', port: 22, authMethod: 'password', hasSecret: false, updatedAt: '' }]
 
@@ -84,6 +103,13 @@ function fixture() {
 
       write: async () => ({ path: '', size: 0 }), mkdir: async () => {}, remove: async () => {} },
 
+    monitor: {
+      start: request => monitor.start(request),
+      stop: subscriptionId => monitor.stop(subscriptionId),
+      onUpdate: (listener: (update: MonitorUpdate) => void) => subscribe('updates', listener),
+      onSessionFacts: (listener: (facts: SessionFacts) => void) => subscribe('facts', listener),
+    },
+
     signalReady: payload => { stats.ready.push(payload) }, dispose: () => { stats.disposed++ },
 
   }
@@ -114,7 +140,7 @@ function fixture() {
 
   }
 
-  return { api, hosts, keys, stats, listeners, terminals, terminalFactory, emit }
+  return { api, hosts, keys, stats, listeners, terminals, terminalFactory, emit, monitor }
 
 }
 
