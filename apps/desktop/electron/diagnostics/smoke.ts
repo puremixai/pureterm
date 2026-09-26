@@ -109,6 +109,80 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
       if (!keychainOk) throw new Error('Desktop Keychain authentication failed')
       console.log('[KEYCHAIN-WEB-OK] system-encrypted key authenticated through WebSocket and the Node Host')
     }
+    /*
+     * 资源监控的端到端验收。走真实 UI，不碰私有 IPC：连接 → 展开监控条 → 读到远端
+     * 快照 → 同一条连接上终端和 SFTP 仍然工作。业务数据全程走共享 WebSocket 载体，
+     * 所以这里能成立，正是因为它没有为自己开一条通道。
+     *
+     * 窗口是隐藏的，而「文档可见」是采集的准入条件之一，所以先把 `document.hidden`
+     * 改成 false 再发 `visibilitychange`，结束还原。这是测试装置，不是产品开关：
+     * 产品侧的可见性策略一个字都没改，只是这个夹具让页面表现得像在前台。
+     *
+     * 这里只采集和打印观测值，定值断言在启动器（smoke-electron.mjs）里，和
+     * `[SMOKE]` 那条一样——期望值属于夹具，不属于产品诊断代码。
+     */
+    if (process.env.SSH_CORDIS_SMOKE_MONITOR === '1') {
+      const monitor = await window.webContents.executeJavaScript(`(async () => {
+        const config = ${JSON.stringify(config)};
+        const wait = async (read, what, timeout = 25000) => {
+          const deadline = Date.now() + timeout;
+          for (;;) {
+            const seen = read();
+            if (seen) return seen;
+            if (Date.now() > deadline) throw new Error('监控验收等待超时：' + what);
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        };
+        const value = metric => document.querySelector('#monitor-body .monitor-field[data-metric=' + metric + '] .monitor-value').textContent;
+        const facts = () => ({ cipher: document.getElementById('status-cipher').textContent, key: document.getElementById('status-key').textContent });
+        const visible = () => document.getElementById('monitor-state').textContent;
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        try {
+          document.getElementById('host-new').click();
+          document.getElementById('host').value = config.host;
+          document.getElementById('port').value = String(config.port);
+          document.getElementById('user').value = config.username;
+          document.getElementById('pass').value = config.password;
+          document.getElementById('host-label').value = 'Monitor fixture';
+          document.getElementById('connect').click();
+          await wait(() => document.getElementById('session-state').className === 'connected' ? true : null, '会话连接');
+          const held = await wait(() => { const seen = facts(); return seen.cipher !== '—' && seen.key !== '—' ? seen : null; }, '握手事实');
+          // 折叠是默认值：展开之前一次探测都不该发生，状态文字要说的是「暂停」而不是「读取中」。
+          const collapsed = document.getElementById('monitor-body').hidden;
+          const beforeExpand = visible();
+          document.getElementById('monitor-toggle').click();
+          const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, '第一张快照');
+          const ready = await wait(() => visible() === '已更新'
+            ? { cpu: value('cpu'), memory: value('memory'), load: value('load'), disk: value('disk'), net: value('net'), uptime: value('uptime') } : null, '第二轮快照');
+          // 同一条连接：终端仍然收发。
+          const data = new DataTransfer();
+          data.setData('text/plain', 'monitor-alive\\r');
+          document.querySelector('.terminal-pane:not([hidden]) .xterm-helper-textarea').dispatchEvent(
+            new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+          await wait(() => document.querySelector('.terminal-pane:not([hidden]) .xterm-rows').textContent.includes('echo:monitor-alive') ? true : null, '终端回声');
+          // 同一条连接：SFTP 仍然列目录。走面板按钮，和用户点的是同一个入口。
+          document.getElementById('sftp-toggle').click();
+          const path = await wait(() => document.getElementById('sftp-path').value || null, 'SFTP 列目录');
+          const files = document.querySelectorAll('#sftp-list .file-row').length;
+          document.getElementById('disconnect').click();
+          await wait(() => document.getElementById('disconnect').disabled ? true : null, '断开连接');
+          return { collapsed, beforeExpand, facts: held, first, ready, path, files };
+        } finally {
+          delete document.hidden;
+          document.dispatchEvent(new Event('visibilitychange'));
+        }
+      })()`) as {
+        collapsed: boolean; beforeExpand: string; facts: { cipher: string; key: string }
+        first: string; ready: Record<string, string>; path: string; files: number
+      }
+      // 便宜的完整性检查留在这里，好让失败能落到这一块；定值断言在启动器里。
+      if (!monitor.collapsed || monitor.beforeExpand !== '已暂停') throw new Error('Monitor panel must be collapsed by default')
+      if (!monitor.ready?.cpu || !monitor.ready?.net || !monitor.ready?.uptime) throw new Error('Monitor panel did not render a complete snapshot')
+      if (monitor.files < 1 || !monitor.path.startsWith('/')) throw new Error('SFTP listing failed on the monitored session')
+      console.log('[MONITOR-SMOKE] ' + JSON.stringify(monitor))
+      console.log('[MONITOR-SMOKE-OK] fixture snapshot and session facts rendered through the real UI')
+    }
     console.log('[SMOKE] ' + JSON.stringify({ preloadType, page: surface.page, carrier: surface.carrier, ...report }))
     console.log(ok ? '[SMOKE-OK]' : '[SMOKE-FAIL]')
     code = ok ? 0 : 1

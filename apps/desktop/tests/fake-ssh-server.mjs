@@ -201,6 +201,11 @@ export async function startFakeSshServer(options = {}) {
        * 什么时候 accept、写什么、什么时候关，于是延迟打开、挂起、只有 stderr、
        * 拒绝命令、没有退出状态这些情况都能在这里造出来，不必连真实主机。
        * `accept`/`reject` 已经带好计数，钩子不必自己维护 exec 的账。
+       *
+       * `execOutput` 支持两种形式，给不想写整个钩子的用例用：字符串照原样回，函数
+       * 拿到 info 自己决定。函数是给监控的：CPU 和网络是增量指标，同一个常量帧的
+       * 第二轮差值为零，只会被判成 `invalid-data`，所以「第二轮变 ready」必须靠一列
+       * 每次探测都推进的帧，而推进的步数只有服务器自己数得准。
        */
       session.on('exec', (acceptExec, rejectExec, info) => {
         exec.commands.push(info.command)
@@ -236,7 +241,8 @@ export async function startFakeSshServer(options = {}) {
           return
         }
         const stream = open()
-        stream.write(options.execOutput ?? 'exec:ok\n')
+        const output = options.execOutput
+        stream.write(typeof output === 'function' ? output(info) : output ?? 'exec:ok\n')
         stream.exit(0)
         stream.end()
       })

@@ -106,6 +106,62 @@ async function main() {
     await evaluate('document.querySelector(".session-tab.is-active [data-tab-close]").click()')
     console.log('[WEB-MULTI-TAB] real SSH sessions keep separate output and closing one preserves the other')
 
+    // 资源监控的端到端验收：真实 UI + 共享 WebSocket 载体，没有 preload 也没有 IPC。
+    // 窗口是隐藏的，而「文档可见」是采集的准入条件之一，所以先让页面表现得像在前台，
+    // 结束还原 —— 这是测试装置，产品侧的可见性策略一个字都没改。
+    await evaluate(`(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+      document.dispatchEvent(new Event('visibilitychange'));
+    })()`)
+    await evaluate(`(() => {
+      document.getElementById('host-new').click();
+      document.getElementById('host').value = ${JSON.stringify(config.host)};
+      document.getElementById('port').value = ${JSON.stringify(String(config.port))};
+      document.getElementById('user').value = ${JSON.stringify(config.username)};
+      document.getElementById('pass').value = ${JSON.stringify(config.password)};
+      document.getElementById('host-label').value = 'Monitor fixture';
+      document.getElementById('connect').click();
+    })()`)
+    await until(() => evaluate('document.getElementById("session-state").className === "connected"'), 'monitored session connection')
+    // 握手事实与监控是两条独立的通道：cipher 与 host key 直接来自 transport，
+    // 卸载监控插件不该让这两格空掉。
+    const facts = await until(() => evaluate(`(() => {
+      const cipher = document.getElementById('status-cipher').textContent;
+      const key = document.getElementById('status-key').textContent;
+      return cipher !== '—' && key !== '—' ? { cipher, key } : null;
+    })()`), 'session facts in the status bar')
+    // 折叠是默认值：展开之前不该有任何探测。
+    const collapsed = await evaluate('document.getElementById("monitor-body").hidden')
+    assert.equal(collapsed, true, 'the monitor row must start collapsed')
+    assert.equal(await evaluate('document.getElementById("monitor-state").textContent'), '已暂停',
+      'a collapsed row reports paused rather than loading')
+    await evaluate('document.getElementById("monitor-toggle").click()')
+    const first = await until(() => evaluate(`(() => {
+      const text = document.querySelector('#monitor-body .monitor-field[data-metric=memory] .monitor-value').textContent;
+      return text.includes('%') ? text : null;
+    })()`), 'first monitor snapshot')
+    // CPU 与网络是增量指标：第一轮预热，第二轮才齐全。夹具给的是递增的帧。
+    const ready = await until(() => evaluate(`(() => {
+      if (document.getElementById('monitor-state').textContent !== '已更新') return null;
+      const read = metric => document.querySelector('#monitor-body .monitor-field[data-metric=' + metric + '] .monitor-value').textContent;
+      return { cpu: read('cpu'), memory: read('memory'), load: read('load'), disk: read('disk'), net: read('net'), uptime: read('uptime') };
+    })()`), 'second monitor snapshot', 15000)
+    // 同一条连接：终端仍然收发。
+    await paste('monitor-alive')
+    await until(() => evaluate(`${visibleText}.includes('echo:monitor-alive')`), 'terminal echo on the monitored session')
+    // 同一条连接：SFTP 仍然列目录。走面板按钮，和用户点的是同一个入口。
+    await evaluate('document.getElementById("sftp-toggle").click()')
+    const listing = await until(() => evaluate(`(() => {
+      const path = document.getElementById('sftp-path').value;
+      return path ? { path, files: document.querySelectorAll('#sftp-list .file-row').length } : null;
+    })()`), 'SFTP listing on the monitored session')
+    assert.ok(listing.files >= 1, 'SFTP must list the fixture file')
+    await evaluate('document.getElementById("disconnect").click()')
+    await until(() => evaluate('document.getElementById("disconnect").disabled'), 'monitored session disconnect')
+    await evaluate(`(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); })()`)
+    console.log('[WEB-MONITOR] ' + JSON.stringify({ collapsed, facts, first, ready, listing }))
+    console.log('[WEB-MONITOR-OK] fixture snapshot and session facts rendered through the real UI')
+
     // A real browser file input reads a real fixture file. Clicking the actual UI
     // button also checks that file selection remains in its original user gesture.
     await evaluate(`(() => {

@@ -93,7 +93,7 @@ npm run release:check
 npm run verify
 ```
 
-`verify` 会执行干净构建、类型和边界检查、单元测试、Host 子进程、凭据、更新协调、打包隔离、UI、独立 Web 以及本机 SSH/SFTP/HTTP/WS 冒烟检查。
+`verify` 会执行干净构建、类型和边界检查、单元测试、Host 子进程、凭据、更新协调、打包隔离、UI、独立 Web 以及本机 SSH/SFTP/HTTP/WS 冒烟检查。单元测试中包含有界 exec 套件、纯 Linux 采集器、HostMonitor 调度测试，以及 Web dispatcher 的监控与 `session:facts` 路由测试。
 
 涉及 Electron 窗口、IPC、preload、子进程、更新或资源路径时运行：
 
@@ -101,7 +101,7 @@ npm run verify
 npm run verify:electron
 ```
 
-该命令检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 行为、附带普通浏览器入口、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web 以及共享 Client 作用域生命周期。Electron 显示环境不可用等已识别限制不算通过。
+该命令检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 行为、附带普通浏览器入口、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web 以及共享 Client 作用域生命周期。Desktop 与独立 Web 两条流程还会连上本机 SSH 夹具，在一条仍然承载终端与 SFTP 流量的连接上，断言通过真实界面渲染出的夹具资源快照与会话事实。Electron 显示环境不可用等已识别限制不算通过。
 
 文档-only 修改至少运行 `npm run release:check`、Markdown 相对链接检查和 `git diff --check`。在 PR 中报告实际运行的命令和结果。不要用旧 `dist/`、进程存在或历史通过次数代替成功证据。
 
@@ -128,7 +128,7 @@ node --test apps/web/tests/*.test.mjs
 node apps/web/tests/smoke-browser.mjs
 ```
 
-浏览器冒烟测试只把 Electron 当作测试 Chromium 窗口，Web 服务本身仍是普通 Node 进程，并且必须继续拒绝非回环监听、无效启动 token、无效 Host/Origin 以及浏览器伪造的文件路径。
+浏览器冒烟测试只把 Electron 当作测试 Chromium 窗口，Web 服务本身仍是普通 Node 进程，并且必须继续拒绝非回环监听、无效启动 token、无效 Host/Origin 以及浏览器伪造的文件路径。它还会通过真实页面驱动资源行与状态栏的会话事实，所以监控回归会在这里失败，而不是只在 Electron 流程里暴露。
 
 ## 构建与打包
 

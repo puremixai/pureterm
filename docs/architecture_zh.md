@@ -34,16 +34,18 @@ flowchart LR
 
 事件通过 `RendererBridge` / `RendererHandle` 返回对应客户端。ID 是不透明的 WebSocket 客户端 ID；Host 无需解释 Electron webContents。客户端路由与凭据能力分离：`CredentialProvider` 由入口注入 SessionStore，RendererBridge 不承担加解密。
 
+资源监控是同一套 dispatcher 上的一对请求加一条事件流，不另开通道。`monitor:start` 与 `monitor:stop` 只接受会话归属客户端的请求，`monitor:update` 也只回给那个客户端。探测本身是会话既有 SSH 连接上的一条有界 exec。`session:facts` 是唯一的例外：它没有请求侧、不构成订阅，每次握手报告一次协商出的 cipher 与服务端 host key，路由与监控彼此独立，所以卸载监控插件不会让它失效。没有任何监控消息走 Electron 私有 IPC。
+
 ## 模块职责
 
 | 位置 | 职责 |
 | --- | --- |
 | `packages/host/src/host.ts` | 装配 Cordis Context、导出 Host、管理连接和插件树生命周期 |
-| `packages/host/src/services/`、`plugins/` | SSH、TOFU、主机存储、终端/SFTP 桥与日志 |
+| `packages/host/src/services/`、`plugins/` | SSH、TOFU、主机存储、终端/SFTP 桥、有界 exec、Linux 资源监控与日志 |
 | `packages/host/src/credentials.ts` | 凭据提供器接口与默认本次会话策略 |
 | `packages/protocol/` | 与运行环境无关的协议和公共数据结构 |
 | `packages/transport/` | 共享 Web Host 装配、dispatcher、HTTP/WS 与就绪报文校验 |
-| `packages/ui/` | Cordis Client、页面、终端、SFTP、客户端传输及浏览器私钥选择 |
+| `packages/ui/` | Cordis Client、页面、终端、SFTP、客户端传输、浏览器私钥选择与会话资源行 |
 | `apps/desktop/electron/app/` | Electron 启动、窗口、系统加密、原生文件选择和更新适配 |
 | `apps/desktop/electron/host/` | 不导入 Electron 的 Node Host 子进程入口 |
 | `apps/desktop/electron/runtime/` | 平台策略、就绪、档案、子进程/RPC、更新协调与资源定位 |
@@ -73,7 +75,9 @@ Desktop 先应用平台策略、注册自定义 scheme 与限定范围的 WebSoc
 
 Host 创建失败会卸载此前装配的服务。关闭 Host 时先取消连接和解密等待、等候已接受的存储修改，再卸载插件树；关闭后拒绝新连接与修改。save/remove 串行执行，加密完成前不会提交新状态。opened 事件无法送到客户端时也会收尾，避免浏览器关闭与握手完成竞态留下连接。
 
-共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、Keychain、hosts、SFTP 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器、私钥草稿和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。Client 卸载会关闭 WebSocket 并释放 Host 中对应的会话。
+共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、Keychain、hosts、SFTP、monitoring、chrome 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器、私钥草稿和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。Client 卸载会关闭 WebSocket 并释放 Host 中对应的会话。
+
+资源监控在 Host 上每个会话保留一个订阅，按探测完成时间调度而不是按固定节拍；客户端每个终端标签保留一份记录。客户端只在标签「被选中、已连接、页面可见、已展开、未被手动暂停」时采集，其余状态一律退订，被替换的订阅会在新订阅开始前停掉。Host 的 `releaseClient`、依赖卸载与关闭各自清理自己持有的登记与定时器；缺少监控服务时返回受控的「不支持」，不会妨碍终端或 Host 的释放。
 
 Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_SANDBOX_FALLBACK=1` 禁止自动无沙箱回退及对应档案回填；`SSH_CORDIS_NO_LAUNCH_PROFILE=1` 禁止读写档案。档案未按 CI、容器或日常环境分区，测试使用临时目录。
 
@@ -101,9 +105,11 @@ Keychain 导入使用独立 `keychain.json` 密钥库：每条记录包含不透
 
 SFTP 复用已建立的 SSH 会话，支持目录浏览、单文件上传/下载、新建目录和删除。共享协议的 `MAX_TRANSFER_BYTES` 限定单文件为 4 MiB；当前一次读取完整内容，没有流式传输、续传、进度报告或重命名功能。
 
+资源监控每 5 秒在会话既有 SSH 连接上通过非交互 exec 通道执行一条固定命令，解析 `/proc` 输出并报告六项指标：CPU 占用率、内存用量、负载均值、根文件系统磁盘占用、非回环网络吞吐合计和主机运行时间。它假设远端是 Linux、有 POSIX shell、`/proc` 可读、`df` 能报告根挂载；它不以 root 运行、不读任何特权内容，因此该账号看不到的挂载点不会被报告。CPU 与网络是增量，任何新订阅的第一轮都报「预热中」而不是 0，订阅被替换时基线一并重置。磁盘只算根文件系统，不是所有挂载点。读不到的计数器保留原因，非 Linux 远端报「不支持监控」，应用绝不为远端没给的指标编一个值。保留的探测输出有上限，超限是拒绝而不是一次部分读数。状态栏的 cipher 与 host key 两格是另一条通道：来自握手、在连接内恒定，不属于这条轮询行。
+
 ## 验证与上游关系
 
-根 `verify` 构建全部项目，执行类型、边界、Host 子进程/凭据、更新协调、打包隔离、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试。根 `verify:electron` 覆盖 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 请求、附带 Desktop Web、渲染崩溃回收、真实更新器的本机下载及校验、独立 Node Web 和 Client 作用域生命周期。独立 Web 流程中 Electron 只充当测试浏览器，Web 服务仍由普通 Node 启动。
+根 `verify` 构建全部项目，执行类型、边界、Host 子进程/凭据、更新协调、打包隔离、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试，其中包括有界 exec 与 Linux 采集器套件、以及 Web 侧监控路由测试。根 `verify:electron` 覆盖 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 请求、通过真实 Desktop 与独立 Web 界面渲染出的夹具资源快照与会话事实、附带 Desktop Web、渲染崩溃回收、真实更新器的本机下载及校验、独立 Node Web 和 Client 作用域生命周期。独立 Web 流程中 Electron 只充当测试浏览器，Web 服务仍由普通 Node 启动。
 
 Electron 检查使用隔离的用户目录、受控窗口和严格的成功/失败/退出/超时判定，并回收测试进程。验证禁用自动无沙箱回退，因此不覆盖两代真实 Electron 的自动回退。GUI 鼠标键盘验收不在上述命令内，本机 ssh2 夹具也不代表所有真实 sshd 的兼容性覆盖。
 

@@ -34,16 +34,18 @@ flowchart LR
 
 Events return through `RendererBridge` / `RendererHandle` to the corresponding client. IDs are opaque WebSocket client IDs; Host does not interpret Electron `webContents`. Client routing is separate from credential capabilities: an entry point injects `CredentialProvider` into `SessionStore`, while `RendererBridge` does not encrypt or decrypt data.
 
+Resource monitoring is a request pair plus an event stream on that same dispatcher, not a carrier of its own. `monitor:start` and `monitor:stop` are accepted only from the client that owns the session, and `monitor:update` is delivered back to that client alone. The probe itself is an ordinary bounded exec on the session's existing SSH connection. `session:facts` is the exception that has no request side and no subscription: it reports the negotiated cipher and server host key once per handshake, and its routing is independent of monitoring, so unloading the monitor plugin leaves it working. No monitoring message travels over private Electron IPC.
+
 ## Module responsibilities
 
 | Location | Responsibility |
 | --- | --- |
 | `packages/host/src/host.ts` | assemble Cordis Context, export Host, and manage connection/plugin-tree lifecycle |
-| `packages/host/src/services/`, `plugins/` | SSH, TOFU, host storage, terminal/SFTP bridge, and logging |
+| `packages/host/src/services/`, `plugins/` | SSH, TOFU, host storage, terminal/SFTP bridge, bounded exec, Linux resource monitoring, and logging |
 | `packages/host/src/credentials.ts` | credential-provider interface and default session-only policy |
 | `packages/protocol/` | environment-neutral protocol and shared data structures |
 | `packages/transport/` | shared Web Host assembly, dispatcher, HTTP/WS, and readiness validation |
-| `packages/ui/` | Cordis Client, page, terminal, SFTP, client transport, and browser key selection |
+| `packages/ui/` | Cordis Client, page, terminal, SFTP, client transport, browser key selection, and the session resource row |
 | `apps/desktop/electron/app/` | Electron startup, windows, system encryption, native file picker, and update adapter |
 | `apps/desktop/electron/host/` | Node Host child entry with no Electron import |
 | `apps/desktop/electron/runtime/` | platform policy, readiness, profiles, child/RPC control, update coordination, and resource paths |
@@ -73,7 +75,9 @@ Standalone Web injects the default session-only policy into the shared Web Host 
 
 If Host creation fails, already assembled services are unloaded. Host shutdown first cancels connection and encryption waits, waits for accepted storage mutations, and then unloads the plugin tree; after shutdown, new connections and mutations are rejected. Save/remove operations are serialized, and new state is not committed before encryption completes. If an `opened` event cannot reach its client, cleanup still runs so a browser-close/handshake race cannot leave a connection behind.
 
-The shared Client is a Cordis Context created by `createClient()`. It installs view, transport, terminal, Keychain, hosts, SFTP, and application/readiness services in order, with dependencies declared through `inject`. Each scope releases DOM listeners, transport subscriptions, `ResizeObserver`, timers, private-key drafts, and terminal resources. The root can be unmounted and mounted again; unloading a dependency scope unloads its dependents. Client disposal closes its WebSocket and releases its Host sessions.
+The shared Client is a Cordis Context created by `createClient()`. It installs view, transport, terminal, Keychain, hosts, SFTP, monitoring, chrome, and application/readiness services in order, with dependencies declared through `inject`. Each scope releases DOM listeners, transport subscriptions, `ResizeObserver`, timers, private-key drafts, and terminal resources. The root can be unmounted and mounted again; unloading a dependency scope unloads its dependents. Client disposal closes its WebSocket and releases its Host sessions.
+
+Resource monitoring keeps one subscription per session on the Host, scheduled on probe completion rather than on a fixed tick, and the client keeps one record per terminal tab. The client collects only while a tab is selected, connected, visible, expanded and not manually paused; every other state retires the subscription, and a replaced subscription is stopped before a new one starts. Host `releaseClient`, dependency unload, and shutdown each clear the registrations and timers they own, and a missing monitor service answers with a controlled unsupported result instead of preventing terminal or Host disposal.
 
 Desktop retains sandbox, GPU, launch-profile, and restart behavior. `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` disables automatic no-sandbox fallback and profile backfill; `SSH_CORDIS_NO_LAUNCH_PROFILE=1` disables profile reads and writes. Profiles are not separated for CI, containers, and daily use; tests use temporary directories.
 
@@ -101,9 +105,11 @@ Browser HTTP resources and WebSockets require the startup token or its session c
 
 SFTP reuses an established SSH session and supports directory browsing, single-file upload/download, directory creation, and deletion. The shared protocol’s `MAX_TRANSFER_BYTES` limits one file to 4 MiB; the current implementation reads the complete file and has no streaming, resume, progress reporting, or rename operation.
 
+Resource monitoring runs one fixed command per probe, every five seconds, over a non-interactive exec channel on the session's existing SSH connection. It parses `/proc` output and reports six metrics: CPU busy percentage, memory used, load averages, root-filesystem disk usage, summed non-loopback network throughput, and host uptime. It assumes a Linux remote with a POSIX shell, readable `/proc`, and a `df` that reports the root mount; it does not run as root and does not read anything privileged, so a mount the account cannot see is not reported. CPU and network are deltas, so the first probe after any new subscription is reported as warming up rather than as zero, and the baselines are reset whenever a subscription is replaced. Disk is the root filesystem alone, not every mount. An unavailable counter keeps its reason, a non-Linux remote is reported as unsupported, and the app never invents a value for a metric the remote did not supply. The retained probe output is bounded, and a probe that exceeds its bound is a rejection rather than a partial reading. The status bar’s cipher and host-key cells are separate: they come from the handshake, are constant for the connection, and are not part of the polling row.
+
 ## Verification and upstream relationship
 
-Root `verify` builds every project and runs type, boundary, Host child-process/credential, update-coordinator, packaging-isolation, UI, standalone Web, and SSH/SFTP/HTTP/WS protocol tests. Root `verify:electron` covers Desktop custom-scheme boot, WebSocket SSH/Keychain traffic, attached Desktop Web, renderer-crash cleanup, real updater download and checksum validation, standalone Node Web, and Client-scope lifecycle. Electron acts only as the test browser in the standalone Web flow; the service still starts in ordinary Node.
+Root `verify` builds every project and runs type, boundary, Host child-process/credential, update-coordinator, packaging-isolation, UI, standalone Web, and SSH/SFTP/HTTP/WS protocol tests, including the bounded-exec and Linux-collector suites and the Web monitoring routing tests. Root `verify:electron` covers Desktop custom-scheme boot, WebSocket SSH/Keychain traffic, a fixture resource snapshot and session facts rendered through the real Desktop and standalone Web UIs, attached Desktop Web, renderer-crash cleanup, real updater download and checksum validation, standalone Node Web, and Client-scope lifecycle. Electron acts only as the test browser in the standalone Web flow; the service still starts in ordinary Node.
 
 Electron checks use an isolated user directory, controlled windows, strict success/failure/exit/timeout signals, and process-tree cleanup. Automatic no-sandbox fallback is disabled, so both generations of real Electron fallback are outside this check. GUI mouse/keyboard acceptance is outside these commands, and the local ssh2 fixture does not cover every real sshd implementation.
 

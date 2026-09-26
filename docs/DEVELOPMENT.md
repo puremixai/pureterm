@@ -93,7 +93,7 @@ Before merging code, dependency, or build-script changes, run the full Node veri
 npm run verify
 ```
 
-`verify` performs a clean build, type and boundary checks, unit tests, Host child-process checks, credential tests, update-coordinator tests, packaging-isolation tests, UI tests, standalone Web tests, and local SSH/SFTP/HTTP/WS smoke checks.
+`verify` performs a clean build, type and boundary checks, unit tests, Host child-process checks, credential tests, update-coordinator tests, packaging-isolation tests, UI tests, standalone Web tests, and local SSH/SFTP/HTTP/WS smoke checks. The unit tests include the bounded-exec suite, the pure Linux collector, the HostMonitor scheduling tests, and the Web dispatcher’s monitoring and `session:facts` routing tests.
 
 Changes involving Electron windows, IPC, preload, child processes, update behavior, or resource paths require:
 
@@ -101,7 +101,7 @@ Changes involving Electron windows, IPC, preload, child processes, update behavi
 npm run verify:electron
 ```
 
-This command verifies Desktop custom-scheme boot, WebSocket SSH/Keychain behavior, the attached browser entry, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, and shared Client scope lifecycle. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
+This command verifies Desktop custom-scheme boot, WebSocket SSH/Keychain behavior, the attached browser entry, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, and shared Client scope lifecycle. The Desktop and standalone Web flows also connect to the local SSH fixture and assert a fixture resource snapshot with its session facts rendered through the real UI, on a connection that still carries terminal and SFTP traffic. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
 
 Documentation-only changes must run `npm run release:check`, a Markdown relative-link check, and `git diff --check`. Report the actual commands and results in the pull request. Do not use an old `dist/` directory, process existence, or a historical pass count as evidence of success.
 
@@ -128,7 +128,7 @@ node --test apps/web/tests/*.test.mjs
 node apps/web/tests/smoke-browser.mjs
 ```
 
-The browser smoke test uses Electron only as a test Chromium window. The Web service itself remains an ordinary Node process and must continue to reject non-loopback listeners, invalid startup tokens, invalid Host/Origin headers, and browser fake file paths.
+The browser smoke test uses Electron only as a test Chromium window. The Web service itself remains an ordinary Node process and must continue to reject non-loopback listeners, invalid startup tokens, invalid Host/Origin headers, and browser fake file paths. It also drives the resource row and the status bar’s session facts through the real page, so a monitor regression fails here rather than only in the Electron flow.
 
 ## Building and packaging
 

@@ -39,10 +39,12 @@
 | 5 | `styles/hosts.css` | 13,064 | 主机面板：页面标题、搜索行、工具栏，以及已保存主机所渲染出的表格与卡片形态。 |
 | 6 | `styles/inspector.css` | 10,314 | 连接表单：嵌入的编辑面外壳与标题栏、分区、字段、底栏，以及密钥库编辑器复用的共享控件。 |
 | 7 | `styles/keychain.css` | 10,464 | 在共享主机表格语言之上的密钥库与编辑器。 |
-| 8 | `styles/terminal.css` | 11,998 | 终端表面：xterm 面板及其覆盖样式、会话工具栏、SFTP 抽屉。 |
+| 8 | `styles/terminal.css` | 14,807 | 终端表面：xterm 面板及其覆盖样式、会话工具栏、会话资源行、SFTP 抽屉。 |
 | 9 | `styles/states.css` | 12,617 | 无内容与非正常：空占位、快捷键对话框、连接失败页面。 |
 
 `desktop.css` 只承载一个分片 `styles/window-controls.css` —— 磁盘上 2,001 字节、38 行，装着顶栏最小化/最大化/关闭的规则。拆开是目的，不是文件大小的偶然：`index.html` 与构建后的 `app.css` 是两个入口共享的东西，而 Web 入口没有窗口可管，所以它既不该带那份标记，也不该带这些规则。标记根本不在 `index.html` 里 —— 是 `services/chrome.ts` 链接 `./desktop.css` 并建出这三个按钮，且只在 `window.puretermDesktop.windowControls` 存在时这么做。至于哪些平台会有它，是一个只有一个答案的平台问题（桌面端平台计划里的 `drawsOwnWindowControls`）：Windows 与 Linux，它们的 `titleBarStyle: 'hidden'` 没有留下原生按钮；但不包括 macOS，它保留自己的红绿灯，绝不能在旁边再画一套。在构建产物上实测，`app.css` 里没有任何选择器提到 `.window-control` 的规则，而 `desktop.css` 里的每一条规则都是。
+
+会话资源行是会话屏上唯一一处**有意改变高度**的地方，而它默认折叠的理由是高度预算，不是口味。折叠时它是一条 28px 的控制行，没有自己的底色和边框，于是会话屏保住原来那三条固定横带 —— 顶栏 40px、会话栏 40px、状态栏 24px —— 终端一点高度都不让。展开后它变成 40px 的横带，用会话栏那条 `--line` 细线和 `--c-chrome` 底色，而吸收这 12px 的只有终端一格，因为 `.session-content` 是弹性且 `min-height: 0` 的轨道，资源行则是 `flex: 0 0 auto`。窄于 820px 时它换行到第二行，而不是溢出。状态由文字承担，颜色只是重复一遍，所以色觉障碍下这一行照样读得出来。这些是实测值而非意图：折叠 28px、展开 40px，终端正好少掉这 12px 的差值，两种宽度下 `scrollWidth === innerWidth` 都成立。
 
 这一列字节取自 Windows 上的工作副本，并且刻意这样标注，因为它并非到处都能复现：`core.autocrlf` 为 `true`，仓库里又没有 `.gitattributes`，于是提交的 blob 是 LF，而这里十个文件里有八个在磁盘上是 CRLF。保留 blob 形态的检出会读到每个这样的文件恰好少它的行数 —— `tokens.css` 175、`base.css` 93、`chrome.css` 233、`hosts.css` 146、`inspector.css` 116、`keychain.css` 121、`states.css` 128、`window-controls.css` 38 —— 而 `fonts.css` 与 `terminal.css` 本身已按 LF 存储，两处读数一致。`style.css` 自己也是 CRLF，磁盘上 1,363 字节对 blob 的 1,340 字节，`desktop.css` 也是 CRLF，磁盘上 765 字节对 blob 的 755 字节。把这些数字当作每个职责承载了多少的一个量级参考，不要当作校验和。
 
