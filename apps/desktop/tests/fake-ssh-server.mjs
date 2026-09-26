@@ -168,6 +168,10 @@ export async function startFakeSshServer(options = {}) {
   const files = createFiles(options.files ?? {}, options.symlinks ?? {}, options.home ?? '/home/demo')
   const sftp = { channels: 0, requests: [], writes: [], mkdirs: [], removals: [] }
   const terminal = { ptys: [], windows: [], inputs: [] }
+  // Exec counters. `commands` is the request log, so a test can assert that a
+  // cancelled probe never reached the server at all; `active`/`closed` prove the
+  // channel was closed rather than abandoned.
+  const exec = { commands: [], closed: 0, active: 0, maxConcurrent: 0 }
   const sockets = new Set()
   const ssh = new Server({ hostKeys: [hostKey] }, (client) => {
     client.on('error', () => {}) // Rejected authentication/TOFU intentionally aborts the connection.
@@ -189,6 +193,53 @@ export async function startFakeSshServer(options = {}) {
       session.on('pty', (acceptPty, _reject, info) => { terminal.ptys.push(info); acceptPty?.() })
       session.on('window-change', (acceptWindow, _reject, info) => { terminal.windows.push(info); acceptWindow?.() })
       session.on('sftp', (acceptSftp) => attachSftp(acceptSftp(), files, sftp))
+      /*
+       * 非交互命令通道。监控探测走的就是这一条，所以它必须存在：没有它的话
+       * 对 fixture 发 exec 会直接 CHANNEL_FAILURE，下游任务连不上任何东西。
+       *
+       * 默认行为是「回一行、退出 0」。`onExec` 是仅供测试的钩子，由它决定
+       * 什么时候 accept、写什么、什么时候关，于是延迟打开、挂起、只有 stderr、
+       * 拒绝命令、没有退出状态这些情况都能在这里造出来，不必连真实主机。
+       * `accept`/`reject` 已经带好计数，钩子不必自己维护 exec 的账。
+       */
+      session.on('exec', (acceptExec, rejectExec, info) => {
+        exec.commands.push(info.command)
+        exec.active++
+        exec.maxConcurrent = Math.max(exec.maxConcurrent, exec.active)
+        let finished = false
+        const finish = () => { if (finished) return; finished = true; exec.active--; exec.closed++ }
+        /*
+         * `resume()` 是这里的账本能不能对上数的前提，不是随手加的。
+         *
+         * 服务器侧这条流没有任何人在读：客户端（Host）发 exec 之后只写不读，测试
+         * 也只往它写。而 Node 的 Readable 只有在被消费或处于 flowing 时，收到 EOF
+         * 才会发出 'end'；ssh2 的服务器端在通道被对端关闭时，若流仍是 readable，
+         * 也是等 'end' 才发 'close'（见 node_modules/ssh2/lib/utils.js 的
+         * onCHANNEL_CLOSE）。不 resume 的话，Host 关掉通道（超时/取消后才到达的
+         * 那条）在这里永远等不到 'close'，`closed` 就一直是 0 —— 测试便无法断言
+         * 「这条通道确实被关掉了」，只能看着一个谎报的 active 计数。
+         */
+        const open = () => {
+          const stream = acceptExec()
+          stream.on('error', () => {})
+          stream.resume()
+          stream.once('close', finish)
+          return stream
+        }
+        if (options.onExec) {
+          options.onExec({
+            command: info.command,
+            accept: open,
+            reject: () => { finish(); rejectExec() },
+            finish,
+          })
+          return
+        }
+        const stream = open()
+        stream.write(options.execOutput ?? 'exec:ok\n')
+        stream.exit(0)
+        stream.end()
+      })
       session.on('shell', (acceptShell) => {
         const stream = acceptShell()
         stream.on('error', () => {})
@@ -233,7 +284,7 @@ export async function startFakeSshServer(options = {}) {
   return {
     host: '127.0.0.1', port: listener.address().port, username, password, hostKey,
     fingerprint: `SHA256:${createHash('sha256').update(publicKey).digest('base64').replace(/=+$/, '')}`,
-    files, sftp, terminal, authentications,
+    files, sftp, terminal, exec, authentications,
     get connections() { return sockets.size },
     async close() {
       if (closed) return

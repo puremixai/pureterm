@@ -1,6 +1,6 @@
 import { Service, type Context } from 'cordis'
 import type { ClientChannel } from 'ssh2'
-import { EVENTS, type TerminalOpenRequest, type TerminalOpenResult } from '@pureterm/protocol'
+import { EVENTS, type SessionFacts, type TerminalOpenRequest, type TerminalOpenResult } from '@pureterm/protocol'
 
 declare module 'cordis' {
   interface Context {
@@ -74,6 +74,21 @@ export class TerminalBridge extends Service {
     // 只看一次：ssh2 侧的会话结束（断线/错误/主动关闭）统一在这里收尾
     this.ctx.on('ssh/session-closed', (sessionId: string, reason: string) => {
       this.close(sessionId, reason)
+    })
+
+    /*
+     * rekey：把新协商出的一组事实发给拥有这个会话的客户端。
+     *
+     * 初次握手不走这里 —— 那时还没有客户端拥有会话，SshService 也不会广播。
+     * 那一组在 terminal:opened 时补发，见 open()。
+     *
+     * 发送失败不退役任何东西：事实不是订阅，没有「退订」这个动作。
+     */
+    this.ctx.on('ssh/session-facts', (facts: SessionFacts) => {
+      const bridge = this.bridges.get(facts.sessionId)
+      if (!bridge || this.stopped) return
+      if (!this.ctx.renderer.isAlive(bridge.clientId)) return
+      this.ctx.renderer.send(bridge.clientId, EVENTS.sessionFacts, facts)
     })
 
     this.ctx.effect(
@@ -190,6 +205,15 @@ export class TerminalBridge extends Service {
         this.close(sessionId, '客户端已断开连接。')
         throw new Error('客户端已断开连接。')
       }
+      /*
+       * 握手事实紧跟在 terminal:opened 之后补发。
+       *
+       * 顺序是刻意的：客户端按 sessionId 缓冲事实，并丢弃它从未见过打开的会话
+       * 的事实，所以「先开、后给事实」是它唯一能确定归属的顺序。发送失败不改变
+       * 任何状态 —— 终端已经开了，缺一格状态栏不值得把会话拆掉。
+       */
+      const facts = ssh.facts(sessionId)
+      if (facts) renderer.send(clientId, EVENTS.sessionFacts, facts)
       return { sessionId, host: session.host, cols, rows }
     } catch (error) {
       const message = errorMessage(error)
