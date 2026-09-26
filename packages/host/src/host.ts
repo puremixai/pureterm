@@ -1,6 +1,12 @@
 import { Context } from 'cordis'
 import { dirname, join } from 'node:path'
-import type { KeyRecord, KeySaveRequest } from '@pureterm/protocol'
+import type {
+  KeyRecord,
+  KeySaveRequest,
+  MonitorStartRequest,
+  MonitorStartResult,
+  MonitorStopResult,
+} from '@pureterm/protocol'
 import { RendererService, type RendererBridge } from './services/renderer.js'
 import { SshService, type SshServiceConfig } from './services/ssh.js'
 import { SessionStore, assertSessionStoreCompatible, type HostInput, type HostRecord } from './plugins/session-store.js'
@@ -9,6 +15,7 @@ import { HostLog } from './plugins/host-log.js'
 import { Keychain } from './plugins/keychain.js'
 import { TerminalBridge, type TerminalOpenPayload, type TerminalOpenResult } from './plugins/terminal-bridge.js'
 import { SftpBridge, type SftpDir, type SftpReadResult, type SftpWriteResult } from './plugins/sftp-bridge.js'
+import { HostMonitor } from './plugins/host-monitor.js'
 
 export interface HostOptions {
   /** Host 到 WebSocket 客户端的事件桥；测试可传假实现。 */
@@ -72,6 +79,15 @@ export interface Host {
   sftpWrite(sessionId: string, dir: string, name: string, bytes: Uint8Array): Promise<SftpWriteResult>
   sftpMkdir(sessionId: string, dir: string, name: string): Promise<void>
   sftpRemove(sessionId: string, path: string): Promise<void>
+  /**
+   * 远端资源监控。
+   *
+   * 监控插件是**可选**的：没有它时 startMonitor 报 `MONITOR_UNAVAILABLE`，
+   * stopMonitor 回答 `{ stopped: false }`，其余能力照常。所以这两个方法不是
+   * 「一定会成功」的契约，而是「插件在不在都会被回答」的契约。
+   */
+  startMonitor(request: MonitorStartRequest, clientId: string): Promise<MonitorStartResult>
+  stopMonitor(subscriptionId: string, clientId: string): Promise<MonitorStopResult>
   /** 卸载整棵插件树（关掉所有连接）。可重复调用。 */
   dispose(): Promise<void>
   /**
@@ -111,6 +127,9 @@ export async function createHost(options: HostOptions): Promise<Host> {
     await root.plugin(SshService, { knownHostsFile: options.knownHostsFile, ...options.ssh })
     await root.plugin(TerminalBridge)
     await root.plugin(SftpBridge)
+    // 监控装在它的三个提供方之后。它也是这棵树里唯一一个**可选**的插件：
+    // 公共契约把「没装监控」当成一种正常状态，而不是异常。
+    await root.plugin(HostMonitor)
     if (options.log !== false) await root.plugin(HostLog, options.log ? { sink: options.log } : {})
   } catch (error) {
     await root.fiber.dispose()
@@ -144,6 +163,16 @@ export async function createHost(options: HostOptions): Promise<Host> {
       return keyId && record.authMethod === 'privateKey' ? { ...record, keyId } : record
     })
   }
+  /**
+   * 监控服务；插件没装或已经被卸载时是 undefined。
+   *
+   * Cordis 在服务缺失时返回 undefined（它只在「声明了 inject 的上下文去取」时才抛），
+   * 所以这里不需要 try/catch——但类型上必须显式承认这个可能性，否则公共契约里
+   * 「没装监控」这条分支会变成一个永远走不到的死角。
+   */
+  function monitorOf(): HostMonitor | undefined {
+    return root.hostMonitor as HostMonitor | undefined
+  }
   return {
     openTerminal: async (payload) => {
       if (disposed) throw new Error('Host 已关闭，无法建立新连接。')
@@ -161,6 +190,9 @@ export async function createHost(options: HostOptions): Promise<Host> {
     close: (sessionId) => root.terminal.close(sessionId, '用户断开连接。'),
     releaseClient: (clientId) => {
       if (!disposed) {
+        // 先收监控、再收终端：监控的归属检查要问终端，反过来会把一个还活着的
+        // 订阅留在没有会话可探测的状态里。
+        monitorOf()?.releaseClient(clientId)
         root.terminal.releaseClient(clientId)
         root.keychain.releaseClient(clientId)
         sessionKeys.delete(clientId)
@@ -207,9 +239,25 @@ export async function createHost(options: HostOptions): Promise<Host> {
     sftpWrite: (sessionId, dir, name, bytes) => root.sftp.write(sessionId, dir, name, bytes),
     sftpMkdir: (sessionId, dir, name) => root.sftp.mkdir(sessionId, dir, name),
     sftpRemove: (sessionId, path) => root.sftp.remove(sessionId, path),
+    startMonitor: async (request, clientId) => {
+      if (disposed) throw new Error('Host 已关闭，无法开始监控。')
+      // 没有监控插件是一种**可预期的**状态，不是异常：给一个稳定的错误码，
+      // 界面据此渲染「此环境不支持监控」，而不是去猜一句人话。
+      const monitor = monitorOf()
+      if (!monitor) throw new Error('MONITOR_UNAVAILABLE')
+      return monitor.start(request, clientId)
+    },
+    stopMonitor: async (subscriptionId, clientId) => {
+      // 插件不在时「没有停掉任何东西」就是真话，不需要报错。
+      const monitor = monitorOf()
+      if (!monitor) return { stopped: false }
+      return monitor.stop(subscriptionId, clientId)
+    },
     dispose: () => {
       if (disposing) return disposing
       disposed = true
+      // 先停监控的定时器，再排空终端和记录：卸载完成后不该还有任何探测在跑。
+      monitorOf()?.shutdown()
       root.terminal.shutdown()
       disposing = (async () => {
         await Promise.allSettled([...openings])

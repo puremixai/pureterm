@@ -1,4 +1,4 @@
-import { createHost, type CredentialProvider } from '@pureterm/host'
+import { createHost, type CredentialProvider, type Host } from '@pureterm/host'
 import type { PickedPrivateKey, RendererReadyPayload, RuntimeCapabilities } from '@pureterm/protocol'
 import { createCompositeBridge, type Carrier } from './carrier.js'
 import { createHttpCarrier } from './carrier-http.js'
@@ -22,6 +22,14 @@ export interface WebHost {
   readonly url: string
   readonly port: number
   dispose(): Promise<void>
+  /**
+   * 内部视图。**只给测试与诊断脚本**，与 `Host.internals` 同一条约定：
+   * 需要新能力就加到公共契约上，不要从这里绕过去。
+   *
+   * 存在的理由：有些性质只能在装配层证明——比如「卸载监控插件之后终端和会话事实
+   * 照常工作」。那是关于**插件树**的断言，用请求只能问到它的结果，问不到它本身。
+   */
+  readonly internals: { host: Host }
 }
 
 /** Assemble a single Host and loopback WebSocket carrier for either local entry point. */
@@ -63,6 +71,7 @@ export async function startWebHost(options: WebHostOptions): Promise<WebHost> {
     return {
       url: carrier.url,
       port: carrier.port,
+      internals: { host },
       dispose() {
         disposal ??= (async () => {
           try {

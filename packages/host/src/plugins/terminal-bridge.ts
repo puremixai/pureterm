@@ -108,6 +108,20 @@ export class TerminalBridge extends Service {
     return this.bridges.size
   }
 
+  /**
+   * 这个会话是不是还活着、并且属于这个客户端。
+   *
+   * 监控每次探测之前都要问一遍，所以它必须是**一次查询**而不是一份缓存：缓存下来的
+   * 归属关系会在会话关闭之后继续成立，而那时探测已经没有意义了。
+   *
+   * 只有 ownership 是这里的事。客户端是否还在由 renderer 回答——两个问题分开问，
+   * 才能让「会话没了」和「客户端走了」在调用方那里得到不同的收尾。
+   */
+  ownsSession(sessionId: string, clientId: string): boolean {
+    const bridge = this.bridges.get(sessionId)
+    return !!bridge && bridge.clientId === clientId
+  }
+
   releaseClient(clientId: string): void {
     for (const [controller, owner] of this.openings) {
       if (owner === clientId) controller.abort()

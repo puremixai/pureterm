@@ -1,4 +1,13 @@
-import { METHODS, NOTICES, type KeySaveRequest, type PickedPrivateKey, type RendererReadyPayload, type RuntimeCapabilities } from '@pureterm/protocol'
+import {
+  METHODS,
+  NOTICES,
+  MAX_SESSION_ID_LENGTH,
+  SUBSCRIPTION_ID_PATTERN,
+  type KeySaveRequest,
+  type PickedPrivateKey,
+  type RendererReadyPayload,
+  type RuntimeCapabilities,
+} from '@pureterm/protocol'
 import type { Host, HostInput, TerminalOpenPayload } from '@pureterm/host'
 import { normalizeReadyPayload } from './readiness.js'
 
@@ -68,6 +77,35 @@ function asBytes(value: unknown, where: string): Uint8Array {
   throw new Error(`${where} 期望一段字节（Uint8Array），收到 ${Object.prototype.toString.call(value)}。`)
 }
 
+/**
+ * 只收约定的字段。
+ *
+ * 监控的 start 请求曾经被想成「顺手把 clientId 也带上」——那是**自称身份**，
+ * 而身份只能由载体认定。命令、路径、刷新间隔同理：任何一个被收下，SshApi 就从
+ * 「订阅资源指标」变成了「在远端执行任意东西」。
+ */
+function rejectExtraFields(payload: Record<string, unknown>, allowed: readonly string[], where: string): void {
+  for (const key of Object.keys(payload)) {
+    if (!allowed.includes(key)) throw new Error(`${where} 不接受字段「${key}」。`)
+  }
+}
+
+/** 会话 ID：非空、有上限。上限来自协议常量，不在这里另抄一个数字。 */
+function asSessionId(value: unknown, where: string): string {
+  if (typeof value !== 'string' || !value || value.length > MAX_SESSION_ID_LENGTH) {
+    throw new Error(`${where} 的会话 ID 不合法。`)
+  }
+  return value
+}
+
+/** 订阅 ID：UI 每次激活新建一个 UUID，字符集由协议定义。 */
+function asSubscriptionId(value: unknown, where: string): string {
+  if (typeof value !== 'string' || !SUBSCRIPTION_ID_PATTERN.test(value)) {
+    throw new Error(`${where} 的订阅 ID 不合法。`)
+  }
+  return value
+}
+
 export function createDispatcher(options: DispatcherOptions): Dispatcher {
   const { host } = options
 
@@ -119,6 +157,20 @@ export function createDispatcher(options: DispatcherOptions): Dispatcher {
           )
         case METHODS.sftpRemove:
           return host.sftpRemove(asString(params[0], 'sftp:remove'), asString(params[1], 'sftp:remove'))
+        /*
+         * 监控两条。`clientId` 同样由载体认定后并入，请求体里出现它就直接报错——
+         * 一个能被客户端自称的身份，等于没有身份。
+         */
+        case METHODS.monitorStart: {
+          const payload = asObject(params[0], 'monitor:start')
+          rejectExtraFields(payload, ['sessionId', 'subscriptionId'], 'monitor:start')
+          return host.startMonitor({
+            sessionId: asSessionId(payload.sessionId, 'monitor:start'),
+            subscriptionId: asSubscriptionId(payload.subscriptionId, 'monitor:start'),
+          }, clientId)
+        }
+        case METHODS.monitorStop:
+          return host.stopMonitor(asSubscriptionId(params[0], 'monitor:stop'), clientId)
         default:
           throw new Error(`不认识的请求：${method}`)
       }
