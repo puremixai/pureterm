@@ -243,6 +243,10 @@
                 <button type="button" id="disconnect" class="ghost small" disabled>断开连接</button>
               </div>
             </div>
+            <!-- 监控条的挂载点。折叠时它只是会话栏下面的一行控件，展开才成为一条
+                 横带；子节点由 features/monitor.ts 建，这里不留骨架 —— 和 #sftp
+                 同一条纪律：这个面板长什么样只有一处定义。 -->
+            <div id="session-monitor" class="session-monitor"></div>
             <div class="session-content">
               <div id="terminal" class="terminal-surface"></div>
               <section id="sftp" class="sftp-drawer" hidden></section>
@@ -291,6 +295,13 @@
         <span id="status-endpoint" class="status-item status-value">—</span>
         <span class="status-sep" aria-hidden="true">│</span>
         <span id="status-session" class="status-item status-value">0 个会话</span>
+        <span class="status-sep" aria-hidden="true">│</span>
+        <!-- 握手事实填的是原型那一格（chacha20-poly1305 · ed25519 · 128 行）的前两项。
+             它们在一条连接内是常量，所以归状态栏，不归每 5 秒刷一次的监控行。
+             会话时长那一格仍然不在这里：快照里的是**主机**的 uptime，另一个数字。 -->
+        <span id="status-cipher" class="status-item status-value">—</span>
+        <span class="status-sep" aria-hidden="true">│</span>
+        <span id="status-key" class="status-item status-value">—</span>
         <span class="status-sep" aria-hidden="true">│</span>
         <span id="status-size" class="status-item status-value">—</span>
         <span class="status-fill"></span>

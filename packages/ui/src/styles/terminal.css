@@ -87,6 +87,42 @@ button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: 
 .failure-raw { max-width: 240px; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); text-overflow: ellipsis; white-space: nowrap; }
 .failure-raw:empty { display: none; }
 .session-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+/* 监控条。折叠时是一条 28px 的控制行，**没有自己的底色和边框** —— 会话屏的三条
+   固定横带（顶栏 40、会话栏 40、状态栏 24）因此一条都没变，监控只是会话栏下面多
+   了一行控件。展开后才成为 40px 的横带：会话栏的高度、状态栏的字号和 │ 分隔，
+   控件用会话栏那套 .ghost small。它永远不参与拉伸，终端那一格才是弹性的。 */
+.session-monitor { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; min-height: 28px; padding: 0 10px 0 14px; color: var(--tx-3); font-size: var(--fs-micro); }
+.session-monitor.is-expanded { min-height: 40px; border-top: 1px solid var(--line); background: var(--c-chrome); }
+.session-monitor[hidden] { display: none; }
+.monitor-row { display: flex; flex: 1 1 auto; align-items: center; gap: 10px; min-width: 0; }
+.monitor-toggle { flex: 0 0 auto; }
+/* 状态的含义由文字承担，颜色只是重复一遍：色觉障碍下「读取失败」和「已更新」
+   仍然是两句话，不是两个深浅不同的灰点。 */
+.monitor-state { flex: 0 0 auto; white-space: nowrap; }
+.session-monitor[data-status='ready'] .monitor-state { color: var(--ok); }
+.session-monitor[data-status='partial'] .monitor-state,
+.session-monitor[data-status='stale'] .monitor-state { color: var(--warn); }
+.session-monitor[data-status='error'] .monitor-state,
+.session-monitor[data-status='unsupported'] .monitor-state { color: var(--err); }
+.monitor-body { display: flex; flex: 0 1 auto; align-items: center; flex-wrap: wrap; gap: 4px 0; min-width: 0; }
+.monitor-body[hidden] { display: none; }
+.monitor-field { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+/* 字段之间是一条竖线，不是空隙：原型的状态栏就是这么把几个读数排在一行的。 */
+.monitor-field + .monitor-field::before { margin: 0 10px; color: var(--line-strong); content: '│'; }
+.monitor-label { color: var(--tx-3); }
+.monitor-value { color: var(--tx-1); font-family: var(--font-mono); }
+/* 读不到的那一项不假装成 0：破折号退到次要色，原因挂在 title 上。 */
+.monitor-field[data-issue] .monitor-value { color: var(--tx-3); }
+.monitor-fill { flex: 1 1 auto; min-width: 0; }
+.monitor-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.monitor-detail:empty { display: none; }
+.monitor-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+/* 窄屏：读数换行到第二行，页面不横向溢出。终端仍然是唯一被拉伸的那一格。 */
+@media (max-width: 820px) {
+  .monitor-row { flex-wrap: wrap; }
+  .monitor-body { flex-basis: 100%; order: 1; }
+  .monitor-fill { display: none; }
+}
 .session-content { display: grid; flex: 1 1 auto; min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); }
 /* 1.35fr : 1fr is the prototype's ratio (.term flex:1.35 against .sftp width:38%),
    restated in fr so the grip's 5px is subtracted before the split instead of

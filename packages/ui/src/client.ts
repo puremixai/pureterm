@@ -6,6 +6,7 @@ import { ClientTerminal } from './services/terminal.js'
 import { ClientHosts } from './features/hosts.js'
 import { ClientKeychain } from './features/keychain.js'
 import { ClientSftp } from './features/sftp.js'
+import { ClientMonitor } from './features/monitor.js'
 import { ClientChrome } from './services/chrome.js'
 import { ClientToasts } from './services/toasts.js'
 import { ClientApplication } from './features/readiness.js'
@@ -14,7 +15,7 @@ import type { TerminalFactory } from './terminal-view.js'
 export interface ClientOptions { document?: Document; api?: SshApi; terminalFactory?: TerminalFactory }
 export interface Client {
   readonly context: Context
-  readonly scopes: Readonly<Record<'view' | 'toasts' | 'transport' | 'terminal' | 'keychain' | 'hosts' | 'sftp' | 'chrome' | 'application', Fiber>>
+  readonly scopes: Readonly<Record<'view' | 'toasts' | 'transport' | 'terminal' | 'keychain' | 'hosts' | 'sftp' | 'monitor' | 'chrome' | 'application', Fiber>>
   readonly ready: Promise<RendererReadyPayload>
   dispose(): Promise<void>
 }
@@ -39,6 +40,10 @@ export function createClient(options: ClientOptions = {}): Client {
     keychain: context.plugin(ClientKeychain),
     hosts: context.plugin(ClientHosts),
     sftp: context.plugin(ClientSftp),
+    // 监控装在它的三个提供方之后（view / transport / terminal）。它的构造是同步的，
+    // 第一个远端快照要等用户展开面板，所以 `client.ready` 不会等一个探测 —— 就绪是
+    // 本地能力的事，远端监控慢或坏都不该让它迟到。
+    monitor: context.plugin(ClientMonitor),
     chrome: context.plugin(ClientChrome),
     application: context.plugin(ClientApplication),
   }

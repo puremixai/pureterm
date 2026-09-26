@@ -6,7 +6,7 @@ import { ClientTransport } from '../src/services/transport.js'
 
 import { VERSION } from '../src/lib/version.js'
 
-import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, MonitorStartRequest, MonitorStartResult, MonitorStopResult, MonitorUpdate, RendererReadyPayload, SessionFacts, SftpDir, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
+import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, MonitorSnapshot, MonitorStartRequest, MonitorStartResult, MonitorStopResult, MonitorUpdate, RendererReadyPayload, SessionFacts, SftpDir, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
 
 import type { TerminalView } from '../src/terminal-view.js'
 
@@ -49,22 +49,55 @@ function fixture() {
   const emit = (name: keyof typeof listeners, ...args: unknown[]) => { for (const listener of listeners[name]) listener(...args) }
 
   /*
-   * 监控 fixture。Task 1 只把它接到 SshApi 上，让契约完整、类型编得过；
-   * 具体行为断言由 ClientMonitor 落地时（Task 5）补，那时这里会长出可控的
-   * start 回复、更新序列和 stop 记录。默认行为是「立刻同意」，因为一个不存在的
-   * 消费者不该让现有生命周期测试出现新的等待。
+   * 监控 fixture。观测面有三样：可控的 start 回复（能挂住、能让它失败）、当前活着的
+   * 订阅集合、以及合成的事件源。默认「立刻同意」而且默认折叠，所以现有生命周期检查
+   * 一条 start 都不会发出来 —— 这正是折叠默认要保证的事。
    */
   const monitor = {
+
     starts: [] as MonitorStartRequest[],
+
     stops: [] as string[],
-    start: async (request: MonitorStartRequest): Promise<MonitorStartResult> => {
+
+    /** 当前活着的订阅：收到 start、还没被 stop 的 ID。 */
+    active: new Set<string>(),
+
+    /** 挂起未答的 start，按调用顺序。holding 为 true 时 start 不自动回复。 */
+    held: [] as Array<{ request: MonitorStartRequest; resolve: () => void; reject: (error: Error) => void }>,
+
+    holding: false,
+
+    /** 非 null 时 start 直接失败，用来造 MONITOR_UNAVAILABLE。 */
+    rejection: null as string | null,
+
+    async start(request: MonitorStartRequest): Promise<MonitorStartResult> {
       monitor.starts.push(request)
+      if (monitor.rejection) throw new Error(monitor.rejection)
+      monitor.active.add(request.subscriptionId)
+      if (monitor.holding) await new Promise<void>((resolve, reject) => { monitor.held.push({ request, resolve, reject }) })
       return { subscriptionId: request.subscriptionId, intervalMs: 5000 }
     },
-    stop: async (subscriptionId: string): Promise<MonitorStopResult> => {
+
+    async stop(subscriptionId: string): Promise<MonitorStopResult> {
       monitor.stops.push(subscriptionId)
-      return { stopped: true }
+      return { stopped: monitor.active.delete(subscriptionId) }
     },
+
+    /** 让所有挂起的 start 回复。 */
+    release(): void { for (const entry of monitor.held.splice(0)) entry.resolve() },
+
+    /** 让所有挂起的 start 失败。 */
+    fail(message: string): void { for (const entry of monitor.held.splice(0)) entry.reject(new Error(message)) },
+
+    /** 一个订阅被停了几次。停止是幂等的，但重复的请求会让这条断言失去意义。 */
+    stopsOf(subscriptionId: string): number { return monitor.stops.filter(stop => stop === subscriptionId).length },
+
+    /** 合成一条 monitor:update。 */
+    update(update: MonitorUpdate): void { emit('updates', update) },
+
+    /** 合成一条 session:facts。 */
+    facts(facts: SessionFacts): void { emit('facts', facts) },
+
   }
 
   const hosts: HostRecord[] = [{ id: 'fixture', label: 'Fixture', host: 'localhost', username: 'demo', port: 22, authMethod: 'password', hasSecret: false, updatedAt: '' }]
@@ -153,6 +186,50 @@ function hostAction(id: string, action = '.host-main') { document.querySelector<
 function editHost(id: string) { hostAction(id, '[data-act="edit"]') }
 
 function change(id: string, value: string) { input(id).value = value; input(id).dispatchEvent(new Event('input', { bubbles: true })) }
+
+/*
+ * 监控条的观测面。全部按 DOM 读，不碰 ClientMonitor 的内部状态：这个 harness 剥掉了
+ * 样式表，所以「面板说了什么、画了什么」才是能在这里证明的东西。
+ */
+const monitorRoot = (): HTMLElement => document.getElementById('session-monitor')!
+const monitorStatus = (): string | undefined => monitorRoot().dataset.status
+const monitorText = (id: string): string => document.getElementById(id)!.textContent ?? ''
+const monitorField = (metric: string): HTMLElement => document.querySelector<HTMLElement>(`#session-monitor .monitor-field[data-metric="${metric}"]`)!
+const monitorValue = (metric: string): string => monitorField(metric).querySelector('.monitor-value')!.textContent ?? ''
+const monitorIssue = (metric: string): string | undefined => monitorField(metric).dataset.issue
+
+/** 一张六个指标都在的快照：每个值都取整，好让断言写成一个字面量。 */
+function fullSnapshot(collectedAt = Date.now()): MonitorSnapshot {
+  return {
+    collectedAt, cpuPercent: 12.5,
+    memory: { usedBytes: 614400, totalBytes: 1024000, usedPercent: 60 },
+    load: { one: 0.5, five: 1, fifteen: 2 },
+    disk: { mount: '/', usedBytes: 40960, totalBytes: 102400, availableBytes: 51200, usedPercent: 40 },
+    net: { receivedBytesPerSecond: 4096, transmittedBytesPerSecond: 2048 },
+    uptimeSeconds: 86400, issues: {},
+  }
+}
+
+/** 第一轮：CPU 和网络是增量指标，还没有基线。 */
+function warmUpSnapshot(collectedAt = Date.now()): MonitorSnapshot {
+  return { ...fullSnapshot(collectedAt), cpuPercent: null, net: null, issues: { cpu: 'warming-up', net: 'warming-up' } }
+}
+
+/**
+ * 按下 document.hidden 并派发 visibilitychange。
+ *
+ * 产品代码读的就是这一个 getter，所以测试要能控制它 —— 而控制它的正确方式是覆盖
+ * getter 并在断言之后删掉覆盖，不是给产品加一个能绕过可见性策略的开关。
+ */
+function setHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+  document.dispatchEvent(new Event('visibilitychange'))
+}
+
+function restoreHidden(): void {
+  delete (document as unknown as Record<string, unknown>).hidden
+  document.dispatchEvent(new Event('visibilitychange'))
+}
 
 
 
@@ -1035,6 +1112,10 @@ async function runChecks() {
 
     assert(document.querySelector('#sftp-refresh') === null && input('connect').disabled, 'dependent feature views remained active')
 
+    // 监控注入的也是 transport，所以它必须跟着走 —— 而不是留在页面上按一个已经没有
+    // 载体的订阅。这一条和上面那条是同一件事的两种观测面。
+    assert(document.querySelector('#monitor-toggle') === null, 'removing transport did not unload the dependent monitor')
+
     const replacement = fixture()
 
     await client.context.plugin(ClientTransport, { api: replacement.api })
@@ -1319,9 +1400,573 @@ async function runChecks() {
 
     checks.push('cached page restoration waits for disposal, remounts once and releases entry listeners')
 
+
+    /*
+     * 监控：默认折叠、展开才采集、折叠就退订。
+     *
+     * 这是本增量里唯一一处「用户什么都不做、行为就变了」的地方 —— 一个刚打开的会话
+     * 不该在远端跑起一条每 5 秒一次的采集命令 —— 所以它值得一条自己的检查。
+     */
+    const monitoring = fixture()
+
+    client = createClient({ api: monitoring.api, terminalFactory: monitoring.terminalFactory })
+
+    assert((await client.ready).ok, 'monitoring client failed readiness')
+
+    const monitored: string[] = []
+
+    const openSession = monitoring.api.open
+
+    monitoring.api.open = async request => { const result = await openSession(request); monitored.push(result.sessionId); return result }
+
+    fill(); click('connect'); await tick()
+
+    assert(monitoring.monitor.starts.length === 0, 'a freshly opened session must not start monitoring while the panel is collapsed')
+
+    assert(!monitorRoot().hidden && input('monitor-toggle').getAttribute('aria-expanded') === 'false', 'the monitor row is present and collapsed')
+
+    assert(input('monitor-body').hidden, 'collapsed means the figures are not drawn')
+
+    assert(monitorStatus() === 'paused', 'a collapsed panel says it is paused rather than pretending to read')
+
+    // 展开只改属性和文字，不抢焦点：终端仍然是聚焦的那一个。
+    const pane = document.querySelector<HTMLElement>('.terminal-pane:not([hidden])')!
+
+    pane.tabIndex = -1; pane.focus()
+
+    click('monitor-toggle'); await tick()
+
+    assert(document.activeElement === pane, 'expanding the row must not move focus out of the terminal')
+
+    assert(monitoring.monitor.starts.length === 1, 'expanding must start exactly one subscription')
+
+    const activation = monitoring.monitor.starts[0]!
+
+    assert(activation.sessionId === monitored[0] && /^[A-Za-z0-9_-]{1,64}$/.test(activation.subscriptionId), 'the subscription names the connected session with an ID the wire contract accepts')
+
+    assert(monitorStatus() === 'loading', 'an expanded panel with no snapshot yet is loading')
+
+    // 第一轮：CPU 和网络是增量指标，还没有基线。
+    monitoring.monitor.update({ sessionId: monitored[0]!, subscriptionId: activation.subscriptionId, sequence: 1, status: 'partial', snapshot: warmUpSnapshot() })
+
+    await tick()
+
+    assert(monitorStatus() === 'partial', 'a frame whose two delta metrics are warming up is partial')
+
+    assert(monitorIssue('cpu') === 'warming-up' && monitorIssue('net') === 'warming-up', 'only CPU and network warm up, because only they are deltas')
+
+    assert(monitorValue('cpu') === '—' && monitorValue('net') === '—', 'a warm-up metric is a dash, never a zero')
+
+    assert(monitorValue('memory').includes('60.0%') && monitorValue('load') === '0.50 1.00 2.00', 'the metrics that are ready are drawn with their units')
+
+    // 第二轮：六个指标都在。
+    monitoring.monitor.update({ sessionId: monitored[0]!, subscriptionId: activation.subscriptionId, sequence: 2, status: 'ready', snapshot: fullSnapshot() })
+
+    await tick()
+
+    assert(monitorStatus() === 'ready' && monitorIssue('cpu') === undefined, 'a complete frame is ready and carries no issue')
+
+    assert(monitorValue('cpu') === '12.5%', 'cpu is drawn as a percentage')
+
+    assert(monitorValue('uptime') === '1 天 0 小时', 'the host uptime is drawn in readable units, not raw seconds')
+
+    assert(monitorValue('net').includes('↓') && monitorValue('net').includes('↑') && monitorValue('net').includes('KB/s'), 'throughput carries a direction and a unit')
+
+    // 快照里带着**主机**的 uptime，而状态栏那一格不许拿它顶替会话时长。
+    assert(document.getElementById('status-uptime') === null, 'the host uptime must not be printed as a session uptime')
+
+    /*
+     * 更新只改文字和属性，不重建节点。这不是性能考虑：一次重建就会让正在被键盘
+     * 操作的那个按钮失去焦点，而「后台采样不动焦点」正是这一行存在的条件。
+     */
+    const toggle = input('monitor-toggle')
+
+    toggle.focus()
+
+    monitoring.monitor.update({ sessionId: monitored[0]!, subscriptionId: activation.subscriptionId, sequence: 3, status: 'ready', snapshot: fullSnapshot() })
+
+    await tick()
+
+    assert(document.activeElement === toggle, 'a sample must not rebuild the row and drop keyboard focus')
+
+    // 折叠 = 退订，而不是让它在看不见的地方继续跑。
+    click('monitor-toggle'); await tick()
+
+    assert(monitoring.monitor.stopsOf(activation.subscriptionId) === 1, 'collapsing must stop the subscription exactly once')
+
+    assert(!monitoring.monitor.active.has(activation.subscriptionId), 'a stopped subscription is no longer live')
+
+    assert(monitorStatus() === 'paused', 'collapsing shows paused rather than the last sample as if it were live')
+
+    assert(monitorValue('cpu') === '12.5%', 'the last values stay on screen while paused')
+
+    // 再展开 = 新一代订阅：宿主的 CPU 与网络基线必须重来。
+    click('monitor-toggle'); await tick()
+
+    assert(monitoring.monitor.starts.length === 2 && monitoring.monitor.starts[1]!.subscriptionId !== activation.subscriptionId, 'a new activation is a new subscription ID')
+
+    assert(monitoring.monitor.active.size === 1, 'exactly one subscription is live at a time')
+
+    await client.dispose()
+
+    checks.push('the monitor is collapsed by default, collects on expand, retires on collapse, and draws warm-up and ready frames')
+
+
+
+    /*
+     * 就绪不是「远端已经答话」。监控在本地能力之外，所以一条挂住的 start 不该让应用
+     * 迟到自己 ready，也不该让终端少一格。
+     */
+    const pendingReply = fixture()
+
+    pendingReply.monitor.holding = true
+
+    client = createClient({ api: pendingReply.api, terminalFactory: pendingReply.terminalFactory })
+
+    const pendingReplyReady = await client.ready
+
+    assert(pendingReplyReady.ok, 'readiness must not wait for a monitor reply')
+
+    fill(); click('connect'); await tick(); click('monitor-toggle'); await tick()
+
+    assert(pendingReply.monitor.held.length === 1, 'the start request is in flight')
+
+    assert(monitorStatus() === 'loading', 'a pending start is loading, not an error')
+
+    assert((await client.ready).ok, 'readiness still holds while the first sample is pending')
+
+    pendingReply.monitor.release(); await tick()
+
+    assert(monitorStatus() === 'loading', 'a reply alone produces no snapshot')
+
+    await client.dispose()
+
+    // 宿主里没有监控插件：可预期，不是坏了。
+    const absent = fixture()
+
+    absent.monitor.rejection = 'MONITOR_UNAVAILABLE'
+
+    client = createClient({ api: absent.api, terminalFactory: absent.terminalFactory })
+
+    assert((await client.ready).ok, 'client without a monitor plugin failed readiness')
+
+    fill(); click('connect'); await tick(); click('monitor-toggle'); await tick()
+
+    assert(monitorStatus() === 'unsupported', 'a host without the monitor plugin renders unsupported, not broken')
+
+    assert(monitorText('monitor-detail').includes('不支持'), 'and it says so in words rather than showing a code')
+
+    await client.dispose()
+
+    // 远端不是 Linux 走的是另一条路：start 成功，随后来一条 unsupported 事件。
+    const nonLinux = fixture()
+
+    client = createClient({ api: nonLinux.api, terminalFactory: nonLinux.terminalFactory })
+
+    assert((await client.ready).ok, 'non-Linux client failed readiness')
+
+    const nonLinuxSessions: string[] = []
+
+    const openNonLinux = nonLinux.api.open
+
+    nonLinux.api.open = async request => { const result = await openNonLinux(request); nonLinuxSessions.push(result.sessionId); return result }
+
+    fill(); click('connect'); await tick(); click('monitor-toggle'); await tick()
+
+    const nonLinuxSubscription = nonLinux.monitor.starts.at(-1)!
+
+    nonLinux.monitor.update({ sessionId: nonLinuxSessions[0]!, subscriptionId: nonLinuxSubscription.subscriptionId, sequence: 1, status: 'unsupported', snapshot: null, message: '这台主机的操作系统是 Windows，暂不支持资源监控。' })
+
+    await tick()
+
+    assert(monitorStatus() === 'unsupported', 'a remote non-Linux target is unsupported after a successful start')
+
+    assert(monitorValue('cpu') === '—', 'an unsupported target shows no invented numbers')
+
+    // 一次失败不改写上一张快照：它带着自己的时间戳留着，由状态文字说明这一轮没读到。
+    nonLinux.monitor.update({ sessionId: nonLinuxSessions[0]!, subscriptionId: nonLinuxSubscription.subscriptionId, sequence: 2, status: 'ready', snapshot: fullSnapshot() })
+
+    await tick()
+
+    nonLinux.monitor.update({ sessionId: nonLinuxSessions[0]!, subscriptionId: nonLinuxSubscription.subscriptionId, sequence: 3, status: 'error', message: '远端采集命令超时。' })
+
+    await tick()
+
+    assert(monitorStatus() === 'error', 'a failed probe is an error')
+
+    assert(monitorText('monitor-detail') === '远端采集命令超时。', 'and it shows the reason the host gave')
+
+    assert(monitorValue('cpu') === '12.5%', 'an error keeps the last sample rather than blanking the row')
+
+    await client.dispose()
+
+    checks.push('readiness never waits for a probe, and unsupported/error states render without invented numbers')
+
+
+
+    /*
+     * 切标签页。每一代订阅都有自己的 ID，所以上一代的迟到事件在这一步就被挡掉。
+     */
+    const switching = fixture()
+
+    client = createClient({ api: switching.api, terminalFactory: switching.terminalFactory })
+
+    assert((await client.ready).ok, 'tab-switch client failed readiness')
+
+    const switched: string[] = []
+
+    const openSwitch = switching.api.open
+
+    switching.api.open = async request => { const result = await openSwitch(request); switched.push(result.sessionId); return result }
+
+    const tabs = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+
+    fill(); click('connect'); await tick()
+
+    click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+
+    assert(switched.length === 2 && tabs().length === 2, 'the switch check needs two sessions')
+
+    // 第二个会话是刚建的，也就是当前标签页。
+    click('monitor-toggle'); await tick()
+
+    const secondTab = switching.monitor.starts.at(-1)!
+
+    assert(secondTab.sessionId === switched[1], 'the second tab subscribes its own session')
+
+    tabs()[0]!.click(); await tick()
+
+    assert(switching.monitor.stopsOf(secondTab.subscriptionId) === 1, 'leaving a tab stops its subscription exactly once')
+
+    click('monitor-toggle'); await tick()
+
+    const firstTab = switching.monitor.starts.at(-1)!
+
+    assert(firstTab.sessionId === switched[0] && firstTab.subscriptionId !== secondTab.subscriptionId, 'the first tab subscribes its own session under a new ID')
+
+    // 上一代的事件什么都不属于：会话对不上，订阅 ID 也对不上。
+    switching.monitor.update({ sessionId: switched[1]!, subscriptionId: secondTab.subscriptionId, sequence: 5, status: 'ready', snapshot: fullSnapshot() })
+
+    await tick()
+
+    assert(monitorStatus() === 'loading', 'an event from a retired subscription must not repaint the current one')
+
+    // 当前订阅的重复序号和更早的序号同样被忽略。
+    switching.monitor.update({ sessionId: switched[0]!, subscriptionId: firstTab.subscriptionId, sequence: 2, status: 'ready', snapshot: fullSnapshot() })
+
+    switching.monitor.update({ sessionId: switched[0]!, subscriptionId: firstTab.subscriptionId, sequence: 2, status: 'error', message: '重复的序号' })
+
+    switching.monitor.update({ sessionId: switched[0]!, subscriptionId: firstTab.subscriptionId, sequence: 1, status: 'error', message: '更早的序号' })
+
+    await tick()
+
+    assert(monitorStatus() === 'ready' && monitorValue('cpu') === '12.5%', 'a duplicate or older sequence must not repaint the row')
+
+    // 迟到的 start 回复：展开之后立刻切走，回复才到。
+    tabs()[1]!.click(); await tick()
+
+    click('monitor-toggle'); await tick()
+
+    switching.monitor.holding = true
+
+    tabs()[0]!.click(); await tick()
+
+    assert(switching.monitor.held.length === 1, 'the switch back to the first tab starts a subscription that is still unanswered')
+
+    const lateReply = switching.monitor.held[0]!.request.subscriptionId
+
+    tabs()[1]!.click(); await tick()
+
+    assert(switching.monitor.stopsOf(lateReply) === 0, 'an unanswered subscription is not stopped before its reply arrives')
+
+    switching.monitor.release(); await tick()
+
+    assert(switching.monitor.stopsOf(lateReply) === 1, 'a start reply that lands after eligibility was lost stops that obsolete ID exactly once')
+
+    assert(switching.monitor.active.size === 0, 'no subscription is left live after the switch')
+
+    switching.monitor.holding = false
+
+    await client.dispose()
+
+    checks.push('tab switching retires the old subscription, and late events, sequences and replies cannot repaint the new one')
+
+
+
+    /*
+     * 连点折叠/暂停/恢复。每一次激活都是新订阅，每一次退役都只停一次。
+     */
+    const pacing = fixture()
+
+    client = createClient({ api: pacing.api, terminalFactory: pacing.terminalFactory })
+
+    assert((await client.ready).ok, 'pacing client failed readiness')
+
+    fill(); click('connect'); await tick(); click('monitor-toggle'); await tick()
+
+    click('monitor-pause'); await tick()
+
+    assert(monitorStatus() === 'paused' && input('monitor-pause').getAttribute('aria-pressed') === 'true', 'the pause control reports the state it is in')
+
+    assert(pacing.monitor.active.size === 0, 'pausing retires the subscription')
+
+    click('monitor-pause'); await tick()
+
+    assert(monitorStatus() === 'loading' && pacing.monitor.active.size === 1, 'resuming starts a new subscription')
+
+    click('monitor-toggle'); await tick(); click('monitor-toggle'); await tick()
+
+    click('monitor-pause'); await tick(); click('monitor-pause'); await tick()
+
+    assert(pacing.monitor.active.size === 1, `rapid toggling must leave exactly one live subscription, found ${pacing.monitor.active.size}`)
+
+    assert(pacing.monitor.starts.length === 4, `four activations are four subscriptions, found ${pacing.monitor.starts.length}`)
+
+    assert(new Set(pacing.monitor.starts.map(start => start.subscriptionId)).size === 4, 'every activation gets its own ID')
+
+    assert(pacing.monitor.starts.slice(0, 3).every(start => pacing.monitor.stopsOf(start.subscriptionId) === 1), 'every retired subscription is stopped exactly once')
+
+    assert(pacing.monitor.stopsOf(pacing.monitor.starts[3]!.subscriptionId) === 0, 'the one still-live subscription has not been stopped')
+
+    await client.dispose()
+
+    checks.push('rapid collapse, pause and resume leave one live subscription, one stop each, and no duplicate timers')
+
+
+
+    /*
+     * 可见性。隐藏时**在远端**停采，不是只在本地不画；回到可见时立刻按快照的时间戳
+     * 判定过期，而不是把一张二十秒前的数字当成实时。
+     */
+    const visibility = fixture()
+
+    client = createClient({ api: visibility.api, terminalFactory: visibility.terminalFactory })
+
+    assert((await client.ready).ok, 'visibility client failed readiness')
+
+    const visibleSessions: string[] = []
+
+    const openVisible = visibility.api.open
+
+    visibility.api.open = async request => { const result = await openVisible(request); visibleSessions.push(result.sessionId); return result }
+
+    fill(); click('connect'); await tick(); click('monitor-toggle'); await tick()
+
+    const visible = visibility.monitor.starts.at(-1)!
+
+    visibility.monitor.update({ sessionId: visibleSessions[0]!, subscriptionId: visible.subscriptionId, sequence: 1, status: 'ready', snapshot: fullSnapshot() })
+
+    await tick()
+
+    assert(monitorStatus() === 'ready', 'the visible tab collects')
+
+    setHidden(true); await tick()
+
+    assert(visibility.monitor.stopsOf(visible.subscriptionId) === 1, 'a hidden document retires the subscription')
+
+    assert(monitorStatus() === 'paused', 'a hidden document shows paused, not a live sample')
+
+    const realNow = Date.now
+
+    const sampledAt = realNow()
+
+    Date.now = () => sampledAt + 20000
+
+    setHidden(false); await tick()
+
+    assert(visibility.monitor.starts.length === 2, 'becoming visible again starts a new subscription')
+
+    assert(monitorStatus() === 'stale', 'a retained sample older than 15 seconds is stale, not live')
+
+    Date.now = realNow
+
+    const resumed = visibility.monitor.starts.at(-1)!
+
+    visibility.monitor.update({ sessionId: visibleSessions[0]!, subscriptionId: resumed.subscriptionId, sequence: 1, status: 'ready', snapshot: fullSnapshot() })
+
+    await tick()
+
+    assert(monitorStatus() === 'ready', 'a fresh sample clears the stale mark')
+
+    setHidden(true); await tick()
+
+    assert(visibility.monitor.stopsOf(resumed.subscriptionId) === 1, 'hiding again retires the new subscription')
+
+    restoreHidden(); await tick()
+
+    await client.dispose()
+
+    checks.push('visibility loss retires the subscription, and a retained sample goes stale before the next one arrives')
+
+
+
+    /*
+     * 断开、重连、关标签页。重连拿到的是**新会话**，所以旧数字一个都不能留下。
+     */
+    const ending = fixture()
+
+    client = createClient({ api: ending.api, terminalFactory: ending.terminalFactory })
+
+    assert((await client.ready).ok, 'ending client failed readiness')
+
+    const endedSessions: string[] = []
+
+    const openEnding = ending.api.open
+
+    ending.api.open = async request => { const result = await openEnding(request); endedSessions.push(result.sessionId); return result }
+
+    fill(); click('connect'); await tick(); click('monitor-toggle'); await tick()
+
+    const beforeEnd = ending.monitor.starts.at(-1)!
+
+    ending.monitor.update({ sessionId: endedSessions[0]!, subscriptionId: beforeEnd.subscriptionId, sequence: 1, status: 'ready', snapshot: fullSnapshot() })
+
+    await tick()
+
+    assert(monitorValue('cpu') === '12.5%', 'the connected session draws its sample')
+
+    click('disconnect'); await tick()
+
+    assert(ending.monitor.stopsOf(beforeEnd.subscriptionId) === 1, 'disconnecting retires the subscription')
+
+    assert(monitorStatus() === 'disconnected', 'a closed session says the connection ended')
+
+    click('session-reconnect'); await tick()
+
+    assert(endedSessions.length === 2 && endedSessions[1] !== endedSessions[0], 'reconnecting gets a new session ID')
+
+    assert(monitorStatus() === 'loading', 'a new session never inherits the old live status')
+
+    assert(monitorValue('cpu') === '—', 'and it never inherits the old numbers either')
+
+    const afterEnd = ending.monitor.starts.at(-1)!
+
+    assert(afterEnd.sessionId === endedSessions[1], 'the new subscription names the new session')
+
+    document.querySelector<HTMLButtonElement>('[data-tab-close]')!.click(); await tick()
+
+    assert(ending.monitor.stopsOf(afterEnd.subscriptionId) === 1, 'closing a tab retires its subscription')
+
+    assert(monitorStatus() === 'idle' && monitorValue('cpu') === '—', 'a closed tab leaves neither a status nor numbers behind')
+
+    await client.dispose()
+
+    checks.push('disconnect, reconnect with a new session ID and tab close all retire the subscription and clear the per-tab numbers')
+
+
+
+    /*
+     * 卸载监控插件。终端、SFTP、就绪和状态栏那两格都不属于它，所以它们必须活着。
+     */
+    const removal = fixture()
+
+    client = createClient({ api: removal.api, terminalFactory: removal.terminalFactory })
+
+    assert((await client.ready).ok, 'removal client failed readiness')
+
+    const removalSessions: string[] = []
+
+    const openRemoval = removal.api.open
+
+    removal.api.open = async request => { const result = await openRemoval(request); removalSessions.push(result.sessionId); return result }
+
+    fill(); click('connect'); await tick(); click('monitor-toggle'); await tick()
+
+    const removed = removal.monitor.starts.at(-1)!
+
+    removal.monitor.update({ sessionId: removalSessions[0]!, subscriptionId: removed.subscriptionId, sequence: 1, status: 'ready', snapshot: fullSnapshot() })
+
+    removal.monitor.facts({ sessionId: removalSessions[0]!, revision: 1, serverHostKey: 'ssh-ed25519', cipher: { clientToServer: 'chacha20-poly1305@openssh.com', serverToClient: 'chacha20-poly1305@openssh.com' } })
+
+    await tick()
+
+    assert(monitorValue('cpu') === '12.5%' && input('status-key').textContent === 'ssh-ed25519', 'the monitor and the facts path are both live before the unload')
+
+    await client.scopes.monitor.dispose()
+
+    assert(removal.monitor.stopsOf(removed.subscriptionId) === 1, 'unloading the monitor retires its subscription')
+
+    assert(monitorRoot().children.length === 0, 'the panel unmounts with its plugin')
+
+    for (const listener of removal.terminals[0]!.inputs) listener('still-alive\r')
+
+    assert(removal.stats.inputs === 1, 'the terminal still accepts input after the monitor is unloaded')
+
+    click('sftp-toggle'); await tick()
+
+    assert(removal.stats.lists === 1 && document.querySelector('#sftp-refresh') !== null, 'SFTP still lists after the monitor is unloaded')
+
+    assert(input('status-cipher').textContent === 'chacha20-poly1305@openssh.com', 'unloading the monitor must not blank the cipher cell')
+
+    assert(input('status-key').textContent === 'ssh-ed25519', 'nor the host key cell')
+
+    assert((await client.ready).ok, 'readiness never waited for the monitor')
+
+    await client.dispose()
+
+    checks.push('unloading the monitor plugin leaves the terminal, SFTP, readiness and the status bar facts working')
+
+
+
+    /*
+     * 会话事实。cipher 与 host key 是连接期的常量，所以它们进状态栏那一格，不进每
+     * 5 秒刷一次的监控行 —— 而这一块同时证明它们的路径不经过监控插件。
+     */
+    const facts = fixture()
+
+    client = createClient({ api: facts.api, terminalFactory: facts.terminalFactory })
+
+    assert((await client.ready).ok, 'facts client failed readiness')
+
+    const cipher = 'chacha20-poly1305@openssh.com'
+
+    const factSessions: string[] = []
+
+    const openFacts = facts.api.open
+
+    facts.api.open = async request => {
+      const result = await openFacts(request)
+      // 事实先于**客户端登记这个会话**到达：宿主在 terminal:opened 之后立刻发它，而
+      // tab 的 sessionId 要等 open 的回复。所以它必须被缓冲，而不是被丢掉。
+      facts.monitor.facts({ sessionId: result.sessionId, revision: 1, serverHostKey: 'ssh-ed25519', cipher: { clientToServer: cipher, serverToClient: cipher } })
+      factSessions.push(result.sessionId)
+      return result
+    }
+
+    fill(); click('connect'); await tick()
+
+    assert(input('status-cipher').textContent === cipher, 'an equal cipher pair renders as a single name')
+
+    assert(input('status-key').textContent === 'ssh-ed25519', 'the host key algorithm has its own cell')
+
+    // rekey：更高的 revision 取代更早的一组，两个方向不同就把两个都写出来。
+    facts.monitor.facts({ sessionId: factSessions[0]!, revision: 2, serverHostKey: 'rsa-sha2-512', cipher: { clientToServer: 'aes256-gcm@openssh.com', serverToClient: cipher } })
+
+    await tick()
+
+    assert(input('status-cipher').textContent === `aes256-gcm@openssh.com → ${cipher}`, 'an asymmetric negotiation shows both directions')
+
+    assert(input('status-key').textContent === 'rsa-sha2-512', 'and the new host key replaces the old one')
+
+    // 重复的和更低的 revision 都是迟到的事件。
+    facts.monitor.facts({ sessionId: factSessions[0]!, revision: 2, serverHostKey: 'ssh-rsa', cipher: { clientToServer: 'none', serverToClient: 'none' } })
+
+    facts.monitor.facts({ sessionId: factSessions[0]!, revision: 1, serverHostKey: 'ssh-rsa', cipher: { clientToServer: 'none', serverToClient: 'none' } })
+
+    // 客户端从未见过打开的会话：这一条事实不属于任何一格。
+    facts.monitor.facts({ sessionId: 'never-opened', revision: 9, serverHostKey: 'ssh-dss', cipher: { clientToServer: 'none', serverToClient: 'none' } })
+
+    await tick()
+
+    assert(input('status-key').textContent === 'rsa-sha2-512', 'a repeated, older or unknown-session revision must not repaint the cells')
+
+    await client.dispose()
+
+    checks.push('session facts fill the cipher and host-key cells, survive a rekey and ignore stale revisions')
+
     return checks
 
-  } finally { releasePageDisposal?.(); await page?.dispose(); await client?.dispose(); window.ResizeObserver = NativeObserver; window.confirm = nativeConfirm }
+  } finally { releasePageDisposal?.(); await page?.dispose(); await client?.dispose(); window.ResizeObserver = NativeObserver; window.confirm = nativeConfirm; restoreHidden() }
 
 }
 

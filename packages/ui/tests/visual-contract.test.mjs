@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { readPartials, styleImportCount } from './partial-list.mjs'
 
 const html = await readFile(new URL('../src/index.html', import.meta.url), 'utf8')
@@ -51,6 +51,12 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(css, /^kbd \{/m, 'key chips are one element rule; two component styles would drift')
   assert.match(html, /id="failure-chip"/, 'a failure names its verdict next to the words it was read from')
   assert.match(html, /id="status-session"/, 'the status bar says which session of how many')
+  // 状态栏那一格的前两项填上了：协商出的 cipher 与服务端 host key 算法。它们是连接期
+  // 的常量，所以归状态栏而不归每 5 秒刷一次的监控行。第三项「会话时长」仍然不在 ——
+  // 快照里的是**主机**的 uptime，是另一个数字，不许拿它顶替。
+  assert.match(html, /id="status-cipher"/, 'the negotiated cipher has its cell')
+  assert.match(html, /id="status-key"/, 'and so does the server host key algorithm')
+  assert.doesNotMatch(html, /id="status-uptime"/, 'the host uptime must not be printed as a session uptime')
   assert.match(html, /id="status-hint"/, 'and carries only the hints that are true at the time')
   assert.match(css, /#status-hint:empty\s*\{\s*display:\s*none/, 'the hint slot collapses when it has nothing to say')
   assert.match(css, /\.credential-note\s*\{[^}]*font-size:\s*var\(--fs-micro\)/, 'the credential note recedes by type, not by a box')
@@ -119,6 +125,10 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   // AND a grid child of .session-content, and only the second one could ever be
   // seen — .files-open is what shows the panel at all.
   assert.match(css, /\.session-content\s*\{[^}]*grid-template-columns:/, 'the session content is a column grid')
+  // 监控条永远不参与拉伸，终端那一格才是弹性的：一条读数横带从终端高度里扣，
+  // 而它自己不该跟着窗口一起长。
+  assert.match(css, /\.session-monitor\s*\{[^}]*flex:\s*0 0 auto/, 'the monitor never takes a share of the terminal height')
+  assert.match(css, /\.session-content\s*\{[^}]*flex:\s*1 1 auto[^}]*min-height:\s*0/, 'the content stays the flexible, shrinkable one')
   assert.match(css, /\.files-open \.session-content\s*\{[^}]*var\(--grip-w\)/, 'the grip is its own track, not an overlay on one')
   assert.doesNotMatch(css, /#sftp\s*\{[^}]*position:\s*absolute/, 'one element may not have two layout mechanisms')
   // Two columns at their minimum floors are 465px, which no phone-width window
@@ -179,7 +189,10 @@ test('the prototype\'s rearrangements are in the markup', () => {
   assert.match(html, /class="page-head keychain-head"/,
     'the keychain header is the same row, not an 86px toolbar plus a second heading inside the content')
 
-  const toolbar = /<div class="session-toolbar">([\s\S]*?)<\/div>\s*\n\s*<div class="session-content">/.exec(html)
+  // 会话栏和内容之间现在夹着监控条的挂载点，所以这条模式放宽到「只允许那个挂载点
+  // 夹在中间」。它要证的仍然是同一件事——会话栏就是内容上面那一块——而不是被删掉。
+  // 挂载点本身也断言：它出厂是空的，子节点归 services/monitor.ts。
+  const toolbar = /<div class="session-toolbar">([\s\S]*?)<\/div>\s*\n\s*(?:<!--[\s\S]*?-->\s*\n\s*)?<div id="session-monitor" class="session-monitor"><\/div>\s*\n\s*<div class="session-content">/.exec(html)
   assert.ok(toolbar, 'the session toolbar is still one block above the session content')
   assert.match(toolbar[1], /id="failure-chip"/, 'the failure verdict lives in the session toolbar')
   assert.match(toolbar[1], /id="failure-raw"/, 'and so does the line it was read from')
@@ -249,5 +262,50 @@ test('each manifest imports its own partials exactly once, and the cascade order
   }
   for (const [name, text] of names.map((n, i) => [n, texts[i]])) {
     assert.ok(!/@import/.test(text), `styles/${name}.css must not @import; put it in style.css or desktop.css`)
+  }
+})
+
+const SOURCE_ROOT = new URL('../src/', import.meta.url)
+
+async function sourceTexts(directory = SOURCE_ROOT, prefix = '') {
+  const files = new Map()
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory)
+    if (entry.isDirectory()) for (const [name, text] of await sourceTexts(path, `${prefix}${entry.name}/`)) files.set(name, text)
+    else if (/\.ts$/.test(entry.name)) files.set(prefix + entry.name, await readFile(path, 'utf8'))
+  }
+  return files
+}
+
+// ClientMonitor 是这条流水线的终点，不是任何东西的依赖。这一条读源文件本身，因为
+// 「谁的 inject 列表里有它」在运行时看不见：一次错误的注入会在卸载监控时顺手拆掉
+// 别的插件，而那一刻页面只是少了一格数字，没人会把它和一行 inject 联系起来。
+test('the monitor plugin is a leaf: only the workspace depends on it', async () => {
+  const files = await sourceTexts()
+  const named = [...files].filter(([, text]) => text.includes('clientMonitor')).map(([name]) => name)
+  assert.deepEqual(named, ['features/monitor.ts'],
+    'the service name may only be declared by the plugin itself; another mention is a dependency on it')
+  // 视图助手不认识 transport、不跑定时器、不做会话策略：它拿到的是一个状态对象，
+  // 于是「这一行怎么画」和「什么时候该订阅」可以各自被证明。
+  const panel = files.get('monitor-panel.ts')
+  assert.ok(panel, 'monitor-panel.ts must exist')
+  assert.ok(!/setInterval|setTimeout|requestAnimationFrame/.test(panel), 'the view helper runs no timers')
+  assert.ok(!/SshApi|clientTransport|api\.monitor/.test(panel), 'the view helper knows no transport')
+
+  const injectOf = (name) => {
+    const match = /static inject = \[([^\]]*)\]/.exec(files.get(name) ?? '')
+    // 没有 inject 列表的服务（例如 ClientView）返回空数组：下面那两条断言仍然会
+    // 在列表缺失时红，因为它们比对的是确切内容。
+    return match ? [...match[1].matchAll(/'([^']+)'/g)].map(found => found[1]) : []
+  }
+  assert.deepEqual(injectOf('features/monitor.ts'), ['clientView', 'clientTransport', 'clientTerminal'],
+    'ClientMonitor injects exactly its three providers, in activation order')
+  // 状态栏那两格归 ClientChrome，而它取事实的路径是 transport 本身，不是监控插件：
+  // 卸载监控不能让已经协商好的 cipher 和 host key 一起消失。
+  assert.ok(injectOf('services/chrome.ts').includes('clientTransport'),
+    'ClientChrome reads the handshake facts from the transport, not through the monitor')
+  for (const [name, text] of files) {
+    if (!/extends Service/.test(text)) continue
+    assert.ok(!injectOf(name).includes('clientMonitor'), `${name} must not depend on the monitor`)
   }
 })
