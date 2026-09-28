@@ -155,12 +155,32 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, '第一张快照');
           const ready = await wait(() => visible() === '已更新'
             ? { cpu: value('cpu'), memory: value('memory'), load: value('load'), disk: value('disk'), net: value('net'), uptime: value('uptime') } : null, '第二轮快照');
-          // 同一条连接：终端仍然收发。
+          /*
+           * 同一条连接：终端仍然收发。
+           *
+           * 输入这一半仍然走真实 UI —— 粘贴事件发给 xterm 的 textarea，由它经
+           * transport 发出去；回显那一半等的是 api.onData，不是 .xterm-rows。
+           *
+           * 为什么不看 DOM：这个窗口是隐藏的，Chromium 对隐藏页面停发动画帧，
+           * 而 xterm 的 DOM 渲染器正是靠动画帧把新收到的行写进 .xterm-rows。
+           * 于是终端确实收到了回显，DOM 里却永远看不到，断言只能在超时上失败
+           * （已实测：4 秒内 0 帧、api.onData 收到 echo:monitor-alive）。
+           * 验收要证明的是「监控没有把这条会话弄坏」，不是「像素画对了」，
+           * 所以回显从它真正经过的那条路上等。
+           *
+           * 「这条粘贴确实到了远端」由启动器对着夹具自己的输入日志再断言一次
+           * （见 tests/smoke-electron.mjs 的 terminal.inputs），这样粘贴那一端
+           * 也不是自说自话。
+           */
           const data = new DataTransfer();
           data.setData('text/plain', 'monitor-alive\\r');
-          document.querySelector('.terminal-pane:not([hidden]) .xterm-helper-textarea').dispatchEvent(
-            new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
-          await wait(() => document.querySelector('.terminal-pane:not([hidden]) .xterm-rows').textContent.includes('echo:monitor-alive') ? true : null, '终端回声');
+          let echoed = '';
+          const stopListening = window.__smoke.api.onData((_id, chunk) => { echoed += new TextDecoder().decode(chunk) });
+          try {
+            document.querySelector('.terminal-pane:not([hidden]) .xterm-helper-textarea').dispatchEvent(
+              new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+            await wait(() => echoed.includes('echo:monitor-alive') ? true : null, '终端回声');
+          } finally { stopListening() }
           // 同一条连接：SFTP 仍然列目录。走面板按钮，和用户点的是同一个入口。
           document.getElementById('sftp-toggle').click();
           const path = await wait(() => document.getElementById('sftp-path').value || null, 'SFTP 列目录');

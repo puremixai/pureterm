@@ -59,6 +59,15 @@ try {
       // 独立的第三份证据：探测确实以 exec 到达了夹具，而不是被本地伪造出来。
       assert.ok(server.exec.commands.some(command => command.includes('PURETERM_MONITOR_V1')),
         'the monitor probe must reach the SSH fixture as an exec')
+      /*
+       * 方向相反的另一份证据：监控会话上那次粘贴确实到了夹具。
+       *
+       * 渲染层那边只能等到「回显回来了」（见 diagnostics/smoke.ts，隐藏窗口不产帧，
+       * 所以不看 DOM）。回显本身已经隐含了输入到达远端，但那是从**同一侧**推出来的；
+       * 这一条把输入的到达交给夹具自己记账，粘贴那一端就不再是自说自话。
+       */
+      assert.ok(server.terminal.inputs.some(chunk => chunk.includes('monitor-alive')),
+        'the paste dispatched through the real terminal must reach the SSH fixture')
       const keychain = readFileSync(join(dataDir, 'keychain.json'), 'utf8')
       assert.ok(!keychain.includes('PRIVATE KEY'))
       assert.ok(!keychain.includes(server.hostKey.toString().split('\n')[1]))

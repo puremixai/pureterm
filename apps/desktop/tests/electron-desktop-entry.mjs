@@ -40,7 +40,7 @@ app.on('browser-window-created', (_event, window) => {
           else setTimeout(tick, 25)
         }
         tick()
-      })()`)
+      })`)
       const expected = process.platform === 'darwin'
         ? []
         : ['window-minimize', 'window-maximize', 'window-close']
