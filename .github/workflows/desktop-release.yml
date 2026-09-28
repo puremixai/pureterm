@@ -80,10 +80,13 @@ jobs:
           # refuses to start it and aborts instead of running unsandboxed. Repair the
           # helper so the Linux check still exercises the sandbox, matching the runner,
           # which deliberately disables the automatic no-sandbox fallback.
-          # Resolve the helper through the same package the desktop entry loads, so the
-          # path stays correct if npm changes where it installs Electron.
-          helper=$(cd apps/desktop && node --input-type=commonjs -p "require('path').join(require('path').dirname(require('electron')), 'chrome-sandbox')")
-          test -f "$helper"
+          # The lockfile records no install script for Electron, so its binary is only
+          # downloaded on first use. Require it first, then locate the helper, so the
+          # repair does not depend on which check happens to run first.
+          (cd apps/desktop && node -e "require('electron')")
+          helper=$(find . -path '*/electron/dist/chrome-sandbox' -type f -print -quit)
+          echo "chrome-sandbox: ${helper:-<not found>}"
+          test -n "$helper" || { echo "::error::chrome-sandbox was not found under node_modules"; exit 1; }
           sudo chown root:root "$helper"
           sudo chmod 4755 "$helper"
           ls -l "$helper"
