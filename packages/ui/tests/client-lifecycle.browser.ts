@@ -147,7 +147,7 @@ function fixture() {
 
   }
 
-  const terminals: Array<TerminalView & { disposed: number; inputs: Set<(data: string) => void>; writes: unknown[]; resizeListeners: Set<(size: { cols: number; rows: number }) => void> }> = []
+  const terminals: Array<TerminalView & { disposed: number; themeCalls: number; inputs: Set<(data: string) => void>; writes: unknown[]; resizeListeners: Set<(size: { cols: number; rows: number }) => void> }> = []
 
   const terminalFactory = () => {
 
@@ -155,9 +155,11 @@ function fixture() {
 
     const resizeListeners = new Set<(size: { cols: number; rows: number }) => void>()
 
-    const device = { cols: 80, rows: 24, disposed: 0, inputs, resizeListeners, writes: [] as unknown[],
+    const device = { cols: 80, rows: 24, disposed: 0, themeCalls: 0, inputs, resizeListeners, writes: [] as unknown[],
 
       write(data: unknown) { this.writes.push(data) }, focus() {}, fit() {}, text: () => '',
+
+      applyTheme() { this.themeCalls++ },
 
       onData(listener: (data: string) => void) { inputs.add(listener); return { dispose: () => { inputs.delete(listener) } } },
 
@@ -581,9 +583,22 @@ async function runChecks() {
 
     assert(input('status-size').textContent === '—', 'no session means no terminal size to claim')
 
+    // 终端在构造时就把主题解析成了 xterm 的选项对象，之后不会自己看 data-theme，
+    // 所以换主题必须显式推给它。这一屏的空闲终端比 ClientChrome 先建，开局那次广播
+    // 就是它唯一的纠正机会 —— 用户存过浅色主题时，第一个会话从它起。
+    assert(chrome.terminals.length > 0 && chrome.terminals.every(device => device.themeCalls > 0),
+
+      'the terminal built before the chrome applied the theme must be told which group is on')
+
+    const themed = chrome.terminals.map(device => device.themeCalls)
+
     click('theme-toggle')
 
     assert(shell.dataset.theme === 'light', 'the theme switch must write data-theme on <html>')
+
+    assert(chrome.terminals.every((device, index) => device.themeCalls > themed[index]!),
+
+      'and every open terminal must re-read its tokens when the group changes')
 
     assert(document.getElementById('theme-toggle')!.getAttribute('aria-pressed') === 'true',
 
@@ -617,7 +632,7 @@ async function runChecks() {
 
     await client.dispose()
 
-    checks.push('the status bar renders real fields, and both chrome switches persist across a remount')
+    checks.push('the status bar renders real fields, both chrome switches persist across a remount, and a theme change reaches every terminal')
 
     // 窗口按钮整组是桌面独有的，而且只在系统自己不画按钮的平台上出现（macOS 的红绿灯
     // 由系统画，桥因此不带这一项）。所以这一节先断言「没有桥就一个节点都没有」，再断言

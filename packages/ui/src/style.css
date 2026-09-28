@@ -8,9 +8,10 @@
    page renders; the three families the page asks for are named in tokens.css.
    Within this stylesheet a colour literal may appear only in styles/tokens.css;
    every other partial resolves colour through a token, which is what
-   stylesheet-contract.test.mjs enforces. The guard reads partials, so the ANSI
-   list in terminal-view.ts and the meta theme-color in index.html are outside
-   its reach and are tied to the ramp by theme-sync.test.mjs. */
+   stylesheet-contract.test.mjs enforces. The guard reads partials, so the two
+   ANSI palettes in terminal-view.ts and the meta theme-color in index.html are
+   outside its reach: terminal-theme.test.mjs ties each palette entry to the
+   token it mirrors, and theme-sync.test.mjs ties the meta to --c-chrome. */
 @import "@tabler/icons-webfont/dist/tabler-icons.min.css";
 @import "./styles/fonts.css";
 @import "./styles/tokens.css";
