@@ -1423,9 +1423,9 @@ async function runChecks() {
 
     assert(monitoring.monitor.starts.length === 0, 'a freshly opened session must not start monitoring while the panel is collapsed')
 
-    assert(!monitorRoot().hidden && input('monitor-toggle').getAttribute('aria-expanded') === 'false', 'the monitor row is present and collapsed')
+    assert(monitorRoot().hidden && input('monitor-toggle').getAttribute('aria-expanded') === 'false', 'the monitor drawer is present and closed')
 
-    assert(input('monitor-body').hidden, 'collapsed means the figures are not drawn')
+    assert(input('monitor-body').hidden, 'closed means the figures are not drawn')
 
     assert(monitorStatus() === 'paused', 'a collapsed panel says it is paused rather than pretending to read')
 
@@ -1437,6 +1437,13 @@ async function runChecks() {
     click('monitor-toggle'); await tick()
 
     assert(document.activeElement === pane, 'expanding the row must not move focus out of the terminal')
+
+    // 抽屉形态：它占终端右边那一格，文件表仍然关着，共用的把手跟着出现。
+    assert(!monitorRoot().hidden && input('sftp').hidden, 'opening the resource drawer takes the shared right slot and leaves the file table closed')
+
+    assert(document.getElementById('session-workspace')!.classList.contains('monitor-open'), 'the workspace marks the resource drawer as the open one')
+
+    assert(!document.querySelector<HTMLElement>('.session-grip')!.hidden, 'the shared grip appears with the resource drawer')
 
     assert(monitoring.monitor.starts.length === 1, 'expanding must start exactly one subscription')
 
@@ -1470,7 +1477,7 @@ async function runChecks() {
 
     assert(monitorValue('uptime') === '1 天 0 小时', 'the host uptime is drawn in readable units, not raw seconds')
 
-    assert(monitorValue('net').includes('↓') && monitorValue('net').includes('↑') && monitorValue('net').includes('KB/s'), 'throughput carries a direction and a unit')
+    assert(monitorValue('net').includes('↓') && monitorValue('net').includes('↑') && monitorValue('net').includes('kB/s'), 'throughput carries a direction and a kB unit')
 
     // 快照里带着**主机**的 uptime，而状态栏那一格不许拿它顶替会话时长。
     assert(document.getElementById('status-uptime') === null, 'the host uptime must not be printed as a session uptime')
@@ -1498,6 +1505,10 @@ async function runChecks() {
 
     assert(monitorStatus() === 'paused', 'collapsing shows paused rather than the last sample as if it were live')
 
+    assert(monitorRoot().hidden && !document.getElementById('session-workspace')!.classList.contains('monitor-open'), 'collapsing the drawer hides it and clears the workspace mark')
+
+    assert(document.querySelector<HTMLElement>('.session-grip')!.hidden, 'and the shared grip leaves with it')
+
     assert(monitorValue('cpu') === '12.5%', 'the last values stay on screen while paused')
 
     // 再展开 = 新一代订阅：宿主的 CPU 与网络基线必须重来。
@@ -1506,6 +1517,13 @@ async function runChecks() {
     assert(monitoring.monitor.starts.length === 2 && monitoring.monitor.starts[1]!.subscriptionId !== activation.subscriptionId, 'a new activation is a new subscription ID')
 
     assert(monitoring.monitor.active.size === 1, 'exactly one subscription is live at a time')
+
+    // 两格抽屉共用终端右边那一格：打开文件表会让资源面板让位，并退订。
+    click('sftp-toggle'); await tick()
+
+    assert(!input('sftp').hidden && monitorRoot().hidden, 'opening the file table takes the shared slot from the resource drawer')
+
+    assert(monitoring.monitor.active.size === 0, 'and retires the resource subscription')
 
     await client.dispose()
 

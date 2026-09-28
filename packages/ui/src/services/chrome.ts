@@ -99,6 +99,7 @@ export class ClientChrome extends Service {
     ctx.on('client/tab-closed', () => this.render())
     ctx.on('client/terminal-resize', () => this.render())
     ctx.on('client/files-change', () => this.render())
+    ctx.on('client/drawer-change', () => this.render())
     apply()
     this.render()
   }
@@ -197,9 +198,9 @@ export class ClientChrome extends Service {
     view.element('status-state').textContent = STATE_TEXT[tab.state] ?? tab.state
     view.element('status-endpoint').textContent = `${tab.request.username}@${tab.request.host}:${tab.request.port ?? 22}`
     view.element('status-size').textContent = `${tab.terminal.cols}×${tab.terminal.rows}`
-    // 只有真成立的话才写：文件表没开就没有竖线，也就没有可拖的东西。
+    // 只有真成立的话才写：两格抽屉都没开就没有竖线，也就没有可拖的东西。
     const hints = ['Ctrl W 关闭标签']
-    if (this.ctx.clientSftp.open) hints.unshift('拖动竖线可调整比例')
+    if (this.ctx.clientSftp.open || !view.element('session-monitor').hidden) hints.unshift('拖动竖线可调整比例')
     view.element('status-hint').textContent = hints.join(' · ')
   }
 }

@@ -128,7 +128,7 @@ node --test apps/web/tests/*.test.mjs
 node apps/web/tests/smoke-browser.mjs
 ```
 
-The browser smoke test uses Electron only as a test Chromium window. The Web service itself remains an ordinary Node process and must continue to reject non-loopback listeners, invalid startup tokens, invalid Host/Origin headers, and browser fake file paths. It also drives the resource row and the status bar’s session facts through the real page, so a monitor regression fails here rather than only in the Electron flow.
+The browser smoke test uses Electron only as a test Chromium window. The Web service itself remains an ordinary Node process and must continue to reject non-loopback listeners, invalid startup tokens, invalid Host/Origin headers, and browser fake file paths. It also drives the resource drawer and the status bar’s session facts through the real page, so a monitor regression fails here rather than only in the Electron flow.
 
 ## Building and packaging
 

@@ -80,6 +80,18 @@ export class ClientSftp extends Service {
       for (const [id, state] of this.states) if (state.tabId === tabId) this.states.delete(id)
       this.sync()
     })
+    /*
+     * 文件面板和资源面板共用终端右边那一格抽屉，同一时刻只开一个。资源面板先开时
+     * 这里收起自己 —— 收起本身不会让对方再动，因为对方只在「别人打开」时反应，所以
+     * 不会互相触发。随后那次 sync 会把共用的把手按新的可见性重画：资源面板开着时
+     * 它也该在，否则那一格就没有可拖的线。
+     */
+    ctx.on('client/drawer-change', (drawer, open) => {
+      if (!this.scope.alive) return
+      const state = this.current()
+      if (drawer === 'monitor' && open && state?.open) state.open = false
+      this.sync()
+    })
     this.sync()
   }
 
@@ -213,9 +225,14 @@ export class ClientSftp extends Service {
     }
     this.panel.setEnabled(!!state)
     const open = !!state?.open
-    if (open !== this.announced) { this.announced = open; this.ctx.emit('client/files-change', open) }
+    if (open !== this.announced) {
+      this.announced = open
+      this.ctx.emit('client/files-change', open)
+      this.ctx.emit('client/drawer-change', 'files', open)
+    }
     view.element('sftp').hidden = !open
-    if (this.grip) this.grip.hidden = !open
+    // 把手是两格抽屉共用的：只要有一格开着，它就该在，否则资源面板打开时没有可拖的线。
+    if (this.grip) this.grip.hidden = !(open || !view.element('session-monitor').hidden)
     this.paintSplit()
     view.element('session-workspace').classList.toggle('files-open', open)
     const toggle = view.element<HTMLButtonElement>('sftp-toggle')
