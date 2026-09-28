@@ -1,5 +1,6 @@
 import type { SftpDir, SftpEntry } from '@pureterm/protocol'
 import { formatBytes, formatTime } from './format.js'
+import { cell } from './host-list.js'
 import { DomListeners } from './client-runtime.js'
 
 /**
@@ -45,8 +46,25 @@ function span(className: string, text: string): HTMLSpanElement {
   return element
 }
 
-function tag(text: string, extra = ''): HTMLSpanElement {
-  return span(extra ? `tag ${extra}` : 'tag', text)
+/* 目录是纯文字标签，符号链接是带色调的徽标 —— 原型把这两种画成 .tag 和 .chip
+   两个类，一个没有边框和底色，一个有。 */
+function label(text: string): HTMLSpanElement {
+  return span('tag', text)
+}
+
+function badge(text: string, tone: string): HTMLSpanElement {
+  return span(`chip ${tone}`, text)
+}
+
+/**
+ * 权限位取低 12 位（含 setuid/gid/sticky）。
+ *
+ * 0 不是 000 权限，而是「对端没给这个属性」（sftp-bridge.ts:455 把缺失的 attrs
+ * 一律落成 0）—— 把不知道画成没人可读，是比空白更糟的谎。
+ */
+function octalMode(mode: number): string {
+  if (!mode) return '—'
+  return (mode & 0o7777).toString(8).padStart(3, '0')
 }
 
 function button(id: string, label: string, className: string): HTMLButtonElement {
@@ -116,6 +134,19 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   const createCancel = button('sftp-create-cancel', '取消', 'ghost small')
   createBar.append(span('panel-title', '新建文件夹'), createName, createOk, createCancel)
 
+  const columns = document.createElement('div')
+  columns.id = 'sftp-columns'
+  columns.className = 'file-columns'
+  // 列标题只是给眼睛对齐用的；每一行自己带完整语义，所以这里不重复播报。
+  columns.setAttribute('aria-hidden', 'true')
+  for (const label of ['名称', '大小', '模式', '修改时间', '']) columns.append(document.createElement('span'))
+
+  // 面包屑单独一行，不塞进 .panel-head：那一行已经有五个按钮，620px 以下还会换行，
+  // 一个会跳到按钮之间的路径是没法扫读的。
+  const crumbs = document.createElement('nav')
+  crumbs.className = 'sftp-crumbs'
+  crumbs.setAttribute('aria-label', '远端路径')
+
   const list = document.createElement('ul')
   list.id = 'sftp-list'
   list.setAttribute('aria-label', '远端目录内容')
@@ -125,9 +156,9 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   hint.className = 'empty'
   hint.textContent = '连上之后可以在这里浏览远端文件。'
 
-  body.append(list, hint)
+  body.append(columns, list, hint)
   root.textContent = ''
-  root.append(head, createBar, body)
+  root.append(head, crumbs, createBar, body)
 
   /*
    * 三个状态位。行按钮是每次 render 重建的，所以禁用的判定必须由一个
@@ -140,6 +171,34 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   let rowButtons: HTMLButtonElement[] = []
 
   const headButtons = [upButton, refreshButton, mkdirButton, uploadButton, createOk, createCancel]
+
+/** 段与段之间靠 ::before 的斜杠分隔；当前那一段不是按钮，你已经在那儿了。 */
+const crumbButton = (label: string, target: string | null): HTMLElement => {
+  if (target === null) return span('sftp-crumb is-current', label)
+  const element = document.createElement('button')
+  element.type = 'button'
+  element.className = 'sftp-crumb'
+  element.textContent = label
+  element.title = target
+  listeners.add(element, 'click', () => handlers.onNavigate(target))
+  return element
+}
+
+/**
+ * 用服务器 realpath 回来的路径拼，而不是用户请求的那一个（`.` 会解成 home）。
+ * 拼错的话点每一跳去的地方就和地址栏显示的不是一个地方了。
+ */
+const buildCrumbs = (path: string): HTMLElement[] => {
+  const nodes: HTMLElement[] = []
+  const segments = path.split('/').filter(Boolean)
+  nodes.push(crumbButton('/', segments.length ? '/' : null))
+  let walk = ''
+  for (const [index, name] of segments.entries()) {
+    walk += `/${name}`
+    nodes.push(crumbButton(name, index === segments.length - 1 ? null : walk))
+  }
+  return nodes
+}
 
   const closeCreateBar = (): void => {
     createBar.hidden = true
@@ -173,13 +232,18 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     const top = document.createElement('span')
     top.className = 'file-top'
     top.append(span('file-name', entry.name))
-    if (entry.isDirectory) top.append(tag('目录'))
+    if (entry.isDirectory) top.append(label('目录'))
     // 软链单独标出来：它的类型是「跟着目标走」的，用户需要知道这一行不是本体
-    if (entry.isSymlink) top.append(tag('链接', 'link'))
+    if (entry.isSymlink) top.append(badge('链接', 'warn'))
 
+    // 大小、模式、时间是行的孩子而不是按钮的孩子：它们是表格里的那些列，
+    // 得和列标题对得上，而按钮里的内容对不到列上。
+    main.append(top)
     // 目录的大小没有意义（不是 0，是「不适用」），写 0 会让人以为它是空目录
-    main.append(top, span('file-size', entry.isDirectory ? '—' : formatBytes(entry.size)))
-    main.append(span('file-time', formatTime(entry.mtime)))
+    item.append(main,
+      cell('file-size', entry.isDirectory ? '—' : formatBytes(entry.size)),
+      cell('file-mode', octalMode(entry.mode), entry.mode ? `八进制 ${(entry.mode & 0o7777).toString(8)}` : '对端没有给出权限属性'),
+      cell('file-time', formatTime(entry.mtime)))
 
     const actions = document.createElement('span')
     actions.className = 'file-actions'
@@ -215,7 +279,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
     rowListeners.add(main, 'dblclick', () => fire())
 
     actions.append(primary, remove)
-    item.append(main, actions)
+    item.append(actions)
 
     rowButtons.push(main, primary, remove)
     return item
@@ -286,6 +350,9 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
       current = dir
       pathInput.value = dir?.path ?? ''
       pathInput.title = dir?.path ?? ''
+      crumbs.replaceChildren(...(dir ? buildCrumbs(dir.path) : []))
+      // 根上没有可跳的一行；空面板上也该把这一行让给提示语。
+      crumbs.hidden = !dir || dir.path === '/'
       list.textContent = ''
       rowListeners.clear()
       rowButtons = []

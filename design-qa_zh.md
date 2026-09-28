@@ -75,7 +75,7 @@
 
 - 字体：使用 Segoe UI Variable/Segoe UI 回退字体，保持紧凑的 Windows 桌面观感；终端输出使用等宽字体栈并保留 ANSI 色彩。
 - 间距与布局：面板节奏、抽屉内边距、卡片间距、控件高度和会话边距参考源图比例，同时适配当前视口。
-- 颜色与 token：顶部栏、导航栏、面板、卡片、输入框、边框、弱化文字、强调色、成功色、错误色和警告色集中在 `packages/ui/src/style.css`。
+- 颜色与 token：顶部栏、导航栏、面板、卡片、输入框、边框、弱化文字、强调色、成功色、错误色和警告色集中在 `packages/ui/src/styles/legacy.css`，即作为债务登记簿保留的改版前色板；取代它的中性明度阶梯位于 `packages/ui/src/styles/tokens.css`，见[设计 Token 与样式表布局](docs/design-system_zh.md)。
 - 图片和图标：本地捆绑 Tabler Icons Webfont，用于导航、搜索、终端、视图、窗口、抽屉、失败状态和工具图标，没有远程资源依赖。
 - 文案：结构性标签在合适位置沿用参考图词汇；PureTerm 原有产品文案继续保留中文/双语表达。
 - 交互状态：抽屉打开/关闭、连接重试、连接失败、成功会话、SFTP 抽屉、键盘焦点、reduced-motion 和会话清理均已在运行中的 carrier 中检查。

@@ -1,0 +1,38 @@
+/* 顶栏自绘的窗口按钮 —— 原型 .wctl：最小化、最大化、关闭。
+   它不属于共享外壳。Web 端没有窗口可控，就不该连 markup 和规则一起带上，所以这一片
+   不进 style.css，只被 desktop.css 那一个 manifest 引用；那个 <link> 由
+   services/chrome.ts 在拿到 window.puretermDesktop.windowControls 时才插进页面，
+   markup 也是那一刻才建的（index.html 里没有这一组按钮）。
+
+   规则本身仍然只用 token，而且不会因此漏出守卫之外：partial-list.mjs 把 desktop.css
+   和 style.css 一起读，所以颜色字面量、var() 名字、字重、细线下限对这片一样有效。
+
+   30×22、--r-1、间距 1px、--tx-3；关闭键悬停翻成 --ac-fg on --err —— 那是这套色板里
+   唯一一处「红色底面」，所以它只属于这一个按钮。
+   min-height 和 height 一起写：base.css 给每个 button 的 28px 下限比这整个控件还高，
+   只写 height 会被它顶起来，三个按钮就比顶栏的 40px 还高出一截。
+   左边那 14px 是原型 .wctl 自己的 margin-left 4px 加上 .topbar-actions 的 4px 间距，
+   量出来就是设置图标到第一个按钮的 18px。 */
+.window-controls { display: flex; gap: 1px; margin-left: 14px; }
+.window-control {
+  display: grid;
+  width: 30px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--tx-3);
+  font-size: var(--fs-micro);
+  line-height: 1;
+}
+.window-control:hover:not(:disabled) { background: var(--c-raised); color: var(--tx-3); }
+.window-control.is-close:hover:not(:disabled) { background: var(--err); color: var(--ac-fg); }
+
+/* 窄窗口里这一组是唯一的关窗入口，所以它不跟着那两个应用开关一起藏；这一条只把左边
+   那 14px 收掉。 */
+@media (max-width: 820px) {
+  .window-controls { margin-left: 0; }
+}

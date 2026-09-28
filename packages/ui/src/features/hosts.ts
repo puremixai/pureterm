@@ -8,7 +8,7 @@ declare module 'cordis' { interface Context { clientHosts: ClientHosts } }
 
 /** Host metadata, credential form and native/browser key selection belong to one feature scope. */
 export class ClientHosts extends Service {
-  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientKeychain']
+  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientKeychain', 'clientToasts']
   readonly scope: ClientScope
   readonly ready: Promise<void>
   private readonly list: HostListView
@@ -44,25 +44,34 @@ export class ClientHosts extends Service {
     })
     this.scope.listen(view.element('toolbar'), 'submit', event => { event.preventDefault(); void this.connect() })
     this.scope.listen(view.element('connect'), 'click', () => void this.connect())
-    this.scope.listen(view.element('host-new'), 'click', () => this.startNew())
+    for (const id of ['host-new', 'hosts-empty-new']) this.scope.listen(view.element(id), 'click', () => this.startNew())
+    this.scope.listen(view.element('hosts-retry'), 'click', () => { void this.refresh().catch(() => {}) })
     this.scope.listen(view.element('connection-close'), 'click', () => this.closeWorkspace())
     for (const id of ['workspace-home', 'nav-hosts']) this.scope.listen(view.element(id), 'click', () => { ctx.clientTerminal.select(null); this.closeWorkspace() })
-    this.scope.listen(view.element('nav-toggle'), 'click', () => {
-      if (ctx.clientTerminal.active) ctx.clientTerminal.select(null)
-      const collapsed = view.element('app').classList.toggle('nav-collapsed')
-      view.element('nav-toggle').setAttribute('aria-expanded', String(!collapsed))
-    })
     this.scope.listen(view.element('host-view-toggle'), 'click', () => {
-      const list = view.element('host-list').classList.toggle('list-view')
-      view.element('host-view-toggle').setAttribute('aria-pressed', String(list))
+      // The class and the reported state are derived from one value, so they
+      // cannot disagree the way a separate boolean field could.
+      const cards = view.element('host-list').classList.toggle('card-view')
+      view.element('host-view-toggle').setAttribute('aria-pressed', String(cards))
     })
     const shortcuts = view.element<HTMLDialogElement>('shortcuts-dialog')
-    for (const id of ['shortcuts-open', 'nav-shortcuts']) this.scope.listen(view.element(id), 'click', () => shortcuts.showModal())
+    // 只有导航轨道上那一个入口。工具栏里原来还有一个「快捷键」图标钮，原型那一行
+    // 只收一个图标，而且轨道上那个做的是同一件事 —— 同一个动作两处入口，只会让
+    // 用户猜它们是不是不一样。
+    this.scope.listen(view.element('nav-shortcuts'), 'click', () => shortcuts.showModal())
     this.scope.listen(view.element('shortcuts-close'), 'click', () => shortcuts.close())
     this.scope.onDispose(() => shortcuts.close())
     this.scope.listen(view.document, 'keydown', event => {
       const key = event as KeyboardEvent
       if (shortcuts.open) return
+      // Ctrl/Cmd+K 只属于主机库那一屏：会话开着的时候 hosts-panel 是 hidden 的，
+      // 于是终端里的 Ctrl+K（readline 的删到行尾）不会被这条抢走。
+      if ((key.ctrlKey || key.metaKey) && key.key.toLowerCase() === 'k' && !view.element('hosts-panel').hidden) {
+        key.preventDefault()
+        this.input('host-search').focus()
+        this.input('host-search').select()
+        return
+      }
       if (key.key === 'Escape' && !view.element('connection-workspace').hidden) this.closeWorkspace()
     }, true)
     ctx.on('client/edit-connection', (request, title) => this.editConnection(request, title))
@@ -74,13 +83,23 @@ export class ClientHosts extends Service {
     this.scope.listen(view.element('host-save'), 'click', () => {
       void this.save().then(record => {
         if (!this.scope.alive) return
-        if (record) view.status(`已保存「${record.label}」`, 'ok')
+        if (record) { view.status('', 'ok'); this.ctx.clientToasts.notify({ title: '已保存主机', detail: record.label }) }
         else { view.status('保存前请先把主机地址和用户名填上', 'err'); this.input(this.input('host').value.trim() ? 'user' : 'host').focus() }
       }).catch(error => { if (this.scope.alive) view.status(cleanError(error), 'err') })
     })
     this.scope.listen(view.element('host-delete'), 'click', () => { if (this.editingId) void this.remove(this.editingId) })
     this.scope.listen(view.element('auth'), 'change', () => { this.formRevision++; this.clearBrowserKey(); this.syncAuth(); this.updateButtons() })
-    for (const id of ['host', 'port', 'user']) this.scope.listen(view.element(id), 'input', () => { this.formRevision++; this.clearBrowserKey(); this.updateButtons() })
+    // 分段开关只是 #auth 的代理：写值、派发同一条 change，表单其余部分不需要知道
+    // 屏幕上有两套控件。反方向由 syncAuth() 同步 —— 测试和快捷键直接改 select 时，
+    // 按钮的按下态也得跟着走。
+    for (const [id, method] of [['auth-key', 'privateKey'], ['auth-password', 'password']] as const) {
+      this.scope.listen(view.element(id), 'click', () => {
+        if (this.auth() === method) return
+        this.input('auth').value = method
+        this.input('auth').dispatchEvent(new Event('change'))
+      })
+    }
+    for (const id of ['host', 'port', 'user']) this.scope.listen(view.element(id), 'input', () => { this.formRevision++; this.clearBrowserKey(); this.updateButtons(); this.renderAddressHint() })
     for (const id of ['pass', 'key-pass', 'remember', 'host-label']) {
       this.scope.listen(view.element(id), 'input', () => { this.formRevision++ })
       this.scope.listen(view.element(id), 'change', () => { this.formRevision++ })
@@ -104,7 +123,7 @@ export class ClientHosts extends Service {
       this.syncKeys('')
       this.renderHostList()
     })
-    ctx.on('client/connection-change', () => this.updateButtons())
+    ctx.on('client/connection-change', () => { this.updateButtons(); this.renderCount() })
     this.clearForm()
     this.updateButtons()
     this.ready = this.initialize()
@@ -112,14 +131,25 @@ export class ClientHosts extends Service {
   }
 
   get count(): number { return this.hosts.length }
+  get records(): readonly HostRecord[] { return this.hosts }
   private input<T extends HTMLElement = HTMLInputElement>(id: string): T { return this.ctx.clientView.element<T>(id) }
   private auth(): AuthMethod { return this.input('auth').value === 'privateKey' ? 'privateKey' : 'password' }
 
   private async initialize(): Promise<void> {
+    // 列表在飞的时候占住行高，而不是先空一下再长出来。
+    this.renderSkeleton()
     this.capabilities = await this.ctx.clientTransport.capabilities
     if (!this.scope.alive) return
     this.input('remember').checked = this.capabilities.credentialPersistence === 'encrypted'
     this.ctx.clientView.element('credential-hint').hidden = this.capabilities.credentialPersistence !== 'session'
+    this.ctx.clientView.element('credential-lock').hidden = this.capabilities.credentialPersistence !== 'encrypted'
+    // 能力关着不是失败：这台机器上「密码留空也能连」这件事不成立，得常驻说一句，
+    // 而不是等用户每次保存都撞上一次。
+    const degraded = this.input('hosts-degraded')
+    degraded.hidden = this.capabilities.credentialPersistence === 'encrypted'
+    degraded.textContent = this.capabilities.credentialPersistence === 'session'
+      ? '本机 Web 不保存凭据：主机列表会留下，密码与私钥口令只在这个页面里有效。'
+      : '这台机器上的凭据存储不可用，主机可以连，但每次都要重填凭据。'
     this.syncAuth()
     await this.ctx.clientKeychain.ready
     if (!this.scope.alive) return
@@ -150,6 +180,8 @@ export class ClientHosts extends Service {
   private syncAuth(): void {
     const method = this.auth()
     const view = this.ctx.clientView
+    view.element('auth-key').setAttribute('aria-pressed', String(method === 'privateKey'))
+    view.element('auth-password').setAttribute('aria-pressed', String(method === 'password'))
     view.element('cred-password').hidden = method !== 'password'
     view.element('cred-key').hidden = method !== 'privateKey'
     const keychain = method === 'privateKey' && !!this.input('host-keychain').value
@@ -174,14 +206,14 @@ export class ClientHosts extends Service {
   private openWorkspace(): void {
     this.ctx.clientTerminal.select(null)
     const view = this.ctx.clientView
-    view.element('app').classList.add('drawer-open')
+    view.element('app').classList.add('inspector-open')
     view.element('connection-workspace').hidden = false
     view.element('status').hidden = false
   }
 
   private closeWorkspace(): void {
     const view = this.ctx.clientView
-    view.element('app').classList.remove('drawer-open')
+    view.element('app').classList.remove('inspector-open')
     view.element('connection-workspace').hidden = true
   }
 
@@ -203,6 +235,7 @@ export class ClientHosts extends Service {
       this.input('key-path').value = '当前会话私钥'
     }
     this.syncAuth()
+    this.renderAddressHint()
     this.list.select(this.selectedId)
     this.syncMode()
     this.updateButtons()
@@ -218,12 +251,42 @@ export class ClientHosts extends Service {
     const visible = this.visibleHosts()
     const empty = this.ctx.clientView.element('hosts-empty')
     empty.hidden = visible.length > 0
-    empty.innerHTML = this.hosts.length > 0 && visible.length === 0
+    const filtered = this.hosts.length > 0 && visible.length === 0
+    this.ctx.clientView.element('hosts-empty-text').innerHTML = filtered
       ? '没有匹配的主机。<br />换个关键词再试试。'
-      : '还没有保存的主机。<br />点击「新建主机」开始建立连接。'
-    const count = this.ctx.clientView.element('host-count')
-    count.textContent = this.query && visible.length !== this.hosts.length ? `${visible.length} / ${this.hosts.length} hosts` : `${this.hosts.length} hosts`
-    this.list.render(visible, this.selectedId)
+      : '还没有保存的主机。<br />新建一条记录，之后双击就能连上。'
+    // 筛不中的时候「新建主机」是个错的动作：用户要的是清掉关键词，不是再加一条。
+    this.ctx.clientView.element('hosts-empty-new').hidden = filtered
+    this.renderCount(visible.length)
+    this.list.render(visible, this.selectedId, this.ctx.clientKeychain.records)
+  }
+
+  /**
+   * 「N saved · M connected」。
+   *
+   * 一条记录算「已连接」，靠的是它和某个已连上标签页指向同一个端点。不用
+   * `request.hostId` 判定：那个字段只在桌面载体上随凭据一起发（Web 载体上
+   * `connectionCredentials` 会把它丢掉，因为没有要解析的已存凭据），拿它当唯一
+   * 依据会让 Web 这一半永远显示 0 —— 而用户看到的是同一个事实。
+   */
+  private renderCount(visible = this.visibleHosts().length): void {
+    const connected = this.hosts.filter(record => this.connected(record)).length
+    const saved = this.query && visible !== this.hosts.length ? `${visible} / ${this.hosts.length} saved` : `${this.hosts.length} saved`
+    this.ctx.clientView.element('host-count').textContent = `${saved} · ${connected} connected`
+  }
+
+  private connected(record: HostRecord): boolean {
+    return this.ctx.clientTerminal.tabs.some(tab => tab.state === 'connected'
+      && (tab.request.hostId === record.id || (tab.request.host === record.host
+        && (tab.request.port ?? 22) === record.port && tab.request.username === record.username)))
+  }
+
+  /** 表单当前会发出的那条命令。地址或用户名还空着时整行退场，而不是显示半句话。 */
+  private renderAddressHint(): void {
+    const host = this.input('host').value.trim()
+    const user = this.input('user').value.trim()
+    const port = Number(this.input('port').value) || 22
+    this.ctx.clientView.element('address-hint').textContent = host && user ? `ssh ${user}@${host}:${port}` : ''
   }
 
   private syncMode(): void {
@@ -233,11 +296,50 @@ export class ClientHosts extends Service {
     mode.classList.toggle('editing', !!record)
   }
 
+  /** 骨架行用 .skeleton-row 而不是 .host-row：占位符不该满足真行的断言，
+   *  否则行的形状改坏了也测不出来。 */
+  private renderSkeleton(count = 5): void {
+    const view = this.ctx.clientView
+    const list = view.element('host-list')
+    list.textContent = ''
+    view.element('hosts-empty').hidden = true
+    for (let index = 0; index < count; index += 1) {
+      const item = view.document.createElement('li')
+      item.className = 'skeleton-row'
+      item.setAttribute('aria-hidden', 'true')
+      const bar = view.document.createElement('span')
+      bar.className = `skeleton-bar w${(index % 3) + 1}`
+      item.append(bar)
+      list.append(item)
+    }
+  }
+
+  private setListError(title: string, detail: string): void {
+    const block = this.ctx.clientView.element('hosts-error')
+    block.hidden = false
+    block.querySelector<HTMLElement>('.list-error-title')!.textContent = title
+    block.querySelector<HTMLElement>('.list-error-detail')!.textContent = detail
+  }
+
   private async refresh(keepId?: string | null, formRevision = this.formRevision): Promise<void> {
     const listRevision = ++this.listRevision
-    const hosts = await this.ctx.clientTransport.api.hosts.list()
+    let hosts: HostRecord[]
+    this.ctx.clientView.element('hosts-error').hidden = true
+    try {
+      hosts = await this.ctx.clientTransport.api.hosts.list()
+    } catch (error) {
+      // 「后端不可用」和「这一次操作失败了」是两件事：前者要求重连或重启，后者
+      // 只要再试一次。混成一句红字，用户两种都无从下手。
+      this.setListError('主机列表读不出来，后端可能已经断开。', cleanError(error))
+      throw error
+    }
     if (!this.scope.alive || listRevision !== this.listRevision) return
     this.hosts = hosts
+    // Keychain 的「关联主机」列要这份计数；它不能反过来注入本 feature，
+    // 因为本 feature 已经注入了它 —— 事件是唯一不成环的通道。
+    const counts: Record<string, number> = {}
+    for (const host of hosts) if (host.keyId) counts[host.keyId] = (counts[host.keyId] ?? 0) + 1
+    this.ctx.emit('client/host-counts', counts)
     // A list reply may arrive after the user has moved to another form.
     if (formRevision === this.formRevision) {
       if (keepId !== undefined) { this.editingId = keepId; this.selectedId = keepId }
@@ -265,6 +367,7 @@ export class ClientHosts extends Service {
     this.syncKeys(record.keyId ?? '')
     this.input('pass').value = this.input('key-pass').value = ''
     this.syncAuth()
+    this.renderAddressHint()
     this.list.select(this.selectedId)
     this.syncMode()
     this.updateButtons()
@@ -285,6 +388,7 @@ export class ClientHosts extends Service {
     this.input('port').value = '22'
     this.input('auth').value = 'password'
     this.syncAuth()
+    this.renderAddressHint()
   }
 
   private startNew(): void {
@@ -335,7 +439,7 @@ export class ClientHosts extends Service {
       if (this.editingId === id) { this.editingId = null; this.clearForm() }
       if (this.selectedId === id) this.selectedId = null
       await this.refresh(this.editingId)
-      if (this.scope.alive) view.status(`已删除「${label}」`)
+      if (this.scope.alive) this.ctx.clientToasts.notify({ title: '已删除主机', detail: label })
     } catch (error) { if (this.scope.alive) view.status(cleanError(error), 'err') }
   }
 
@@ -360,7 +464,12 @@ export class ClientHosts extends Service {
     this.pendingForms.delete(revision)
     this.updateButtons()
     if (!result || !this.scope.alive || revision !== this.formRevision || !saveRequest || !this.input('remember').checked) return
-    try { await this.save(saveRequest, revision) } catch (error) { if (this.scope.alive) this.ctx.clientView.status(`已连接，但保存主机失败：${cleanError(error)}`, 'err') }
+    try { await this.save(saveRequest, revision) } catch (error) {
+      if (!this.scope.alive) return
+      // 两轨都要：内联那行说明「这次没存上」，通知保证离开表单之后仍然看得见。
+      this.ctx.clientView.status(`已连接，但保存主机失败：${cleanError(error)}`, 'err')
+      this.ctx.clientToasts.notify({ title: '已连接，但保存失败', detail: cleanError(error), kind: 'err' })
+    }
   }
 
   private clearBrowserKey(): void {

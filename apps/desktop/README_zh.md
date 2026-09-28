@@ -23,6 +23,8 @@ npm run start:desktop
 
 “文件”面板支持目录浏览、上传/下载、新建目录和删除。SFTP 单文件上限为 4 MiB，没有续传、进度条或重命名；删除直接作用于远端，不进入应用回收站。
 
+每个会话还可以报告远端主机的资源。会话工具栏下面那一行**默认折叠**；展开后才开始每 5 秒一次的 Linux 探测，显示 CPU、内存、负载、根文件系统占用、网络速率和主机运行时间，右侧带暂停与重试。折叠、手动暂停、页面不可见、切走标签页、断开连接都会停止采集，所以折叠的会话对远端零开销。探测走的是和终端同一条 SSH 连接上的普通 exec 通道——业务监控不使用 Electron 私有 IPC，附带浏览器看到的是同一组数字。CPU 和网络是速率，第二个样本到达前留空；磁盘只算根文件系统；远端没有提供的计数器留空并把原因挂在悬停提示上；远端不是 Linux 时报「不支持监控」而不是失败。状态栏的 cipher 与 host key 两格来自 SSH 握手而不是这一行，所以折叠时、甚至卸载监控插件之后，它们照样填着。
+
 ## 数据与附带 Web 入口
 
 默认目录为 `~/.ssh-cordis/`，由 `SSH_CORDIS_DATA_DIR` 覆盖。
@@ -80,7 +82,7 @@ Desktop 的定向命令可在根使用 `npm run <命令> --workspace=@pureterm/d
 | 命令 | 范围 |
 | --- | --- |
 | `boot` | 启动真实 Desktop，等待 renderer-ready 与 boot 结果 |
-| `smoke:electron` | 真实自定义 scheme 界面、最小 preload、WebSocket 和终端字节流 |
+| `smoke:electron` | 真实自定义 scheme 界面、最小 preload、WebSocket、终端字节流，以及夹具资源快照与会话事实 |
 | `smoke:web` | Desktop Web 载体中的真实页面与终端 |
 | `smoke:node` | 使用已构建产物运行平台、档案、Host、SFTP、carrier 和 runner 检查 |
 | `smoke:profile` | 启动档案持久化、无效数据与就绪门控，不启动两次真实应用 |

@@ -23,6 +23,8 @@ Alternatively, import or paste a private key in **Keychain**, then select it in 
 
 The Files panel supports directory browsing, upload/download, directory creation, and deletion. SFTP transfers are limited to 4 MiB per file and have no resume, progress bar, or rename operation; deletion acts on the remote host immediately and does not use an application recycle bin.
 
+Each session can also report the remote host's resources. The row under the session toolbar is **collapsed by default**; expanding it starts a five-second Linux probe and shows CPU, memory, load, the root filesystem's usage, the network rate and the host's uptime, with pause and retry beside them. Collapsing, pausing, hiding the page, switching tabs, and disconnecting all stop collection, so a collapsed session costs the remote nothing. The probe travels over the same SSH connection as the terminal and uses an ordinary exec channel — business monitoring does not use private Electron IPC, and the attached browser reports the same figures. CPU and network are rates and stay empty until a second probe supplies a baseline; disk is the root filesystem only; a counter the remote does not expose is left empty with its reason on hover; and a remote that is not Linux is reported as unsupported rather than as a failure. The status bar's cipher and host-key cells come from the SSH handshake, not from this row, so they stay filled while it is collapsed or when the monitor plugin is unloaded.
+
 ## Data and the attached Web entry
 
 The default data directory is `~/.ssh-cordis/`, overridden by `SSH_CORDIS_DATA_DIR`.
@@ -80,7 +82,7 @@ Desktop-focused commands can be run from the root with `npm run <command> --work
 | Command | Scope |
 | --- | --- |
 | `boot` | start real Desktop and wait for renderer-ready and boot results |
-| `smoke:electron` | real custom-scheme UI, minimal preload, WebSocket, and terminal byte stream |
+| `smoke:electron` | real custom-scheme UI, minimal preload, WebSocket, terminal byte stream, and a fixture resource snapshot with session facts |
 | `smoke:web` | real page and terminal in the Desktop Web carrier |
 | `smoke:node` | built platform, profile, Host, SFTP, carrier, and runner checks |
 | `smoke:profile` | profile persistence, invalid data, and readiness gate without two real launches |

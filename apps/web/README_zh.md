@@ -28,6 +28,8 @@ node apps/web/dist/main.js --help
 
 Web 保存主机信息和已信任的 SSH 主机密钥，不创建或读取 `secrets.json` 或 Desktop 的 `keychain.json` 密钥库。密码、私钥口令及私钥内容只在当前客户端会话使用，刷新后需要重新输入。Keychain 支持导入、粘贴、编辑、搜索和主机选择，使用按客户端隔离的 Host 内存；密钥及主机关联在断开时清除，绝不序列化到磁盘。私钥通过浏览器文件选择器读取内容；浏览器不会向服务暴露本机文件的完整路径。Desktop 支持原生文件选择以及系统加密的凭据和 Keychain 存储。
 
+每个会话还可以报告远端主机的资源，走的是和终端同一条 WebSocket 与同一条 SSH 连接。会话工具栏下面那一行**默认折叠**；展开后才开始每 5 秒一次的 Linux 探测，显示 CPU、内存、负载、根文件系统占用、网络速率和主机运行时间，右侧带暂停与重试。折叠、手动暂停、页面不可见、切走标签页、断开连接都会停止采集。CPU 和网络是速率，第二个样本到达前留空；磁盘只算根文件系统；远端不是 Linux 时报「不支持监控」而不是失败。状态栏的 cipher 与 host key 两格来自 SSH 握手而不是这一行，所以折叠时它们照样填着。
+
 本入口作为独立 Node 服务，与 Desktop 可选的附带浏览器不同：附带浏览器共享 Desktop 子进程的 Web Host 与加密数据，而此命令启动使用本次会话凭据策略的独立 Host。`SSH_CORDIS_NO_WEB_CARRIER=1` 只关闭 Desktop 的附带浏览器访问，不影响 `start:web`。
 
 所有 HTTP 资源与 WebSocket 都要求启动 token 或由它换取的会话 cookie，并验证本机 Host 与浏览器 Origin。入口不提供公开监听参数，也不包含用户账户或租户隔离。
@@ -40,4 +42,4 @@ node --test apps/web/tests/*.test.mjs
 node apps/web/tests/smoke-browser.mjs
 ```
 
-最后一项使用测试用 Chromium 窗口访问独立 Node 服务，覆盖无 preload 的 WebSocket 终端、浏览器直接选钥及 Keychain 密钥引用两条路径的真实 SSH 认证、终端回显，以及刷新后清空凭据和密钥关联。Electron 只用于这个浏览器测试，Web 服务本身不依赖 Electron。
+最后一项使用测试用 Chromium 窗口访问独立 Node 服务，覆盖无 preload 的 WebSocket 终端、浏览器直接选钥及 Keychain 密钥引用两条路径的真实 SSH 认证、终端回显、刷新后清空凭据和密钥关联，以及在一条仍然承载终端与 SFTP 流量的连接上、通过真实界面渲染出的夹具资源快照与会话事实。Electron 只用于这个浏览器测试，Web 服务本身不依赖 Electron。

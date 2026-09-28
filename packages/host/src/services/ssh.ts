@@ -2,8 +2,9 @@ import { Service, type Context } from 'cordis'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { Socket } from 'node:net'
-import type { Client as SshClient, ClientChannel, ConnectConfig, PseudoTtyOptions, SFTPWrapper } from 'ssh2'
+import type { Client as SshClient, ClientChannel, ConnectConfig, NegotiatedAlgorithms, PseudoTtyOptions, SFTPWrapper } from 'ssh2'
 import { StringDecoder } from 'node:string_decoder'
+import type { SessionFacts } from '@pureterm/protocol'
 import { HostKeyStore } from './host-key-store.js'
 
 /*
@@ -25,6 +26,15 @@ declare module 'cordis' {
     'ssh/session-closed'(sessionId: string, reason: string): void
     /** 首次记录某主机的密钥（TOFU）。 */
     'ssh/host-key-learned'(target: string, fingerprint: string): void
+    /**
+     * 握手完成（初次或 rekey）。广播语义，谁关心谁订阅。
+     *
+     * 事实放在会话记录上，所以**初次握手时这个事件还没有接收方**：握手在
+     * ready 之前完成，而会话要到 ready 之后才登记。那不是漏发，而是「此刻
+     * 还没有任何客户端拥有这个会话」；TerminalBridge 会在 terminal:opened 时
+     * 把已存的事实补上。这里只负责在 rekey 时把新的一组广播出去。
+     */
+    'ssh/session-facts'(facts: SessionFacts): void
   }
 }
 
@@ -88,7 +98,6 @@ export interface ExecResult {
   stderr: string
   code: number | null
   signal?: string
-  truncated: boolean
 }
 
 interface InternalSession extends SshSessionInfo {
@@ -100,7 +109,38 @@ interface InternalSession extends SshSessionInfo {
   sftp?: SFTPWrapper
   /** 正在开的那一次。并发请求共用它，不然会开出两条通道、其中一条再没人关 */
   sftpOpening?: Promise<SFTPWrapper>
+  /**
+   * 这个会话上还没结束的 exec。
+   *
+   * 会话被丢弃时要一次性拒绝它们：连接没了之后它们永远不会再收到数据，
+   * 让调用方一直等到超时，等于把「连接断了」报成「命令太慢」。
+   */
+  execs: Set<(reason: string) => void>
+  /** 最近一次握手的协商结果。ssh2 只在 handshake 事件里给一次，所以必须自己存。 */
+  facts?: SessionFacts
+  /**
+   * 这个连接上唯一的 handshake 监听器。
+   *
+   * 存下来是为了能精确摘掉它：会话结束时不摘的话，一个反复重连的客户端会在
+   * Host 已经丢弃的那些 client 上越积越多。
+   */
+  handshakeListener: (negotiated: NegotiatedAlgorithms) => void
   closed: boolean
+}
+
+/**
+ * ssh2 的协商结果 -> 协议里的会话事实。
+ *
+ * 只取状态栏会渲染的三项。`kex`、mac、compression、lang 在同一份负载里，
+ * 但没有任何界面会显示它们，而远端软件版本根本不在这个事件里。
+ * 三项缺一就不发：状态栏宁可空着，也不要一个由 undefined 变来的算法名。
+ */
+function toSessionFacts(sessionId: string, revision: number, negotiated: NegotiatedAlgorithms | undefined): SessionFacts | null {
+  const serverHostKey = negotiated?.serverHostKey
+  const clientToServer = negotiated?.cs?.cipher
+  const serverToClient = negotiated?.sc?.cipher
+  if (!serverHostKey || !clientToServer || !serverToClient) return null
+  return { sessionId, revision, serverHostKey, cipher: { clientToServer, serverToClient } }
 }
 
 const DEFAULT_COLS = 100
@@ -114,11 +154,16 @@ function clamp(value: number | undefined, min: number, max: number, fallback: nu
 /**
  * 把 ssh2 的英文底层错误翻译成用户能看懂、且能据此行动的信息。
  *
+ * `context` 只影响「通道开不起来」这一类：ssh2 对子系统被拒和命令被拒报的是同一句
+ * `Channel open failure`，但两件事的下一步完全不同（一个要改 sshd_config 的
+ * `Subsystem sftp`，一个要看 ForceCommand / MaxSessions）。所以由调用方说明这是
+ * 哪条通道，而不是让文案替用户猜。其它分支与 context 无关。
+ *
  * 导出是为了能对**真实的 ssh2 文案**做表驱动测试（`tests/smoke-host.mjs`）：
  * 这些字符串是精确匹配出来的，抄错一个词就会静默失效、把英文原文漏给用户，
  * 而那正是已经犯过的错。纯函数，没有副作用。
  */
-export function normalizeSshError(error: Error, host: string, port: number): Error {
+export function normalizeSshError(error: Error, host: string, port: number, context?: 'sftp' | 'exec'): Error {
   const message = error?.message ?? String(error)
   if (/All configured authentication methods failed/i.test(message)) {
     return new Error('认证失败：用户名、密码或私钥不正确。')
@@ -150,19 +195,38 @@ export function normalizeSshError(error: Error, host: string, port: number): Err
     )
   }
   /*
+   * 非交互命令通道开不起来。和 SFTP 那条共用同一句 ssh2 文案，所以必须靠 context
+   * 分开：对探测说「SFTP 子系统没开」会把用户指向一个与失败无关的配置项。
+   */
+  if (context === 'exec' && /Channel open failure|Unable to exec|exec request failed/i.test(message)) {
+    return new Error(
+      `${host}:${port} 连上了、登录也成功了，但这台服务器拒绝了这条命令通道。` +
+        `常见原因：账号被 ForceCommand 限制（只允许交互式 shell），` +
+        `或该账号的并发通道数已达上限（OpenSSH 的 MaxSessions，默认 10）。` +
+        `终端本身仍然可以用。`,
+    )
+  }
+  /*
    * SFTP 子系统开不起来。**这是「连上了但功能用不了」，不是认证失败**，
    * 所以必须和连接错误分开说：用户会以为是密码不对，然后去反复重填密码。
-   * ssh2 在这里的文案有三条（子系统请求被拒 / 子系统起完立刻退出 / 通道直接被拒），
-   * 三条都要接住——少接一条就会把英文原文漏给用户。
+   * 这两句文案只可能来自子系统请求本身，所以不需要 context 就能认定。
    */
-  if (
-    /Unable to start subsystem|establishing SFTP session|SFTP session termination|Channel open failure/i.test(message)
-  ) {
+  if (/Unable to start subsystem|establishing SFTP session|SFTP session termination/i.test(message)) {
     return new Error(
       `${host}:${port} 连上了、登录也成功了，但这台服务器没能开起 SFTP 子系统。` +
         `常见原因：sshd_config 里的 \`Subsystem sftp\` 被注释掉了（OpenSSH 默认是开的，` +
         `很多精简镜像会关掉）；或者这个账号被 ForceCommand/ChrootDirectory 限制，` +
         `不允许开子系统。终端本身仍然可以用。`,
+    )
+  }
+  /*
+   * 通道被拒，但调用方没说这是哪条通道（终端、SFTP 之外的情形）。
+   * 这一句只能描述事实，不能替用户猜是哪一项配置的问题。
+   */
+  if (/Channel open failure/i.test(message)) {
+    return new Error(
+      `${host}:${port} 连上了、登录也成功了，但这台服务器没能开出这条通道。` +
+        `常见原因：该账号的并发通道数已达上限（OpenSSH 的 MaxSessions，默认 10）。`,
     )
   }
   if (/ECONNREFUSED/i.test(message)) {
@@ -205,6 +269,7 @@ export class SshService extends Service {
       () => () => {
         for (const session of [...this.sessions.values()]) {
           session.closed = true
+          session.client.off('handshake', session.handshakeListener)
           try {
             session.client.end()
           } catch {
@@ -229,6 +294,26 @@ export class SshService extends Service {
 
   list(): SshSessionInfo[] {
     return [...this.sessions.values()].map(({ id, host, port, username }) => ({ id, host, port, username }))
+  }
+
+  /**
+   * 某个会话的握手事实。未知或已关闭的会话返回 null。
+   *
+   * 有意**不**加进 `SshSessionInfo`：`list()` 是公开的会话列表，而事实只在
+   * 「这条连接上发生过什么」这个意义下属于会话，不该跟着列表一起被抄来抄去。
+   */
+  facts(sessionId: string): SessionFacts | null {
+    return this.sessions.get(sessionId)?.facts ?? null
+  }
+
+  /**
+   * 这个会话上还有几个 exec 没结束。
+   *
+   * 存在的理由是让「在途操作被清理干净」可以被断言，而不是只能相信一个已经
+   * resolve 的 Promise。HostMonitor 的停止路径同样靠它确认自己没有留下在途探测。
+   */
+  pendingExecs(sessionId: string): number {
+    return this.sessions.get(sessionId)?.execs.size ?? 0
   }
 
   knownHosts(): unknown {
@@ -293,6 +378,27 @@ export class SshService extends Service {
     const socket = new Socket()
     config.sock = socket
     const client = new Client()
+    const id = `ssh-${++this.counter}`
+
+    /*
+     * 握手在 ready **之前**完成，所以监听器必须在这之前挂上。
+     *
+     * 而且每个连接只有这一个：rekey 会让同一个监听器再响一次，而不是再挂一个。
+     * 事实先攒在局部变量里，因为此刻会话还没登记 —— 那意味着还没有任何客户端
+     * 拥有它，没有接收方。等 ready 之后登记会话时再把它挂上去。
+     */
+    const handshake: { facts?: SessionFacts } = {}
+    const handshakeListener = (negotiated: NegotiatedAlgorithms): void => {
+      const facts = toSessionFacts(id, (handshake.facts?.revision ?? 0) + 1, negotiated)
+      if (!facts) return
+      handshake.facts = facts
+      const session = this.sessions.get(id)
+      if (!session) return
+      session.facts = facts
+      this.ctx.emit('ssh/session-facts', facts)
+    }
+    client.on('handshake', handshakeListener)
+
     await new Promise<void>((resolve, reject) => {
       let settled = false
       const cleanup = (): void => {
@@ -306,6 +412,9 @@ export class SshService extends Service {
         if (settled) return
         settled = true
         cleanup()
+        // 失败的连接没有会话接管它，监听器必须在这里摘掉：留着的话，被取消的
+        // 那几次握手会在永远不存在的会话上继续攒监听器。
+        client.off('handshake', handshakeListener)
         // 被取消的握手没有会话接管它，销毁阶段也必须有 error 监听器。
         client.on('error', () => {})
         socket.on('error', () => {})
@@ -340,8 +449,11 @@ export class SshService extends Service {
       }
     })
 
-    const id = `ssh-${++this.counter}`
-    const session: InternalSession = { id, host, port, username: options.username, client, socket, closed: false }
+    const session: InternalSession = {
+      id, host, port, username: options.username, client, socket,
+      execs: new Set(), handshakeListener, closed: false,
+    }
+    if (handshake.facts) session.facts = handshake.facts
     this.sessions.set(id, session)
 
     // ready 之后的长生命周期错误：必须有出口
@@ -410,7 +522,7 @@ export class SshService extends Service {
     if (!session.sftpOpening) {
       session.sftpOpening = new Promise<SFTPWrapper>((resolve, reject) => {
         session.client.sftp((error, sftp) => {
-          if (error) reject(normalizeSshError(error, session.host, session.port))
+          if (error) reject(normalizeSshError(error, session.host, session.port, 'sftp'))
           else resolve(sftp)
         })
       })
@@ -432,63 +544,120 @@ export class SshService extends Service {
     }
   }
 
-  async exec(sessionId: string, command: string, options: { maxBytes?: number; timeout?: number } = {}): Promise<ExecResult> {
+  /**
+   * 在已有会话上跑一条非交互命令。
+   *
+   * 四条约束都是为了让监控探测不会把 Host 拖垮：
+   *
+   * 1. **超时从申请通道之前开始算。** 原来的计时器是在 ssh2 的回调里才起的，
+   *    也就是「通道已经拿到」之后 —— 一个卡在打开通道的命令永远不会超时，而这
+   *    恰好是探测最可能卡住的地方。
+   * 2. **stdout 与 stderr 一起计数。** 只算 stdout 的话，一个往 stderr 灌数据的
+   *    命令可以无限撑大内存，而探测命令出错时写的就是 stderr。
+   * 3. **超限是拒绝，不是截断。** `ExecResult` 因此没有 `truncated` 了：一个被
+   *    悄悄截断的 `/proc` 帧会被解析器当成格式错误，报出来的原因是「远端数据不
+   *    合法」，而真正发生的是「我们自己把它切了」。
+   * 4. **取消只关这一条通道。** 绝不 `client.end()`：终端和 SFTP 都挂在同一个
+   *    连接上，探测失败不该把用户正在打字的会话一起带走。
+   */
+  async exec(
+    sessionId: string,
+    command: string,
+    options: { maxBytes?: number; timeout?: number; signal?: AbortSignal } = {},
+  ): Promise<ExecResult> {
     const session = this.requireSession(sessionId)
     const maxBytes = options.maxBytes ?? 1 << 20
+    const { timeout, signal } = options
 
     return await new Promise<ExecResult>((resolve, reject) => {
-      session.client.exec(command, (error, channel) => {
+      const outDecoder = new StringDecoder('utf8')
+      const errDecoder = new StringDecoder('utf8')
+      const out: string[] = []
+      const err: string[] = []
+      let channel: ClientChannel | null = null
+      let stderr: NodeJS.ReadableStream | null = null
+      let timer: NodeJS.Timeout | null = null
+      let bytes = 0
+      let code: number | null = null
+      let signalName: string | undefined
+      let settled = false
+
+      /** 摘掉自己加的那些监听器。不用 removeAllListeners：那会连 ssh2 自己的内部监听一起摘掉。 */
+      const detach = (): void => {
+        if (channel) {
+          channel.off('data', onData)
+          channel.off('exit', onExit)
+          channel.off('close', onClose)
+          channel.off('error', onError)
+        }
+        stderr?.off('data', onStderr)
+      }
+
+      /**
+       * 唯一的结束路径。四条出口（成功关闭、超时、取消、出错）都必须经过它，
+       * 否则就会留下一个定时器、一个监听器，或者一条没人持有的通道。
+       */
+      const settle = (finish: () => void): void => {
+        if (settled) return
+        settled = true
+        if (timer) { clearTimeout(timer); timer = null }
+        signal?.removeEventListener('abort', onAbort)
+        session.execs.delete(cancel)
+        detach()
+        finish()
+      }
+
+      const closeChannel = (): void => {
+        try { channel?.close() } catch { /* 通道可能已经关了 */ }
+      }
+      const cancel = (reason: string): void => settle(() => { closeChannel(); reject(new Error(reason)) })
+      const onAbort = (): void => cancel('命令执行已取消。')
+      const onData = (chunk: Buffer): void => {
+        if (settled) return
+        bytes += chunk.length
+        if (bytes > maxBytes) { cancel(`命令输出超过 ${maxBytes} 字节上限。`); return }
+        out.push(outDecoder.write(chunk))
+      }
+      const onStderr = (chunk: Buffer): void => {
+        if (settled) return
+        bytes += chunk.length
+        if (bytes > maxBytes) { cancel(`命令输出超过 ${maxBytes} 字节上限。`); return }
+        err.push(errDecoder.write(chunk))
+      }
+      const onExit = (exitCode: number | null, exitSignal?: string): void => {
+        code = exitCode
+        signalName = exitSignal
+      }
+      const onClose = (): void => settle(() => {
+        out.push(outDecoder.end())
+        err.push(errDecoder.end())
+        resolve({ stdout: out.join(''), stderr: err.join(''), code, signal: signalName })
+      })
+      const onError = (streamError: Error): void => settle(() => reject(streamError))
+
+      session.execs.add(cancel)
+      signal?.addEventListener('abort', onAbort, { once: true })
+      if (timeout) timer = setTimeout(() => cancel(`命令执行超时（${timeout}ms）。`), timeout)
+      if (signal?.aborted) { onAbort(); return }
+
+      session.client.exec(command, (error, opened) => {
         if (error) {
-          reject(normalizeSshError(error, session.host, session.port))
+          settle(() => reject(normalizeSshError(error, session.host, session.port, 'exec')))
           return
         }
-        const outDecoder = new StringDecoder('utf8')
-        const errDecoder = new StringDecoder('utf8')
-        const out: string[] = []
-        const err: string[] = []
-        let bytes = 0
-        let truncated = false
-        let code: number | null = null
-        let signal: string | undefined
-        let settled = false
-
-        const timer = options.timeout
-          ? setTimeout(() => {
-              if (settled) return
-              settled = true
-              channel.close()
-              reject(new Error(`命令执行超时（${options.timeout}ms）。`))
-            }, options.timeout)
-          : null
-
-        const done = (): void => {
-          if (settled) return
-          settled = true
-          if (timer) clearTimeout(timer)
-          out.push(outDecoder.end())
-          err.push(errDecoder.end())
-          resolve({ stdout: out.join(''), stderr: err.join(''), code, signal, truncated })
+        // 超时或取消之后才到的通道：它没有任何人持有，必须当场关掉，
+        // 否则远端会一直为我们保留一个打开的命令通道。
+        if (settled) {
+          try { opened.close() } catch { /* 已经关了 */ }
+          return
         }
-
-        channel.on('data', (chunk: Buffer) => {
-          bytes += chunk.length
-          if (bytes > maxBytes) truncated = true
-          if (!truncated) out.push(outDecoder.write(chunk))
-        })
-        channel.stderr.on('data', (chunk: Buffer) => {
-          if (!truncated) err.push(errDecoder.write(chunk))
-        })
-        channel.on('exit', (exitCode: number | null, signalName?: string) => {
-          code = exitCode
-          signal = signalName
-        })
-        channel.on('close', done)
-        channel.on('error', (streamError: Error) => {
-          if (settled) return
-          settled = true
-          if (timer) clearTimeout(timer)
-          reject(streamError)
-        })
+        channel = opened
+        stderr = opened.stderr
+        opened.on('data', onData)
+        opened.stderr.on('data', onStderr)
+        opened.on('exit', onExit)
+        opened.on('close', onClose)
+        opened.on('error', onError)
       })
     })
   }
@@ -509,6 +678,10 @@ export class SshService extends Service {
     if (!session) return
     this.sessions.delete(sessionId)
     session.closed = true
+    // 先拒在途的 exec，再拆连接：反过来的话，通道关闭会让它们以「拿到了半截
+    // 输出」结束，而真正的消息是「连接断了」。
+    for (const cancel of [...session.execs]) cancel('会话已关闭，命令已取消。')
+    session.client.off('handshake', session.handshakeListener)
     try {
       session.client.end()
     } catch {

@@ -2,6 +2,8 @@ import { Service, type Context } from 'cordis'
 import type { TerminalOpenRequest, TerminalOpenResult } from '@pureterm/protocol'
 import { ClientScope, cleanError, DomListeners } from '../client-runtime.js'
 import { createTerminalView, type TerminalFactory, type TerminalView } from '../terminal-view.js'
+import { initialsOf } from '../host-list.js'
+import { diagnose, stageLabel, type Failure } from '../failure-diagnostics.js'
 
 export type TabState = 'connecting' | 'connected' | 'disconnected' | 'failed'
 export interface TerminalTab {
@@ -14,6 +16,10 @@ export interface TerminalTab {
   state: TabState
   message: string
   logs: string[]
+  /** 终端与文件表的比例（0-1）。跟着会话走：null = 用 CSS 里的默认模板。 */
+  split: number | null
+  /** 失败分诊结果：null = 还没失败，或失败的原因认不出来。 */
+  failure: Failure | null
 }
 interface OwnedTab extends TerminalTab {
   button: HTMLButtonElement
@@ -31,6 +37,14 @@ declare module 'cordis' {
     'client/session-change'(sessionId: string | null): void
     'client/connection-change'(): void
     'client/tab-closed'(tabId: string): void
+    'client/terminal-resize'(size: { cols: number; rows: number }): void
+    /**
+     * keyId → 使用它的主机数。Keychain 的表格要显示这一列，而 ClientHosts 已经
+     * 注入 ClientKeychain —— 反向再注入一次就是一个环，所以走事件。
+     */
+    'client/host-counts'(counts: Record<string, number>): void
+    /** 文件面板开合。状态栏要拿它决定要不要提示「拖动竖线可调整比例」。 */
+    'client/files-change'(open: boolean): void
     'client/edit-connection'(request: TerminalOpenRequest, title: string): void
     'client/keychain-change'(): void
   }
@@ -38,7 +52,7 @@ declare module 'cordis' {
 
 /** Each tab owns one terminal and one SSH session. Hosts is a persistent, separate page. */
 export class ClientTerminal extends Service {
-  static inject = ['clientView', 'clientTransport']
+  static inject = ['clientView', 'clientTransport', 'clientToasts']
   readonly scope: ClientScope
   private readonly owned = new Map<string, OwnedTab>()
   private readonly bySession = new Map<string, OwnedTab>()
@@ -73,7 +87,6 @@ export class ClientTerminal extends Service {
       this.activeId = null
       view.element('session-workspace').hidden = true
       view.element('hosts-panel').hidden = false
-      view.element('app').classList.remove('session-mode')
     })
     ctx.effect(() => api.onOpened(id => {
       // The opened event may precede the RPC reply. Never associate it with the active tab.
@@ -103,7 +116,6 @@ export class ClientTerminal extends Service {
         if (pending) pending.closed = reason || '连接已结束。'
       }
     }), 'terminal.closed')
-    this.scope.listen(view.element('hosts-tab'), 'click', () => this.select(null, this.libraryPage))
     this.scope.listen(view.element('disconnect'), 'click', () => this.disconnect())
     for (const id of ['session-reconnect', 'failure-retry']) {
       this.scope.listen(view.element(id), 'click', () => { if (this.active) void this.retry(this.active.id) })
@@ -124,7 +136,7 @@ export class ClientTerminal extends Service {
         : (index + (key.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length
       key.preventDefault()
       this.select(ids[next]!, this.libraryPage)
-      ;(this.active ? this.owned.get(this.active.id)!.button : view.element('hosts-tab')).focus()
+      ;(this.active ? this.owned.get(this.active.id)!.button : view.element('workspace-home')).focus()
     })
     this.scope.listen(view.document, 'keydown', event => {
       const key = event as KeyboardEvent
@@ -138,6 +150,11 @@ export class ClientTerminal extends Service {
         key.preventDefault()
         key.stopPropagation()
         this.closeTab(this.active.id)
+      } else if (key.key === '`' && this.active) {
+        // Ctrl+` 不是 readline 的绑定，所以从终端手里拿走它不需要代价。
+        key.preventDefault()
+        key.stopPropagation()
+        this.active.terminal.focus()
       }
     }, true)
     ctx.effect(() => {
@@ -196,11 +213,14 @@ export class ClientTerminal extends Service {
     pane.container.setAttribute('aria-labelledby', id)
     const listeners = new DomListeners()
     const tab: OwnedTab = { id, title, request: { ...request }, ...pane, button, label, strip, listeners,
-      sessionId: null, state: 'connecting', message: '正在连接…', logs: [], attempt: 0,
+      sessionId: null, state: 'connecting', message: '正在连接…', logs: [], attempt: 0, split: null, failure: null,
       release: () => { listeners.clear(); data.dispose(); resize.dispose(); pane.terminal.dispose(); pane.container.remove(); strip.remove() },
     }
     const data = pane.terminal.onData(value => { if (tab.sessionId) this.ctx.clientTransport.api.input(tab.sessionId, value) })
-    const resize = pane.terminal.onResize(({ cols, rows }) => { if (tab.sessionId) this.ctx.clientTransport.api.resize(tab.sessionId, cols, rows) })
+    const resize = pane.terminal.onResize(({ cols, rows }) => {
+      if (tab.id === this.activeId) this.ctx.emit('client/terminal-resize', { cols, rows })
+      if (tab.sessionId) this.ctx.clientTransport.api.resize(tab.sessionId, cols, rows)
+    })
     listeners.add(button, 'click', () => this.select(id))
     listeners.add(close, 'click', () => this.closeTab(id))
     listeners.add(strip, 'auxclick', event => { if (event.button === 1) { event.preventDefault(); this.closeTab(id) } })
@@ -214,7 +234,7 @@ export class ClientTerminal extends Service {
     this.activeId = id
     if (!id) this.libraryPage = page
     this.render()
-    ;(id ? this.owned.get(id)!.strip : this.ctx.clientView.element('hosts-tab')).scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    ;(id ? this.owned.get(id)!.strip : this.ctx.clientView.element('workspace-home')).scrollIntoView({ block: 'nearest', inline: 'nearest' })
     this.ctx.emit('client/session-change', this.sessionId)
     this.ctx.emit('client/connection-change')
     void this.settleLayout()
@@ -224,24 +244,27 @@ export class ClientTerminal extends Service {
     if (this.stopped) return
     const view = this.ctx.clientView
     const active = this.active
+    // No shell mode is toggled here. A session used to add `.session-mode` and
+    // `chrome.css` answered by hiding `#primary-nav` and collapsing `.app-body`
+    // to one track; the rail now stays put through a session, because the
+    // prototype's shell is always rail + main (+ inspector) and a rail that
+    // vanished on connect read as a lost frame. `app` is still needed for the
+    // inspector below.
     const app = view.element('app')
-    app.classList.toggle('session-mode', !!active)
-    app.classList.remove('failure-mode')
     view.element('hosts-panel').hidden = !!active || this.libraryPage !== 'hosts'
     view.element('keychain-panel').hidden = !!active || this.libraryPage !== 'keychain'
     view.element('nav-hosts').classList.toggle('active', this.libraryPage === 'hosts')
     view.element('nav-keychain').classList.toggle('active', this.libraryPage === 'keychain')
-    view.element('library-tab-title').textContent = this.libraryPage === 'keychain' ? 'Keychain' : 'Hosts'
+    // 顶栏品牌右侧的分区名（原型 .brand 的 <i>）。它跟着「现在在哪」走：会话里是
+    // / Session，回到库里是 / Vault —— 原型两个屏各自就是这么写的，所以这不是一句
+    // 静态文案，得在每次切换时重写。它现在是顶栏里唯一说明「这是哪一屏」的文字：
+    // 库标签已经不在标签栏里了，理由见 index.html 的 #workspace-tabs。
+    view.element('workspace-area').textContent = active ? '/ Session' : '/ Vault'
     view.element('session-workspace').hidden = !active
     if (active || this.libraryPage === 'keychain') {
-      app.classList.remove('drawer-open')
+      app.classList.remove('inspector-open')
       view.element('connection-workspace').hidden = true
     }
-    const hosts = view.element('hosts-tab')
-    hosts.setAttribute('aria-controls', this.libraryPage === 'keychain' ? 'keychain-panel' : 'hosts-panel')
-    hosts.classList.toggle('is-active', !active)
-    hosts.setAttribute('aria-selected', String(!active))
-    hosts.tabIndex = active ? -1 : 0
     for (const tab of this.owned.values()) {
       const selected = tab.id === this.activeId
       tab.strip.dataset.state = tab.state
@@ -260,16 +283,53 @@ export class ClientTerminal extends Service {
     view.element('session-state').className = active.state
     view.element<HTMLButtonElement>('disconnect').disabled = !active.sessionId
     view.element('session-reconnect').hidden = active.state !== 'disconnected'
+    // 结论和它的依据只在这一条会话失败时有话说。它们现在住在会话栏里 —— 切标签时
+    // 那一栏是唯一不动的，所以换到一台好着的主机必须把它们收回去，否则上一台的
+    // 「认证被拒绝」会挂在这一台上。认不出阶段时不给结论，这和路由整条收起是同一条
+    // 规矩。
+    const chip = view.element('failure-chip')
+    chip.textContent = failed ? active.failure?.title ?? '' : ''
+    chip.hidden = !failed || !active.failure?.stage
+    view.element('failure-raw').textContent = failed ? active.logs.at(-1) ?? '' : ''
     if (failed) {
       view.element('failure-title').textContent = active.title
       view.element('failure-endpoint').textContent = `SSH ${active.request.host}:${active.request.port ?? 22}`
-      view.element('failure-avatar').textContent = active.request.authMethod === 'privateKey' ? 'KEY' : 'SSH'
+      view.element('failure-avatar').textContent = initialsOf(active.title)
+      const failure = active.failure
+      const shell = view.element('connection-failure')
+      // breakAt 是**节点**下标（0..3），不是七个阶段的下标；七折四在 NODE_OF 里做。
+      // breakAt === 4 的意思是四个格子全都过了（认证之后才失败），不是有第 5 个格子。
+      shell.classList.toggle('route-collapsed', !failure || failure.breakAt < 0)
+      const drawn = failure && failure.breakAt >= 0
+      for (const [index, node] of [...shell.querySelectorAll<HTMLElement>('.failure-route-node')].entries()) {
+        node.classList.toggle('is-passed', !!drawn && index < failure!.breakAt)
+        node.classList.toggle('is-failed', !!drawn && index === failure!.breakAt)
+      }
+      for (const [index, line] of [...shell.querySelectorAll<HTMLElement>('.failure-route-line')].entries()) {
+        line.classList.toggle('is-break', !!drawn && index === failure!.breakAt - 1)
+        line.classList.toggle('is-through', !!drawn && index < failure!.breakAt - 1)
+      }
+      // 阶段再用文字说一遍：路线是 aria-hidden 的，屏幕 reader 和色觉障碍用户
+      // 都不该只靠一个红点理解这句话。
+      view.element('failure-stage').textContent = failure?.stage ? `失败在「${stageLabel(failure.stage)}」这一步` : ''
+      view.element('failure-suggestion').textContent = failure?.suggestion ?? ''
       const log = view.element('failure-log')
       log.replaceChildren()
       for (const [index, entry] of active.logs.entries()) {
         const row = view.document.createElement('div')
         row.className = 'failure-log-entry' + (index === active.logs.length - 1 ? ' is-error' : '')
-        row.textContent = entry
+        // 行号是单独的节点并且 user-select: none —— 复制日志不该把「1 2 3」一起带走。
+        const number = view.document.createElement('span')
+        number.className = 'failure-log-no'
+        number.setAttribute('aria-hidden', 'true')
+        number.textContent = String(index + 1)
+        const text = view.document.createElement('span')
+        text.textContent = entry
+        const mark = view.document.createElement('i')
+        // 最后一行是真正的失败，其余是过程记录：图标不一样，才不用读字也知道哪行是要看的。
+        mark.className = index === active.logs.length - 1 ? 'ti ti-alert-circle' : 'ti ti-chevron-right'
+        mark.setAttribute('aria-hidden', 'true')
+        row.append(number, mark, text)
         log.append(row)
       }
       view.element('failure-copy').textContent = '复制日志'
@@ -315,6 +375,13 @@ export class ClientTerminal extends Service {
       tab.sessionId = result.sessionId
       tab.state = 'connected'
       tab.message = '已连接'
+      // 连上了就把上一次的路线清掉：留着它，下一次失败之前用户看到的仍是一张
+      // 「死在认证」的图，而那台服务器刚刚连上。
+      tab.failure = null
+      // 后台标签连上了用户是看不见的：这一条正是原来表单里 #status 会漏掉的那种。
+      if (tab.id !== this.activeId) {
+        this.ctx.clientToasts.notify({ title: '已连接', detail: `${tab.request.username}@${tab.request.host}` })
+      }
       this.bySession.set(result.sessionId, tab)
       for (const chunk of early?.chunks ?? []) tab.terminal.write(chunk)
       if (early?.closed !== undefined) this.ended(tab, early.closed)
@@ -327,6 +394,7 @@ export class ClientTerminal extends Service {
         tab.state = 'failed'
         tab.message = '连接失败'
         tab.logs.push(cleanError(error))
+        tab.failure = diagnose(cleanError(error))
         this.changed(tab)
       }
       return undefined
@@ -375,6 +443,17 @@ export class ClientTerminal extends Service {
     const { width, height } = tab.container.getBoundingClientRect()
     if (width < 40 || height < 40) return
     try { tab.terminal.fit() } catch (error) { console.warn('[renderer] fit 失败', error) }
+  }
+
+  /**
+   * 记下当前会话的终端/文件表比例。null 回到 CSS 的默认模板。
+   *
+   * 存在这里是因为「哪个会话」只有 ClientTerminal 知道，而拖动的把手只有
+   * ClientSftp 摸得到：所以一边存、一边画，不新开一条事件。
+   */
+  setSplit(ratio: number | null): void {
+    const tab = this.active
+    if (tab) tab.split = ratio
   }
 
   settleLayout(): Promise<boolean> {

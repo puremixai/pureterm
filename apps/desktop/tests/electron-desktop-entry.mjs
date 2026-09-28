@@ -19,14 +19,34 @@ app.on('browser-window-created', (_event, window) => {
       const useCompactWindowChrome = process.platform !== 'darwin'
       assert.equal(window.isMenuBarAutoHide(), useCompactWindowChrome, 'desktop application menu must follow the platform chrome plan')
       if (useCompactWindowChrome) assert.equal(window.isMenuBarVisible(), false, 'desktop application menu must not consume a permanent row')
-      const chrome = await window.webContents.executeJavaScript(`(() => {
-        const topbar = document.querySelector('.app-topbar')
-        return {
-          overlayAvailable: typeof navigator.windowControlsOverlay === 'object',
-          topbarDraggable: getComputedStyle(topbar).getPropertyValue('-webkit-app-region') === 'drag',
+      // The cluster is built by the renderer after the desktop sheet lands, so this waits
+      // for it rather than reading once — and on macOS it waits out the same budget to
+      // prove the absence, which is the half of the platform decision that matters most:
+      // a second set of buttons beside the traffic lights is the bug this prevents.
+      const chrome = await window.webContents.executeJavaScript(`new Promise(resolve => {
+        const read = () => {
+          const topbar = document.querySelector('.app-topbar')
+          const cluster = document.getElementById('window-controls')
+          return {
+            clusterButtons: cluster ? [...cluster.querySelectorAll('button')].map(button => button.id) : [],
+            clusterStyled: !!cluster && getComputedStyle(cluster).marginLeft !== '0px',
+            topbarDraggable: getComputedStyle(topbar).getPropertyValue('-webkit-app-region') === 'drag',
+          }
         }
+        const deadline = Date.now() + 5000
+        const tick = () => {
+          const seen = read()
+          if (seen.clusterButtons.length || Date.now() > deadline) resolve(seen)
+          else setTimeout(tick, 25)
+        }
+        tick()
       })()`)
-      if (process.platform !== 'darwin') assert.equal(chrome.overlayAvailable, true, 'native window controls must remain available in the custom title bar')
+      const expected = process.platform === 'darwin'
+        ? []
+        : ['window-minimize', 'window-maximize', 'window-close']
+      assert.deepEqual(chrome.clusterButtons, expected,
+        'the self-drawn caption cluster follows the platform: macOS keeps its traffic lights, Windows and Linux have none of their own')
+      if (expected.length) assert.equal(chrome.clusterStyled, true, 'the cluster must arrive with desktop.css, not as three bare glyphs')
       assert.equal(chrome.topbarDraggable, true, 'the custom top bar must remain a drag region')
       console.log('[WINDOW-CHROME-OK]')
       if (process.env.SSH_CORDIS_SMOKE !== '1') return

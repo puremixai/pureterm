@@ -11,4 +11,12 @@ await build({
   assetNames: 'fonts/[name]-[hash]',
   sourcemap: true, logLevel: 'info',
 })
+// The desktop-only sheet, built separately on purpose: it must not be reachable from
+// app.css, because the standalone Web entry serves app.css and has no window to
+// control. services/chrome.ts links this file at runtime, and only when the desktop
+// bridge is there. See src/desktop.css.
+await build({
+  entryPoints: [resolve(root, 'src/desktop.css')], outfile: resolve(root, 'dist/desktop.css'),
+  bundle: true, sourcemap: true, logLevel: 'info',
+})
 copyFileSync(resolve(root, 'src/index.html'), resolve(root, 'dist/index.html'))

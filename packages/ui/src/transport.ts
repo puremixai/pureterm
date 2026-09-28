@@ -4,11 +4,18 @@ import {
   NOTICES,
   decodeWire,
   encodeWire,
+  parseMonitorUpdate,
+  parseSessionFacts,
   type HostRecord,
   type DesktopBridge,
   type KeyRecord,
+  type MonitorStartRequest,
+  type MonitorStartResult,
+  type MonitorStopResult,
+  type MonitorUpdate,
   type PickedPrivateKey,
   type RuntimeCapabilities,
+  type SessionFacts,
   type SshApi,
   type SftpDir,
   type SftpReadResult,
@@ -71,6 +78,8 @@ export function createWebSocketTransport(): SshApi {
   const dataListeners = new Set<(sessionId: string, chunk: Uint8Array) => void>()
   const closedListeners = new Set<(sessionId: string, reason: string) => void>()
   const disconnectedListeners = new Set<(reason: string) => void>()
+  const updateListeners = new Set<(update: MonitorUpdate) => void>()
+  const factsListeners = new Set<(facts: SessionFacts) => void>()
 
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
   let nextId = 1
@@ -234,6 +243,25 @@ export function createWebSocketTransport(): SshApi {
       const sessionId = String(params[0] ?? '')
       currentSessions.delete(sessionId)
       for (const listener of closedListeners) listener(sessionId, String(params[1] ?? ''))
+      return
+    }
+    /*
+     * 监控的这两条事件**先校验再分发**，校验失败就整条丢掉。
+     *
+     * 丢掉而不是抛出，是因为它们在同一个 onmessage 里和终端事件排队：一条坏负载
+     * 若把这里打断，后面那条 terminal:data 就永远不会到达，用户看到的是终端卡住，
+     * 而原因在另一个插件里。两件事必须互不牵连。
+     */
+    if (candidate.name === EVENTS.monitorUpdate) {
+      let update: MonitorUpdate
+      try { update = parseMonitorUpdate(params[0]) } catch { return }
+      for (const listener of updateListeners) listener(update)
+      return
+    }
+    if (candidate.name === EVENTS.sessionFacts) {
+      let facts: SessionFacts
+      try { facts = parseSessionFacts(params[0]) } catch { return }
+      for (const listener of factsListeners) listener(facts)
     }
   }
 
@@ -316,6 +344,19 @@ export function createWebSocketTransport(): SshApi {
       remove: (sessionId, path) => call(METHODS.sftpRemove, [sessionId, path]) as Promise<void>,
     },
 
+    monitor: {
+      start: (request: MonitorStartRequest) => call(METHODS.monitorStart, [request]) as Promise<MonitorStartResult>,
+      stop: (subscriptionId: string) => call(METHODS.monitorStop, [subscriptionId]) as Promise<MonitorStopResult>,
+      onUpdate: (listener) => {
+        updateListeners.add(listener)
+        return () => { updateListeners.delete(listener) }
+      },
+      onSessionFacts: (listener) => {
+        factsListeners.add(listener)
+        return () => { factsListeners.delete(listener) }
+      },
+    },
+
     signalReady: (payload) => {
       if (disposed) return
       if (desktop) desktop.signalReady(payload)
@@ -340,6 +381,8 @@ export function createWebSocketTransport(): SshApi {
       dataListeners.clear()
       closedListeners.clear()
       disconnectedListeners.clear()
+      updateListeners.clear()
+      factsListeners.clear()
     },
   }
 }

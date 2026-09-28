@@ -1,0 +1,175 @@
+/* Contract: colour groups are redeclared per theme; metrics live in :root once
+   and inherit, because :root and [data-theme="light"] match the same element.
+   --shadow-pop is the one theme-varying derived token. Asserted by the tests.
+   Changing a value here also means re-measuring the tables in
+   docs/design-system.md: no test reads that document, so forgetting it is
+   silent, and the numbers are the only record of what each pair measures. */
+:root {
+  color-scheme: dark;
+
+  /* Neutral ramp. Hue is pinned to 210deg at <=5% saturation: depth is
+     hierarchy, never mood. */
+  --c-inset: #08090a;
+  --c-canvas: #0a0b0d;
+  --c-chrome: #0e1013;
+  --c-surface: #131519;
+  --c-raised: #191c21;
+  --c-control: #21252b;
+  /* Hairlines are not text: --line measures ~1.27:1 on --c-surface by design,
+     marginally more visible than the rgba(222, 226, 255, .085) it replaces,
+     which composites to ~1.21-1.26 across the grounds it currently sits on. */
+  --line: #262a31;
+  --line-soft: #1c1f24;
+  --line-strong: #3a4049;
+  /* Legality is per ground and per theme, not per token, and no ground is
+     free in both. Light: --tx-3 and --ac fall to 3.88-4.23 on --c-control and
+     --c-chrome, and even --ac on --c-canvas is only 4.36, so there muted and
+     accent text belong on --c-surface alone. Dark is wider but not total:
+     --tx-3 drops to 4.48 on --c-raised and 4.03 on --c-control, while --tx-1,
+     --tx-2 and --ac (worst 6.55) hold AA on every surface.
+     design-tokens.test.mjs measures --c-surface grounds only;
+     docs/design-system.md carries the full measured matrix. */
+  --tx-1: #f2f3f5;
+  --tx-2: #b9bec6;
+  --tx-3: #7d838d;
+  --tx-4: #565b63;
+  --ac: #5aaeff;
+  --ac-hi: #7cc0ff;
+  --ac-bg: rgba(90, 174, 255, 0.12);
+  --ac-fg: #05070a;
+  --ok: #4ec27f;
+  --warn: #e0a83c;
+  --err: #f2555a;
+  --idle: #8b919b;
+
+  /* Translucent steps. Dark values are white-or-accent at an alpha; light
+     values flip to black-or-accent because white-on-white does not exist.
+     Each one must carry the triplet of the colour it tints, which
+     design-tokens.test.mjs measures. */
+  --overlay-soft: rgba(255, 255, 255, 0.03);
+  --overlay-hover: rgba(255, 255, 255, 0.06);
+  --overlay-press: rgba(255, 255, 255, 0.09);
+  --ac-line: rgba(90, 174, 255, 0.42);
+  --ac-focus: rgba(90, 174, 255, 0.55);
+  --ok-bg: rgba(78, 194, 127, 0.12);
+  --ok-line: rgba(78, 194, 127, 0.3);
+  --warn-bg: rgba(224, 168, 60, 0.12);
+  --warn-line: rgba(224, 168, 60, 0.32);
+  --err-bg: rgba(242, 85, 90, 0.12);
+  --err-line: rgba(242, 85, 90, 0.32);
+  --scrim: rgba(0, 0, 0, 0.62);
+  --scroll-thumb: #33383f;
+  --scroll-thumb-strong: #444a53;
+
+  /* Terminal keeps one dark group in both themes. A light shell over a
+     dark canvas is the point, not an oversight. */
+  --term-bg: #08090a;
+  --term-fg: #c9ced6;
+  --term-cursor: #5aaeff;
+  --term-selection: rgba(90, 174, 255, 0.24);
+
+  --r-1: 3px;
+  --r-2: 5px;
+  --r-3: 8px;
+  --r-4: 12px;
+  --r-full: 999px;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --row-h: 38px;
+  --row-h-compact: 30px;
+  --z-drawer: 20;
+  --z-popover: 30;
+  --z-toast: 40;
+  --z-dialog: 50;
+  --t-1: 100ms;
+  --t-2: 160ms;
+  --t-3: 240ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Chrome geometry. --chrome-h is the height Electron's title-bar overlay is
+     told to reserve, so theme-sync.test.mjs reads it as the single source.
+     --insp-w is the docked editor: both the connection form and the key editor
+     take it, so the two screens cannot drift to two different widths.
+     --grip-w is the split handle between the terminal and the file table. It is
+     a token because two things have to agree on it: the track, and the hit area
+     that widens past it so a 5px bar is grabbable. */
+  --chrome-h: 40px;
+  --rail-w: 52px;
+  --status-h: 24px;
+  --insp-w: 322px;
+  --grip-w: 5px;
+
+  --font-ui: Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --font-term: "Cascadia Mono", Consolas, "Sarasa Mono SC", "Microsoft YaHei Mono", monospace;
+  --fs-micro: 11px;
+  --fs-meta: 12px;
+  --fs-ui: 13px;
+  --fs-em: 14px;
+  --fs-h2: 16px;
+  --fs-h1: 20px;
+  --fs-term: 13.5px;
+  --ring: 0 0 0 2px var(--c-canvas), 0 0 0 4px var(--ac);
+  --shadow-pop: 0 8px 24px -6px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --c-inset: #eceef1;
+  --c-canvas: #f7f8f9;
+  --c-chrome: #eef0f2;
+  --c-surface: #ffffff;
+  --c-raised: #f4f6f8;
+  --c-control: #e8ebef;
+  --line: #dfe3e8;
+  --line-soft: #eceef1;
+  --line-strong: #c6ccd4;
+  --tx-1: #16181c;
+  --tx-2: #454b54;
+  --tx-3: #6b7280;
+  --tx-4: #9aa1aa;
+  --ac: #1f6feb;
+  --ac-hi: #1a5fcd;
+  --ac-bg: rgba(31, 111, 235, 0.1);
+  --ac-fg: #ffffff;
+  --ok: #187747;
+  --warn: #8c6009;
+  --err: #b83237;
+  --idle: #7e8590;
+
+  /* Flipped to black-or-accent: a white overlay on a white ground is nothing.
+     The status triplets are darker than the first light draft because status
+     labels paint themselves on their own tint: --ok at the original #1a7f4b
+     measured 4.39:1 on --ok-bg over --c-surface, under AA before any ground
+     was even considered. */
+  --overlay-soft: rgba(0, 0, 0, 0.03);
+  --overlay-hover: rgba(0, 0, 0, 0.055);
+  --overlay-press: rgba(0, 0, 0, 0.08);
+  --ac-line: rgba(31, 111, 235, 0.42);
+  --ac-focus: rgba(31, 111, 235, 0.35);
+  --ok-bg: rgba(24, 119, 71, 0.1);
+  --ok-line: rgba(24, 119, 71, 0.28);
+  --warn-bg: rgba(140, 96, 9, 0.1);
+  --warn-line: rgba(140, 96, 9, 0.3);
+  --err-bg: rgba(184, 50, 55, 0.1);
+  --err-line: rgba(184, 50, 55, 0.3);
+  --scrim: rgba(20, 24, 30, 0.38);
+  --scroll-thumb: #c9ced5;
+  --scroll-thumb-strong: #aab1ba;
+
+  /* Identical to dark on purpose; asserted by design-tokens.test.mjs. */
+  --term-bg: #08090a;
+  --term-fg: #c9ced6;
+  --term-cursor: #5aaeff;
+  --term-selection: rgba(90, 174, 255, 0.24);
+
+  --shadow-pop: 0 8px 24px -6px rgba(16, 24, 40, 0.28);
+}
+
+[data-density="compact"] {
+  --row-h: var(--row-h-compact);
+}
