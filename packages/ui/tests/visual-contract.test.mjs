@@ -106,6 +106,11 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(css, /\.card-view \.host-row \.host-cell \{ display: none/, 'a card must not repeat the table columns')
   assert.match(css, /^\.host-card-address \{ display: none/m, 'the address line is a card node; the table shows the address in its own column')
   assert.match(css, /\.card-view \.host-card-address \{ display: block/, 'and a card keeps the address it is a name for, on the name\'s own left edge')
+  // The key card's print is the same line in the same slot, for the same reason —
+  // and it was worse there, since the cell carried no padding to hold it off the
+  // card's left edge at all.
+  assert.match(css, /^\.keychain-card-fingerprint \{ display: none/m, 'the fingerprint line is a card node; the table shows the print in its own column')
+  assert.match(css, /\.card-view \.keychain-card-fingerprint \{ display: block/, 'and a key card keeps the print on the name\'s own left edge')
   // The card grid's track count is the panel's, not a literal: a fixed three
   // columns left one card a third of the width and two thirds of empty space.
   // `min(…, 100%)` keeps the floor from overflowing a panel narrower than a card.

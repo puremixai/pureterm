@@ -313,6 +313,10 @@ async function runChecks() {
 
     assert(input('keychain-list').classList.contains('card-view'), 'key list toggle must update layout')
 
+    // 与主机卡片同一条形状：指纹是名称栏的一行，不是表格那一格。
+    assert(document.querySelector('.keychain-card .host-content > .keychain-card-fingerprint')!.textContent === 'fixture',
+      'the key card\'s fingerprint must be a line of the name column, not the table\'s address cell')
+
     click('keychain-view'); click('nav-hosts'); click('host-new'); fill()
 
     input('auth').value = 'privateKey'; input('auth').dispatchEvent(new Event('change'))

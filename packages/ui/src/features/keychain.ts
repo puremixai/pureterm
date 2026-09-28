@@ -200,18 +200,24 @@ export class ClientKeychain extends Service {
     const content = doc.createElement('span'); content.className = 'host-content'
     const title = doc.createElement('span'); title.className = 'host-label'; title.textContent = label
     const sub = doc.createElement('span'); sub.className = 'keychain-card-sub'; sub.textContent = subtitle
-    content.append(title, sub); main.append(avatar, content); row.append(main)
+    // 卡片里的指纹是名称栏的最后一行，和主机卡片里的地址同一处：表格的 .host-cell.mono
+    // 是行网格的一行，只能落在头像底下，而且贴着卡片左边缘 —— 那一格没有表格那圈内边距
+    // 兜着。挂在 .host-content 上，名称、类型和指纹才共用同一条左边线。表格视图把它
+    // 关掉，指纹由表格自己那一列负责。卡片和表格共用同一个值，所以先剥掉前缀再分发。
+    const fingerprint = key ? key.fingerprint.replace(/^SHA256:/, '') : '—'
+    const print = doc.createElement('span'); print.className = 'keychain-card-fingerprint'; print.textContent = fingerprint
+    content.append(title, sub, print); main.append(avatar, content); row.append(main)
     if (key) {
       const usage = this.associationCount(key.id)
       row.append(
         this.cell('', key.type),
-        this.cell('mono', key.fingerprint.replace(/^SHA256:/, '')),
+        this.cell('mono', fingerprint),
         this.cell('when', usage ? `${usage} host${usage === 1 ? '' : 's'}` : '未使用', usage ? '' : '尚无主机使用这把密钥'),
         this.cell('', new Date(key.updatedAt).toLocaleDateString()),
       )
     } else {
       // 草稿卡片保留四个单元格，否则正在新建密钥时列会塌。
-      row.append(this.cell('', '—'), this.cell('mono', '—'), this.cell('when', '—'), this.cell('', '—'))
+      row.append(this.cell('', '—'), this.cell('mono', fingerprint), this.cell('when', '—'), this.cell('', '—'))
     }
     main.title = key ? `${label}\n${key.fingerprint}` : label
     this.cards.add(main, 'click', () => {
