@@ -714,6 +714,12 @@ async function runChecks() {
 
     assert(columns.children.length === 6, `a host row is the header's six tracks, not ${columns.children.length}`)
 
+    // 卡片保留的地址是名称那一栏的第二行，不是表格的 .host-cell.mono —— 表格那一格
+    // 是行网格的一行，只能落在头像底下。断言父子关系而不是只看文字，因为「和名称
+    // 同一条左边线」正是这条 DOM 形状给的。
+    assert(columns.querySelector('.host-content > .host-card-address')!.textContent === 'demo@localhost:22',
+      'the card address must be a line of the name column and read as the connection string, not the table\'s address cell')
+
     assert(columns.querySelector('.host-cell.auth')!.textContent === '密码', 'the auth column must name the method in the UI language')
 
     assert(columns.querySelector('.host-cell.when')!.textContent === '从未', 'a host that was never updated must say so rather than print an empty date')

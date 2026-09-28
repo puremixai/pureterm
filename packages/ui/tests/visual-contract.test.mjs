@@ -98,9 +98,14 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(css, /\.toasts\s*\{[^}]*calc\(var\(--status-h\)/, 'and clears the status bar by construction, not by a literal')
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.toast\s*\{\s*animation:\s*none/, 'a notice that slides must be able to stop sliding')
   // A card is the same row with its columns folded away — all but the address,
-  // which is the one thing a name cannot stand in for.
+  // which is the one thing a name cannot stand in for. The address survives as a
+  // second line of the name column rather than as the table's cell: a cell is a
+  // row of the card's own grid, so it can only sit under the avatar, 72px left
+  // of the name it belongs to. The table keeps its cell, so the node is off
+  // until card view.
   assert.match(css, /\.card-view \.host-row \.host-cell \{ display: none/, 'a card must not repeat the table columns')
-  assert.match(css, /\.card-view \.host-row \.host-cell\.mono \{ display: block/, 'and a card keeps the address it is a name for')
+  assert.match(css, /^\.host-card-address \{ display: none/m, 'the address line is a card node; the table shows the address in its own column')
+  assert.match(css, /\.card-view \.host-card-address \{ display: block/, 'and a card keeps the address it is a name for, on the name\'s own left edge')
   // The card grid's track count is the panel's, not a literal: a fixed three
   // columns left one card a third of the width and two thirds of empty space.
   // `min(…, 100%)` keeps the floor from overflowing a panel narrower than a card.

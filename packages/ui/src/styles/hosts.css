@@ -75,12 +75,19 @@
 #host-list.card-view .host-row { grid-template-columns: minmax(0, 1fr); align-items: flex-start; min-height: 91px; padding: 0; }
 #host-list.card-view .host-main { padding: 15px 12px 15px 16px; border-radius: var(--r-3); }
 #host-list.card-view .host-row .host-cell { display: none; }
-#host-list.card-view .host-row .host-cell.mono { display: block; order: 2; padding: 0 12px 0 16px; color: var(--tx-3); font-size: var(--fs-micro); }
+/* 卡片保留地址，但不用表格的地址格：那一格是卡片网格的一行，只能落在头像底下 ——
+   距它所属的名称 72px —— 而 .host-content 里的第二行天然落在名称的左边线上，不必
+   把头像的宽度和间距再抄一份，也就不会各自漂移。表格那一格仍在，所以这个节点在
+   表格视图里是关着的。 */
+.host-card-address { display: none; }
+#host-list.card-view .host-card-address { display: block; min-width: 0; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 /* 卡片视图是这一版自己的形状，原型里没有。58px 的方块取 --r-3 而不是列表小块的
    --r-1：原型没有画过这么大的方块，但它的圆角是跟着方框长大的（20px→--r-1，
    34px→--r-2），58px 落到 --r-3 正好接上那条线。密钥库卡片用同一个角。 */
 #host-list.card-view .host-avatar { width: 58px; height: 58px; border-radius: var(--r-3); font-size: var(--fs-h2); }
-#host-list.card-view .host-content { gap: 6px; }
+/* 5px 是卡片里两行文字的行距（密钥卡片也是 5px），不是表格的 6px：名称与地址要读成
+   一栏，而不是两个各自成行的格子。 */
+#host-list.card-view .host-content { gap: 5px; }
 
 /* Dark separates with hairlines, not elevation, so the row's only rest-state
    signal is its border and the one-step surface raise. The old hover also
