@@ -363,9 +363,25 @@ async function runChecks() {
 
     input('keychain-drop').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: files }))
 
-    await tick()
+    /*
+     * 等的是「内容读完了」，不是一个 tick。`importFile` 里的 `file.text()` 是异步的
+     * （落在一次 blob 读取任务上），一个 `setTimeout(0)` 只证明 drop 事件到了，证明
+     * 不了读取完成 —— macOS 上这一步比 Windows 多花一个任务，断言就会先红，而功能
+     * 是好的。`waitFor` 就是为这种「一个 tick 不够」的等待准备的（见它的说明）。
+     *
+     * 「根本没拿到文件」和「还没读完」分开：前者处理器已经把原因写进编辑器状态，
+     * 直接带着它失败，比两秒后一句「等待超时」有用。
+     */
+    const dropped = await waitFor(() => {
+      if (input('keychain-private').value === 'fixture-content') {
+        return { content: input('keychain-private').value, label: input('keychain-label').value }
+      }
+      const status = input('keychain-status').textContent ?? ''
+      if (status.includes('一次导入一个')) throw new Error(`drop delivered no file: ${status}`)
+      return null
+    }, 'dropped private key')
 
-    assert(input('keychain-private').value === 'fixture-content' && input('keychain-label').value === 'dropped.pem', 'drop must read file content and infer its label')
+    assert(dropped.content === 'fixture-content' && dropped.label === 'dropped.pem', 'drop must read file content and infer its label')
 
     importing.api.keychain.save = async () => { throw new Error('invalid private key') }
 
