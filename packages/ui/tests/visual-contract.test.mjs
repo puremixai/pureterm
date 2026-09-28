@@ -125,11 +125,11 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   // AND a grid child of .session-content, and only the second one could ever be
   // seen — .files-open is what shows the panel at all.
   assert.match(css, /\.session-content\s*\{[^}]*grid-template-columns:/, 'the session content is a column grid')
-  // 监控条永远不参与拉伸，终端那一格才是弹性的：一条读数横带从终端高度里扣，
-  // 而它自己不该跟着窗口一起长。
-  assert.match(css, /\.session-monitor\s*\{[^}]*flex:\s*0 0 auto/, 'the monitor never takes a share of the terminal height')
+  // 资源抽屉和文件抽屉共用终端右边那一格：它也是 .session-content 的一个孩子，几何
+  // 照抄 #sftp（面板头 + 可滚动主体），所以打开哪一个，终端让出的宽度都一样。
+  assert.match(css, /#session-monitor\s*\{[^}]*border-left:\s*1px solid var\(--line\)/, 'the resource drawer docks in the same slot as the file table')
   assert.match(css, /\.session-content\s*\{[^}]*flex:\s*1 1 auto[^}]*min-height:\s*0/, 'the content stays the flexible, shrinkable one')
-  assert.match(css, /\.files-open \.session-content\s*\{[^}]*var\(--grip-w\)/, 'the grip is its own track, not an overlay on one')
+  assert.match(css, /\.files-open \.session-content,\s*\.monitor-open \.session-content\s*\{[^}]*var\(--grip-w\)/, 'either drawer takes the grip track, not an overlay on one')
   assert.doesNotMatch(css, /#sftp\s*\{[^}]*position:\s*absolute/, 'one element may not have two layout mechanisms')
   // Two columns at their minimum floors are 465px, which no phone-width window
   // holds; the narrow case stacks and must keep saying so.
@@ -189,14 +189,17 @@ test('the prototype\'s rearrangements are in the markup', () => {
   assert.match(html, /class="page-head keychain-head"/,
     'the keychain header is the same row, not an 86px toolbar plus a second heading inside the content')
 
-  // 会话栏和内容之间现在夹着监控条的挂载点，所以这条模式放宽到「只允许那个挂载点
-  // 夹在中间」。它要证的仍然是同一件事——会话栏就是内容上面那一块——而不是被删掉。
-  // 挂载点本身也断言：它出厂是空的，子节点归 services/monitor.ts。
-  const toolbar = /<div class="session-toolbar">([\s\S]*?)<\/div>\s*\n\s*(?:<!--[\s\S]*?-->\s*\n\s*)?<div id="session-monitor" class="session-monitor"><\/div>\s*\n\s*<div class="session-content">/.exec(html)
+  // 会话栏和内容之间现在只剩一段注释：资源抽屉的挂载点移进了 .session-content，和
+  // #sftp 并排。这条模式因此放宽到「只允许一段注释夹在中间」。它要证的仍然是同一件
+  // 事——会话栏就是内容上面那一块——而不是被删掉。挂载点本身也断言：它出厂是空的，
+  // 骨架归 monitor-panel.ts。
+  const toolbar = /<div class="session-toolbar">([\s\S]*?)<\/div>\s*\n\s*(?:<!--[\s\S]*?-->\s*\n\s*)?<div class="session-content">/.exec(html)
   assert.ok(toolbar, 'the session toolbar is still one block above the session content')
   assert.match(toolbar[1], /id="failure-chip"/, 'the failure verdict lives in the session toolbar')
   assert.match(toolbar[1], /id="failure-raw"/, 'and so does the line it was read from')
   assert.doesNotMatch(html, /class="failure-verdict"/, 'the failure page no longer carries its own verdict row')
+  assert.match(html, /<div class="session-content">[\s\S]*<section id="sftp"[\s\S]*<section id="session-monitor" class="monitor-drawer" hidden><\/section>/,
+    'the resource drawer is an empty mount beside the file table, and the two share the right slot')
 
   // The top-left brand: mark, name and the area it is showing on one line, the
   // way the prototype's .brand draws it. Two traps are asserted here because

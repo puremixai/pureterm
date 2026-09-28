@@ -45,7 +45,7 @@ Resource monitoring is a request pair plus an event stream on that same dispatch
 | `packages/host/src/credentials.ts` | credential-provider interface and default session-only policy |
 | `packages/protocol/` | environment-neutral protocol and shared data structures |
 | `packages/transport/` | shared Web Host assembly, dispatcher, HTTP/WS, and readiness validation |
-| `packages/ui/` | Cordis Client, page, terminal, SFTP, client transport, browser key selection, and the session resource row |
+| `packages/ui/` | Cordis Client, page, terminal, SFTP, client transport, browser key selection, and the session resource drawer |
 | `apps/desktop/electron/app/` | Electron startup, windows, system encryption, native file picker, and update adapter |
 | `apps/desktop/electron/host/` | Node Host child entry with no Electron import |
 | `apps/desktop/electron/runtime/` | platform policy, readiness, profiles, child/RPC control, update coordination, and resource paths |
@@ -77,7 +77,7 @@ If Host creation fails, already assembled services are unloaded. Host shutdown f
 
 The shared Client is a Cordis Context created by `createClient()`. It installs view, transport, terminal, Keychain, hosts, SFTP, monitoring, chrome, and application/readiness services in order, with dependencies declared through `inject`. Each scope releases DOM listeners, transport subscriptions, `ResizeObserver`, timers, private-key drafts, and terminal resources. The root can be unmounted and mounted again; unloading a dependency scope unloads its dependents. Client disposal closes its WebSocket and releases its Host sessions.
 
-Resource monitoring keeps one subscription per session on the Host, scheduled on probe completion rather than on a fixed tick, and the client keeps one record per terminal tab. The client collects only while a tab is selected, connected, visible, expanded and not manually paused; every other state retires the subscription, and a replaced subscription is stopped before a new one starts. Host `releaseClient`, dependency unload, and shutdown each clear the registrations and timers they own, and a missing monitor service answers with a controlled unsupported result instead of preventing terminal or Host disposal.
+Resource monitoring keeps one subscription per session on the Host, scheduled on probe completion rather than on a fixed tick, and the client keeps one record per terminal tab. The client collects only while a tab is selected, connected, visible, with its resource drawer open and not manually paused; every other state retires the subscription, and a replaced subscription is stopped before a new one starts. Host `releaseClient`, dependency unload, and shutdown each clear the registrations and timers they own, and a missing monitor service answers with a controlled unsupported result instead of preventing terminal or Host disposal.
 
 Desktop retains sandbox, GPU, launch-profile, and restart behavior. `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` disables automatic no-sandbox fallback and profile backfill; `SSH_CORDIS_NO_LAUNCH_PROFILE=1` disables profile reads and writes. Profiles are not separated for CI, containers, and daily use; tests use temporary directories.
 

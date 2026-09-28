@@ -11,16 +11,42 @@ app.setPath('userData', process.env.SSH_CORDIS_TEST_USER_DATA)
 let window
 let code = 1
 
+/*
+ * 等到谓词给出一个真值，然后**把它返回**。
+ *
+ * 返回值不是装饰：监控验收要从 until 手里拿走整份读数（facts / first / ready /
+ * listing），少了它拿到的是 undefined，后面的 listing.files 会在断言之前就炸成
+ * TypeError，而失败信息完全指不到「夹具等到了却没交出来」这件事上。谓词只回 true
+ * 的调用点照旧不受影响。
+ */
 async function until(predicate, description, timeout = 8000) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
-    if (await predicate()) return
+    const seen = await predicate()
+    if (seen) return seen
     await delay(25)
   }
   throw new Error(`Timed out waiting for ${description}`)
 }
 
 const evaluate = (script) => window.webContents.executeJavaScript(script, true)
+
+/*
+ * 等一条通知挂出来。
+ *
+ * 保存成功之后界面说的是**通知**，不是表单里的 `#status`：hosts.ts 与 keychain.ts
+ * 成功时都先把 `#status` 清空（`view.status('', 'ok')`）再挂通知，理由写在
+ * services/toasts.ts 里 —— 讲「已保存」的时候用户往往早就离开了那个表单，会自动
+ * 消失的话不能当常驻说明用。夹具原来等的是 `#status` 以「已保存」开头，那个字串
+ * 现在永远不会出现，而保存其实成功了。
+ *
+ * 标题和详情都要对上：只比标题的话，任何一条同名的旧通知都能让断言提前通过。
+ */
+const savedToast = (title, detail) => until(() => evaluate(`(() => {
+  const toast = [...document.querySelectorAll('#toasts .toast')].find(item =>
+    item.querySelector('.toast-title')?.textContent === ${JSON.stringify(title)});
+  return !!toast && toast.querySelector('.toast-detail')?.textContent === ${JSON.stringify(detail)};
+})()`), `toast ${title} / ${detail}`)
 
 async function pickBrowserFile(path, button = 'key-pick', resultField = 'key-path') {
   const debug = window.webContents.debugger
@@ -195,7 +221,7 @@ async function main() {
       document.getElementById('key-pass').value = 'browser-key-passphrase-never-persist';
       document.getElementById('host-save').click();
     })()`)
-    await until(() => evaluate('document.getElementById("status").textContent.startsWith("已保存")'), 'browser metadata save')
+    await savedToast('已保存主机', 'Browser key host')
     assert.equal(await evaluate('document.querySelectorAll(".tag.saved").length'), 0)
     await window.loadURL(url.href)
     await until(() => evaluate('document.getElementById("status").textContent === "就绪"'), 'page reload readiness')
@@ -208,7 +234,7 @@ async function main() {
     await evaluate(`document.getElementById('nav-keychain').click(); document.getElementById('keychain-new').click()`)
     await pickBrowserFile(process.env.PURETERM_TEST_PRIVATE_KEY, 'keychain-import', 'keychain-label')
     await evaluate(`document.getElementById('keychain-save').click()`)
-    await until(() => evaluate(`document.getElementById('keychain-status').textContent.startsWith('密钥已保存')`), 'Keychain import and save')
+    await savedToast('密钥已保存', '可在主机的认证设置里选用')
     assert.equal(await evaluate(`document.getElementById('keychain-private').value`), '')
     assert.match(await evaluate(`document.getElementById('keychain-public').value`), /^ssh-rsa /)
     assert.match(await evaluate(`document.getElementById('keychain-fingerprint').textContent`), /^SHA256:/)
@@ -218,7 +244,7 @@ async function main() {
       const key = document.getElementById('host-keychain'); key.selectedIndex = 1; key.dispatchEvent(new Event('change'));
       document.getElementById('host-save').click();
     })()`)
-    await until(() => evaluate(`document.getElementById('status').textContent.startsWith('已保存')`), 'host key association save')
+    await savedToast('已保存主机', 'Browser key host')
     assert.equal(await evaluate(`document.getElementById('host-direct-key').hidden`), true)
     await evaluate(`document.getElementById('connect').click()`)
     await until(() => evaluate(`document.getElementById('session-state').className === 'connected'`), 'SSH authentication using Keychain ID')

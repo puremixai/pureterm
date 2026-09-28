@@ -69,6 +69,10 @@ The macOS job builds both architectures and keeps update metadata that covers bo
 
 Ordinary builds save Actions artifacts only. Before upload, the Windows job installs, runs, and uninstalls the NSIS package in isolation. Only when the complete three-platform build for a tag succeeds does the follow-up job create or update a **draft release** with installers, blockmaps, and platform update metadata. It refuses to modify an already-public release and never publishes the draft automatically.
 
+The Linux job runs the Electron checks under `xvfb-run`. `npm ci` does not preserve the setuid bit, so the job repairs `chrome-sandbox` ownership and mode before running; otherwise Electron aborts instead of starting unsandboxed. This keeps the Linux check on Chromium's sandbox rather than passing `--no-sandbox`.
+
+The runner also has no secret service. Electron's `safeStorage` falls back to the `basic_text` backend, which the Desktop shell rejects because it does not encrypt with a system key, so the Desktop smoke's keychain step cannot run there and `Verify Electron on Linux` stops in that step. The Linux job needs a keyring (for example `gnome-keyring` inside a `dbus-run-session`) before it can complete; until then, Electron acceptance comes from the Windows and macOS jobs.
+
 ## Versions and CHANGELOG
 
 PureTerm is in the `0.x` development cycle and follows [SemVer 2.0.0](https://semver.org/). The current source version is `0.1.0-alpha.1`; `0.1.0-alpha.N`, `0.1.0-beta.N`, `0.1.0-rc.N`, and `0.1.0` describe successive testing and delivery phases. Phase suffixes start at `1` independently, published versions are never reused, and `0.x` breaking changes must be called out in the changelog. Source versions omit `v`; Git tags use `v<version>`.

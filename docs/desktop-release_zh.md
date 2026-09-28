@@ -69,6 +69,10 @@ macOS 的两个架构在同一个 job 生成，保留包含两者的更新元数
 
 普通构建仅保存 Actions artifacts。Windows job 在上传前还会隔离安装、运行并卸载 NSIS 包。只有 tag 触发的完整三平台构建成功，后续 job 才创建或更新 **draft release**，并附加安装包、blockmap 和各平台更新元数据。它拒绝修改已经公开的 release，也不会自动公开 draft。
 
+Linux job 在 `xvfb-run` 下运行 Electron 检查。`npm ci` 不保留 setuid 位，因此该 job 在运行前修复 `chrome-sandbox` 的属主与权限；否则 Electron 会直接中止，而不是无沙箱启动。这样 Linux 检查仍走 Chromium 沙箱，而不是传 `--no-sandbox`。
+
+该 runner 也没有 secret service。Electron 的 `safeStorage` 会退回 `basic_text` 后端，而 Desktop 壳层会拒绝它（它不用系统密钥加密），因此 Desktop smoke 的密钥步骤在那里跑不了，`Verify Electron on Linux` 停在该步骤。Linux job 要跑完需要提供 keyring（例如在 `dbus-run-session` 里起 `gnome-keyring`）；在此之前，Electron 验收以 Windows 和 macOS job 为准。
+
 ## 版本与 CHANGELOG
 
 PureTerm 目前处于 `0.x` 开发周期，版本格式遵循 [SemVer 2.0.0](https://semver.org/)。当前源码版本为 `0.1.0-alpha.1`；`0.1.0-alpha.N`、`0.1.0-beta.N`、`0.1.0-rc.N` 和 `0.1.0` 表示连续的测试与交付阶段。每个阶段的数字后缀从 `1` 独立递增，已发布版本号不复用，`0.x` 破坏性变更必须写入变更日志。源码版本不带 `v`，Git tag 使用 `v<version>`。

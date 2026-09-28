@@ -128,7 +128,7 @@ node --test apps/web/tests/*.test.mjs
 node apps/web/tests/smoke-browser.mjs
 ```
 
-浏览器冒烟测试只把 Electron 当作测试 Chromium 窗口，Web 服务本身仍是普通 Node 进程，并且必须继续拒绝非回环监听、无效启动 token、无效 Host/Origin 以及浏览器伪造的文件路径。它还会通过真实页面驱动资源行与状态栏的会话事实，所以监控回归会在这里失败，而不是只在 Electron 流程里暴露。
+浏览器冒烟测试只把 Electron 当作测试 Chromium 窗口，Web 服务本身仍是普通 Node 进程，并且必须继续拒绝非回环监听、无效启动 token、无效 Host/Origin 以及浏览器伪造的文件路径。它还会通过真实页面驱动资源抽屉与状态栏的会话事实，所以监控回归会在这里失败，而不是只在 Electron 流程里暴露。
 
 ## 构建与打包
 

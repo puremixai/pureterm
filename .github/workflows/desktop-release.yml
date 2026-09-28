@@ -73,6 +73,23 @@ jobs:
       - name: Verify Electron on Windows and macOS
         if: runner.os != 'Linux'
         run: npm run verify:electron
+      - name: Repair the Chromium SUID sandbox helper on Linux
+        if: runner.os == 'Linux'
+        run: |
+          # npm does not preserve the setuid bit, so Electron finds chrome-sandbox but
+          # refuses to start it and aborts instead of running unsandboxed. Repair the
+          # helper so the Linux check still exercises the sandbox, matching the runner,
+          # which deliberately disables the automatic no-sandbox fallback.
+          # The lockfile records no install script for Electron, so its binary is only
+          # downloaded on first use. Require it first, then locate the helper, so the
+          # repair does not depend on which check happens to run first.
+          (cd apps/desktop && node -e "require('electron')")
+          helper=$(find . -path '*/electron/dist/chrome-sandbox' -type f -print -quit)
+          echo "chrome-sandbox: ${helper:-<not found>}"
+          test -n "$helper" || { echo "::error::chrome-sandbox was not found under node_modules"; exit 1; }
+          sudo chown root:root "$helper"
+          sudo chmod 4755 "$helper"
+          ls -l "$helper"
       - name: Verify Electron on Linux
         if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum npm run verify:electron

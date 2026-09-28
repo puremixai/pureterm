@@ -237,19 +237,21 @@
                    画布，而这一栏是它上面唯一一直在的东西，所以结论跟着会话走，不跟着
                    那张覆盖层走。原型 ④ 也把这两样画在顶栏。 -->
               <div class="session-context"><span id="session-state" role="status"></span><span id="session-address"></span><span id="failure-chip" class="chip err" hidden></span><span id="failure-raw" class="failure-raw"></span></div>
+              <!-- 资源开关插在 #sftp-toggle 之前，所以它由 features/monitor.ts 建、
+                   也由它拆 —— 卸载监控插件时这一颗按钮跟着走，而不是留在页面上按一个
+                   已经没有订阅的面板。 -->
               <div class="session-actions">
                 <button type="button" id="sftp-toggle" class="ghost small" disabled>文件</button>
                 <button type="button" id="session-reconnect" class="ghost small" hidden>重新连接</button>
                 <button type="button" id="disconnect" class="ghost small" disabled>断开连接</button>
               </div>
             </div>
-            <!-- 监控条的挂载点。折叠时它只是会话栏下面的一行控件，展开才成为一条
-                 横带；子节点由 features/monitor.ts 建，这里不留骨架 —— 和 #sftp
-                 同一条纪律：这个面板长什么样只有一处定义。 -->
-            <div id="session-monitor" class="session-monitor"></div>
+            <!-- 资源面板和 #sftp 共用右侧那一格抽屉：同一时刻只开一个，所以它俩是
+                 .session-content 的两个兄弟，各由自己的插件建骨架。这里只留挂载点。 -->
             <div class="session-content">
               <div id="terminal" class="terminal-surface"></div>
               <section id="sftp" class="sftp-drawer" hidden></section>
+              <section id="session-monitor" class="monitor-drawer" hidden></section>
             </div>
           <section id="connection-failure" class="connection-failure" hidden aria-labelledby="failure-title">
             <div class="failure-shell">

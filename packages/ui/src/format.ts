@@ -21,6 +21,24 @@ export function formatBytes(size: number): string {
 }
 
 /**
+ * 网络速率。**从 kB 起读**，不是从字节起读：一块网卡的读数几乎不会停在 1 kB/s 以下，
+ * 把 409 B/s 写成字节只是在数零，而参考形态要的正是 kB/s 这一档。超过 1024 kB/s 才
+ * 进位到 MB/s，之后照旧 —— 只有起始单位和 formatBytes 不同，标 KB 的那个仍然管文件。
+ */
+export function formatRate(bytesPerSecond: number): string {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond < 0) return '—'
+  if (bytesPerSecond === 0) return '0 kB/s'
+  const units = ['kB/s', 'MB/s', 'GB/s', 'TB/s']
+  let value = bytesPerSecond / 1024
+  let index = 0
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024
+    index += 1
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[index]}`
+}
+
+/**
  * 秒级 Unix 时间戳 → 本地时区的「YYYY-MM-DD HH:mm」。
  *
  * 对端给的是**秒**（SFTP 的 attrs.mtime 就是秒），不是毫秒：直接塞给 Date 会得到

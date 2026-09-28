@@ -31,6 +31,18 @@ async function tryShell(shell, script) {
 }
 
 /**
+ * 交给 `sh` 的路径必须是正斜杠。
+ *
+ * Windows 的临时目录是 `C:\Users\...`，而反斜杠在 POSIX shell 里是转义符：把原生路径
+ * 直接拼进脚本，`< C:\Users\...\stat` 会先被 shell 自己吃成 `C:Usersausu...`，于是
+ * 文件明明写在那儿也打不开，读文件的那一节直接报 STATUS 1（awk 那两节是 2）。要修的
+ * 是夹具这一侧：线上脚本跑在 Linux 远端，它看到的路径永远只有正斜杠，脚本本身没问题。
+ *
+ * 非 Windows 上这是一次空操作（POSIX 路径里没有反斜杠）。
+ */
+const shellPath = (path) => path.replace(/\\/g, '/')
+
+/**
  * 跑脚本里产某一节的那两行（读文件的那行 + 打印的那行），只把 /proc 路径指向 fixture。
  *
  * 被测的是随包发出去的脚本原文——不是抄来的一份——因为「脚本读哪一行、打印哪几列」
@@ -43,7 +55,7 @@ async function runSection(directory, procPath, marker, fixtureText) {
   assert.ok(read && print, `the shipped command must have a ${marker} section reading ${procPath}`)
   const file = join(directory, basename(procPath))
   await writeFile(file, fixtureText)
-  const { stdout } = await run('sh', ['-c', `${read.replace(procPath, file)}\n${print}`])
+  const { stdout } = await run('sh', ['-c', `${read.replace(procPath, shellPath(file))}\n${print}`])
   return stdout
 }
 
@@ -215,7 +227,7 @@ test('the shipped command excludes loopback and sums the remaining interfaces', 
     '',
   ].join('\n'))
 
-  const { stdout } = await run('sh', ['-c', `${line.replace('/proc/net/dev', file)}\nprintf '%s' "$net"`])
+  const { stdout } = await run('sh', ['-c', `${line.replace('/proc/net/dev', shellPath(file))}\nprintf '%s' "$net"`])
   assert.equal(stdout, '12288 6144')
 
   // 同一个 payload 喂进解析器，得到的就是这两个整数本身。
