@@ -98,14 +98,34 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(css, /\.toasts\s*\{[^}]*calc\(var\(--status-h\)/, 'and clears the status bar by construction, not by a literal')
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.toast\s*\{\s*animation:\s*none/, 'a notice that slides must be able to stop sliding')
   // A card is the same row with its columns folded away — all but the address,
-  // which is the one thing a name cannot stand in for.
+  // which is the one thing a name cannot stand in for. The address survives as a
+  // second line of the name column rather than as the table's cell: a cell is a
+  // row of the card's own grid, so it can only sit under the avatar, 72px left
+  // of the name it belongs to. The table keeps its cell, so the node is off
+  // until card view.
   assert.match(css, /\.card-view \.host-row \.host-cell \{ display: none/, 'a card must not repeat the table columns')
-  assert.match(css, /\.card-view \.host-row \.host-cell\.mono \{ display: block/, 'and a card keeps the address it is a name for')
+  assert.match(css, /^\.host-card-address \{ display: none/m, 'the address line is a card node; the table shows the address in its own column')
+  assert.match(css, /\.card-view \.host-card-address \{ display: block/, 'and a card keeps the address it is a name for, on the name\'s own left edge')
+  // The key card's print is the same line in the same slot, for the same reason —
+  // and it was worse there, since the cell carried no padding to hold it off the
+  // card's left edge at all.
+  assert.match(css, /^\.keychain-card-fingerprint \{ display: none/m, 'the fingerprint line is a card node; the table shows the print in its own column')
+  assert.match(css, /\.card-view \.keychain-card-fingerprint \{ display: block/, 'and a key card keeps the print on the name\'s own left edge')
+  // The card grid's track count is the panel's, not a literal: a fixed three
+  // columns left one card a third of the width and two thirds of empty space.
+  // `min(…, 100%)` keeps the floor from overflowing a panel narrower than a card.
+  assert.match(css, /#host-list\.card-view \{[^}]*repeat\(auto-fill,\s*minmax\(min\(200px,\s*100%\),\s*1fr\)\)/, 'the host card grid must fit as many cards as the panel allows')
+  assert.match(css, /\.keychain-list\.card-view \{[^}]*repeat\(auto-fill,\s*minmax\(min\(220px,\s*100%\),\s*1fr\)\)/, 'and so must the key card grid, one step wider for its fingerprint')
   // A header over an empty table frames nothing. Both screens already toggle the
   // empty element's hidden attribute, so the header follows that rather than a
   // second copy of the count.
   assert.match(css, /:has\(#hosts-empty:not\(\[hidden\]\)\) #host-columns/, 'the hosts header must leave with an empty list')
   assert.match(css, /:has\(#keychain-empty:not\(\[hidden\]\)\) #keychain-columns/, 'and so must the key header')
+  // A header over a card grid frames nothing either: the card row is one track,
+  // so the six labels sit over a column that does not exist. The class the view
+  // toggle writes is the state, exactly as the empty element is above.
+  assert.match(css, /:has\(#host-list\.card-view\) #host-columns/, 'a card grid has no columns for the header to label')
+  assert.match(css, /:has\(\.keychain-list\.card-view\) #keychain-columns/, 'and neither has the key card grid')
   // base.css floors every button at 28px, which is under --row-h: un-flooring
   // the row's own button is what makes the density switch change a row at all.
   assert.match(css, /#host-list:not\(\.card-view\) \.host-main \{ min-height: 0/, 'a table row must be allowed to shrink below the button floor')

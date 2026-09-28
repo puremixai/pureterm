@@ -121,6 +121,11 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   const top = document.createElement('span')
   top.className = 'host-top'
   top.append(span('host-label', record.label))
+  // 卡片里的地址是名称下面那一行，所以它挂在 .host-content 上，而不是借表格的
+  // .host-cell.mono —— 那一格是行网格的一行，只能落在头像底下，和名称差着一个
+  // 头像加一道间距的左边缘。连接串带上用户名：卡片没有「用户」那一列，地址得自己
+  // 说全。表格视图把它藏起来，地址由表格自己那一列负责。
+  const address = span('host-card-address', `${record.username}@${record.host}:${record.port}`)
   main.append(avatar, content)
 
   listeners.add(main, 'click', () => handlers.onSelect(record))
@@ -136,7 +141,7 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   actions.append(miniButton('删除', 'delete', true, () => handlers.onDelete(record), listeners))
 
   if (saved) top.append(saved)
-  content.append(top)
+  content.append(top, address)
   item.append(main,
     cell('mono', `${record.host}:${record.port}`),
     cell('', record.username),

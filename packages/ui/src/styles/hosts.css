@@ -15,6 +15,12 @@
    render, which makes it the state rather than a second copy of the count. */
 #hosts-body:has(#hosts-empty:not([hidden])) #host-columns,
 .keychain-content:has(#keychain-empty:not([hidden])) #keychain-columns { display: none; }
+/* A card grid has no columns, so the header above it labels nothing. The card
+   state is the class the view toggle writes, so the header follows that rather
+   than a second copy of it — the same reading the rule above takes of the empty
+   element. */
+#hosts-body:has(#host-list.card-view) #host-columns,
+.keychain-content:has(.keychain-list.card-view) #keychain-columns { display: none; }
 /* 表格里的数据格一律 --tx-3（原型的 .num）：它们是可比较的值，不是要读的正文，
    所以比名称低一级。身份那一格反过来是 --tx-2，对应原型的 .tag.k。 */
 .host-cell { min-width: 0; overflow: hidden; color: var(--tx-3); font-size: var(--fs-meta); text-overflow: ellipsis; white-space: nowrap; }
@@ -61,17 +67,27 @@
 #hosts-body { flex: 1 1 auto; min-height: 0; }
 #host-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; margin: 0; padding: 0; list-style: none; }
 /* A card keeps the address: the columns are gone, but a name with no target
-   under it is not a card, it is a label. */
-#host-list.card-view { grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 16px; }
+   under it is not a card, it is a label. The track count is the panel's, not a
+   literal: three fixed columns left a lone card a third of the width and two
+   thirds of empty space. `min(200px, 100%)` is what stops the floor from
+   overflowing a panel narrower than one card. */
+#host-list.card-view { grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 16px; }
 #host-list.card-view .host-row { grid-template-columns: minmax(0, 1fr); align-items: flex-start; min-height: 91px; padding: 0; }
 #host-list.card-view .host-main { padding: 15px 12px 15px 16px; border-radius: var(--r-3); }
 #host-list.card-view .host-row .host-cell { display: none; }
-#host-list.card-view .host-row .host-cell.mono { display: block; order: 2; padding: 0 12px 0 16px; color: var(--tx-3); font-size: var(--fs-micro); }
+/* 卡片保留地址，但不用表格的地址格：那一格是卡片网格的一行，只能落在头像底下 ——
+   距它所属的名称 72px —— 而 .host-content 里的第二行天然落在名称的左边线上，不必
+   把头像的宽度和间距再抄一份，也就不会各自漂移。表格那一格仍在，所以这个节点在
+   表格视图里是关着的。 */
+.host-card-address { display: none; }
+#host-list.card-view .host-card-address { display: block; min-width: 0; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 /* 卡片视图是这一版自己的形状，原型里没有。58px 的方块取 --r-3 而不是列表小块的
    --r-1：原型没有画过这么大的方块，但它的圆角是跟着方框长大的（20px→--r-1，
    34px→--r-2），58px 落到 --r-3 正好接上那条线。密钥库卡片用同一个角。 */
 #host-list.card-view .host-avatar { width: 58px; height: 58px; border-radius: var(--r-3); font-size: var(--fs-h2); }
-#host-list.card-view .host-content { gap: 6px; }
+/* 5px 是卡片里两行文字的行距（密钥卡片也是 5px），不是表格的 6px：名称与地址要读成
+   一栏，而不是两个各自成行的格子。 */
+#host-list.card-view .host-content { gap: 5px; }
 
 /* Dark separates with hairlines, not elevation, so the row's only rest-state
    signal is its border and the one-step surface raise. The old hover also
@@ -116,12 +132,7 @@ button.mini:hover:not(:disabled) { border-color: var(--line); background: var(--
 button.mini.danger { color: var(--err); }
 button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
 
-@media (max-width: 1100px) {
-  #host-list.card-view { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
-}
-
 @media (max-width: 820px) {
-  #host-list.card-view { grid-template-columns: minmax(0, 1fr); }
   .host-columns,
   #host-list:not(.card-view) .host-row { grid-template-columns: minmax(0,1.6fr) 1fr 24px; }
   /* Row children are main, address, user, auth, updated, actions — so the two

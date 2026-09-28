@@ -78,10 +78,20 @@ export class ClientChrome extends Service {
       // works for this page, it just will not be remembered.
       try { storage.setItem(CHROME_KEY, JSON.stringify(prefs)) } catch { /* blocked or full */ }
     }
+    /**
+     * 主题换完之后广播一次。终端在构造时把 CSS 变量读成了 xterm 的主题对象，
+     * 之后不会再自己看 `data-theme`，所以这条事件是它唯一的重读机会 —— 必须
+     * 排在 `apply()` 后面，否则它读到的是上一组的计算值。密度开关不广播：它
+     * 动的 `--row-h` 不在终端的配色里。
+     */
+    const announceTheme = (): void => {
+      ctx.emit('client/theme-change', prefs.theme === 'light' ? 'light' : 'dark')
+    }
     this.scope.listen(theme, 'click', () => {
       prefs.theme = prefs.theme === 'light' ? 'dark' : 'light'
       save()
       apply()
+      announceTheme()
     })
     this.scope.listen(density, 'click', () => {
       prefs.density = prefs.density === 'compact' ? 'comfortable' : 'compact'
@@ -101,6 +111,10 @@ export class ClientChrome extends Service {
     ctx.on('client/files-change', () => this.render())
     ctx.on('client/drawer-change', () => this.render())
     apply()
+    // 开局也广播一次：ClientTerminal 排在 ClientChrome 前面挂载，它的空闲终端
+    // 是在 `data-theme` 落地之前构造的，所以「记住的浅色主题」也要靠这条事件
+    // 才能到达它。挂载顺序保证了这里发声时监听方已经就位。
+    announceTheme()
     this.render()
   }
 

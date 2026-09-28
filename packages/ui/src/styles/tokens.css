@@ -61,8 +61,10 @@
   --scroll-thumb: #33383f;
   --scroll-thumb-strong: #444a53;
 
-  /* Terminal keeps one dark group in both themes. A light shell over a
-     dark canvas is the point, not an oversight. */
+  /* The terminal follows the theme like every other surface. Its canvas is the
+     end of each group's ramp in the direction that group runs: this value is the
+     dark group's deepest step (--c-inset's own), and the light group's is its
+     brightest. */
   --term-bg: #08090a;
   --term-fg: #c9ced6;
   --term-cursor: #5aaeff;
@@ -161,11 +163,12 @@
   --scroll-thumb: #c9ced5;
   --scroll-thumb-strong: #aab1ba;
 
-  /* Identical to dark on purpose; asserted by design-tokens.test.mjs. */
-  --term-bg: #08090a;
-  --term-fg: #c9ced6;
-  --term-cursor: #5aaeff;
-  --term-selection: rgba(90, 174, 255, 0.24);
+  /* The terminal's own light group. --term-cursor and --term-selection carry
+     this group's --ac, the same tie the dark pair carries to the dark one. */
+  --term-bg: #ffffff;
+  --term-fg: #24292f;
+  --term-cursor: #1f6feb;
+  --term-selection: rgba(31, 111, 235, 0.18);
 
   --shadow-pop: 0 8px 24px -6px rgba(16, 24, 40, 0.28);
 }

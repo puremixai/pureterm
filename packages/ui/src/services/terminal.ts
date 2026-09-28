@@ -53,6 +53,12 @@ declare module 'cordis' {
     'client/drawer-change'(drawer: 'files' | 'monitor', open: boolean): void
     'client/edit-connection'(request: TerminalOpenRequest, title: string): void
     'client/keychain-change'(): void
+    /**
+     * 主题切换。终端只在构造时读一次 CSS 变量，所以换主题必须显式通知每一块终端
+     * 重读 —— 光把 `data-theme` 写回 `<html>` 只会让已经开着的终端留在旧配色里。
+     * 发送方是 ClientChrome，它在写完之后广播。
+     */
+    'client/theme-change'(theme: 'dark' | 'light'): void
   }
 }
 
@@ -168,6 +174,7 @@ export class ClientTerminal extends Service {
       observer.observe(view.element('terminal'))
       return () => observer.disconnect()
     }, 'terminal.layout')
+    ctx.on('client/theme-change', () => this.applyTheme())
     this.select(null)
   }
 
@@ -449,6 +456,20 @@ export class ClientTerminal extends Service {
     const { width, height } = tab.container.getBoundingClientRect()
     if (width < 40 || height < 40) return
     try { tab.terminal.fit() } catch (error) { console.warn('[renderer] fit 失败', error) }
+  }
+
+  /**
+   * 把新主题推给每一块终端，空闲的那块也算。
+   *
+   * 空闲块是这条逻辑存在的理由：它在 ClientChrome 之前构造，所以拿到的是
+   * `:root` 的深色值；用户存过浅色主题时，第一个会话就是从那块空闲块起的，
+   * 不重读的话它会带着深色配色开出来。隐藏中的标签也要一起重读 —— 它们只是
+   * 没画在屏幕上，切回来时不会再有第二次机会。
+   */
+  private applyTheme(): void {
+    if (this.stopped) return
+    this.idle?.terminal.applyTheme()
+    for (const tab of this.owned.values()) tab.terminal.applyTheme()
   }
 
   /**

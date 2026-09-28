@@ -34,8 +34,8 @@ const THEME_TOKENS = [
   '--scroll-thumb', '--scroll-thumb-strong',
 ]
 
-// Terminal colours are the one group that stays dark in both themes, so the
-// light values must be byte-identical rather than merely similar.
+// The terminal is a colour group like every other: both themes declare all four,
+// and each group's text is measured on that group's own canvas.
 const TERM_TOKENS = ['--term-bg', '--term-fg', '--term-cursor', '--term-selection']
 
 // Metrics are theme-invariant: `:root` and `[data-theme="light"]` match the
@@ -136,13 +136,16 @@ test('--idle clears 3:1 on both grounds that carry a status dot', () => {
   }
 })
 
-test('the terminal group is byte-identical dark and keeps a dark canvas', () => {
-  for (const name of TERM_TOKENS) {
-    assert.equal(token(LIGHT, name), token(DARK, name),
-      `${name} is terminal material: the light theme must not restyle it`)
-  }
+test('the terminal canvas follows its theme and keeps its own text readable', () => {
+  // Each canvas is the end of its group's ramp in the direction that group runs:
+  // the dark group's deepest step, the light group's brightest. One shared dark
+  // group made the light theme's terminal a hole in a white shell, which is the
+  // bug this pair of assertions now forbids.
+  assert.ok(luminance(hex(token(DARK, '--term-bg'))) < 0.02, ':root must keep a dark terminal')
+  assert.ok(luminance(hex(token(LIGHT, '--term-bg'))) > 0.6, 'the light group must paint a light terminal')
   for (const selector of THEMES) {
-    assert.ok(luminance(hex(token(selector, '--term-bg'))) < 0.02, `${selector} must keep a dark terminal`)
+    const got = contrast(selector, '--term-fg', '--term-bg')
+    assert.ok(got >= 4.5, `${selector} --term-fg on --term-bg is ${got.toFixed(2)}:1, needs 4.5:1`)
   }
 })
 
@@ -150,24 +153,22 @@ test('translucent accent tokens carry the --ac triplet they sit on', () => {
   // Hand-synced on purpose: an unregistered custom property is substituted at
   // computed-value time but never evaluated as a colour, so color-mix() would
   // reach terminal-view.ts's getComputedStyle as a literal string.
-  const darkAc = triplet(token(DARK, '--ac'))
   for (const selector of THEMES) {
     assert.deepEqual(triplet(token(selector, '--ac-bg')), triplet(token(selector, '--ac')),
       `${selector} --ac-bg must use this group's --ac triplet; only its alpha is free`)
-    assert.deepEqual(triplet(token(selector, '--term-selection')), darkAc,
-      `${selector} --term-selection is dark terminal material and must track the dark --ac triplet`)
+    assert.deepEqual(triplet(token(selector, '--term-selection')), triplet(token(selector, '--ac')),
+      `${selector} --term-selection must track this group's own --ac triplet; the terminal follows the theme`)
   }
 })
 
 test('--term-cursor carries the accent triplet rather than a hand-copy of it', () => {
   // A third copy of the accent, and the one no consumer reads through var():
-  // terminal-view.ts resolves it once through getComputedStyle. Without this
-  // tie a palette flip would leave the cursor behind in silence. The terminal
-  // group is dark material in both themes, so both track the dark --ac.
-  const darkAc = triplet(token(DARK, '--ac'))
+  // terminal-view.ts resolves it through getComputedStyle. Without this tie a
+  // palette flip would leave the cursor behind in silence. Each group tracks its
+  // own --ac, because each group now paints its own terminal.
   for (const selector of THEMES) {
-    assert.deepEqual(triplet(token(selector, '--term-cursor')), darkAc,
-      `${selector} --term-cursor must carry the dark --ac triplet`)
+    assert.deepEqual(triplet(token(selector, '--term-cursor')), triplet(token(selector, '--ac')),
+      `${selector} --term-cursor must carry this group's --ac triplet`)
   }
 })
 

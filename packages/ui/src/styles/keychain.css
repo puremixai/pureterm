@@ -1,6 +1,6 @@
 /* Keychain shares the host card language, with a reflowing library/editor split. */
 .keychain-dashboard { display: flex; height: 100%; min-height: 0; overflow: hidden; }
-.keychain-main { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; container-type: inline-size; }
+.keychain-main { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; }
 /* 头部照原型 ③ 画成一条 40px 的 chrome 栏：那一屏在原型里是直接复用顶栏的 .tb 画的，
    所以它的标题是 --fs-em/600 而不是主机页的 --fs-h1 —— 这道不对称是原型自己的，
    照抄。--line 画在 --c-chrome 上是 1.323（深）/ 1.128（浅），过得去。 */
@@ -15,8 +15,6 @@
    so it is a banner above the list rather than a line of small text under it. */
 .keychain-policy:empty { display: none; }
 .keychain-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; margin: 0; padding: 0; list-style: none; }
-@container (max-width: 1200px) { .keychain-list.card-view { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container (max-width: 630px) { .keychain-list.card-view { grid-template-columns: minmax(0, 1fr); } }
 /* Six tracks, the last one the edit button: five columns of data plus the
    action, exactly the hosts table's shape. */
 #keychain-columns,
@@ -41,18 +39,25 @@
 .keychain-card .host-content { gap: 5px; }
 /* In the table the type is a column, so a "Type ed25519" line under the name
    says it twice and makes the row two lines tall next to a one-line host row.
-   The card has no columns, so there it is the name's only companion. */
+   The card has no columns, so there it sits under the name, above the print. */
 .keychain-card-sub { display: none; color: var(--tx-3); font-size: var(--fs-meta); font-weight: 400; }
 .keychain-list.card-view .keychain-card-sub { display: block; }
 .keychain-card-edit { flex: 0 0 auto; min-width: 24px; margin-right: 0; opacity: 0; }
 .keychain-card:hover .keychain-card-edit, .keychain-card:focus-within .keychain-card-edit, .keychain-card.active .keychain-card-edit { opacity: 1; }
-.keychain-list.card-view { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+/* The same adaptive grid the hosts cards take, one step wider: a key card keeps
+   a fingerprint, so its floor is higher than a host card's. */
+.keychain-list.card-view { grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 16px; }
 .keychain-list.card-view .keychain-card { grid-template-columns: minmax(0, 1fr); align-items: flex-start; min-height: 91px; padding: 0; }
 .keychain-list.card-view .keychain-card-main { padding: 15px 12px 15px 16px; }
 .keychain-list.card-view .keychain-card .host-cell { display: none; }
-/* A card keeps the fingerprint: type and dates are noise, the print is what you
-   match against the server. */
-.keychain-list.card-view .keychain-card .host-cell.mono { display: block; order: 2; color: var(--tx-3); font-size: var(--fs-micro); }
+/* A card keeps the fingerprint — the print is what you match against the server —
+   as the last line of the name column, the slot the hosts card gives its address.
+   The table's .host-cell.mono could not hold that place: it is a row of the
+   card's own grid, so it sat under the avatar, and it has no table padding to
+   hold it off the card's left edge. The table keeps its cell, so the node is off
+   until card view. */
+.keychain-card-fingerprint { display: none; }
+.keychain-list.card-view .keychain-card-fingerprint { display: block; min-width: 0; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .keychain-list.card-view .keychain-avatar { width: 58px; height: 58px; font-size: 29px; border-radius: var(--r-3); }
 #keychain-view[aria-pressed="true"] { background: var(--c-control); }
 /* 原型 .es：一个 26px 的方框图标、一句 12px 的标题、一行 11px 的说明。
