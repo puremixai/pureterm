@@ -33,7 +33,8 @@ pureterm/
     transport/src/                 共享 Web Host、dispatcher、HTTP/WS 与就绪报文校验
     ui/src/                        页面、xterm、文件面板、客户端传输和生成元数据
   docs/
-    architecture.md / DEVELOPMENT.md / desktop-release.md
+    architecture.md / DEVELOPMENT.md / design-system.md / desktop-release.md
+    bug-list.md                   使用应用时发现的待办问题
     superpowers/plans/ / specs/   带日期的历史记录
 ```
 
@@ -76,6 +77,7 @@ Desktop 子进程拥有共享 Web Host 及回环 HTTP/WS 载体。`pureterm-app:
 | preload | `apps/desktop/dist/electron/carriers/preload.cjs` |
 | 独立 Web 入口 | `apps/web/dist/main.js` |
 | 共享页面 | `packages/ui/dist/index.html`、`app.js`、`app.css` |
+| 仅桌面端样式表 | `packages/ui/dist/desktop.css` |
 | 共享 Node 模块 | 对应 `packages/*/dist/` |
 
 运行入口通过包导出定位共享页面，Desktop 通过 `pureterm-app://app/` 提供界面，并按编译模块定位自己的 preload 和 Node Host，不依赖当前工作目录。`npm run verify` 覆盖构建、类型、边界及 Node/协议测试；`npm run verify:electron` 验证 Desktop、独立 Web、更新下载与 Client 插件生命周期。安装包验收另见 `npm run verify:package:windows`。测试代码随仓库保存，不继承历史文档的通过次数。

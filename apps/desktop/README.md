@@ -17,7 +17,7 @@ npm run start:desktop
 
 Dependencies are installed by the single root lockfile; do not run a separate `npm ci` in this directory. The start command builds shared modules, the UI, and Desktop before opening the app. To launch outside the terminal, run `npm run launch --workspace=@pureterm/desktop` from the root; logs go to `apps/desktop/dist/launch.log`.
 
-Enter a host, port, and user, choose password or private-key authentication, and connect. Desktop’s private-key picker is a native file dialog and stores only the path; the file is read when connecting, and an empty passphrase means no passphrase is supplied. When “remember credentials” is selected, ciphertext is stored through the operating-system encryption provider; switching authentication methods removes the old credential.
+Enter a host, port, and user, choose password or private-key authentication, and connect. Desktop’s private-key picker is a native file dialog and stores only the path; the file is read when connecting, and an empty passphrase means no passphrase is supplied. When “remember credentials” is selected, ciphertext is stored through the operating-system encryption provider; on a machine where no usable provider exists the switch is off, its hint says the credential lasts only for this page, and the Host refuses a save rather than writing plaintext. Switching authentication methods removes the old credential.
 
 Alternatively, import or paste a private key in **Keychain**, then select it in the host's authentication settings. Imported keys and their passphrases are saved in a dedicated system-encrypted vault. Public key/type/fingerprint are derived on save; editing never reveals the stored private material. See [Keychain usage](../../README.md#working-with-keychain).
 

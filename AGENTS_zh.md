@@ -15,7 +15,7 @@ PureTerm 是基于 Cordis、ssh2 和 xterm.js 的开源 SSH/SFTP 客户端，提
 - 当前入口是 `apps/desktop/` 和 `apps/web/`；共享能力位于 `packages/host/`、`packages/protocol/`、`packages/transport/` 和 `packages/ui/`。
 - Desktop 由 Electron 主进程启动独立 Node 模式 Web Host 子进程；独立 Web 在自己的普通 Node 进程内装配同一套 Web Host。
 - 根 `package-lock.json` 是唯一锁文件。所有安装、构建和验证命令从仓库根运行。
-- 当前状态以根 `README_zh.md`、`LAYOUT-PROPOSAL_zh.md`、`VERSION.txt`、`docs/architecture_zh.md`、`docs/DEVELOPMENT_zh.md`、`docs/desktop-release_zh.md`、应用 README 和 `CHANGELOG_zh.md` 为准。
+- 当前状态以根 `README_zh.md`、`LAYOUT-PROPOSAL_zh.md`、`VERSION.txt`、`docs/architecture_zh.md`、`docs/DEVELOPMENT_zh.md`、`docs/design-system_zh.md`、`docs/desktop-release_zh.md`、应用 README 和 `CHANGELOG_zh.md` 为准。根目录的 `design-qa_zh.md` 是带日期的设计评审记录，不是当前权威。
 - `docs/superpowers/` 中带日期的文件是历史实施记录和规格。它们可以保留判据、正确建议和明确不采纳的方案，但不得当作当前命令、路径、分支或测试结果；已移除的旧归档、评审和截图研究资料不作为当前文档来源。
 - 截图和鼠标键盘驱动不属于产品运行时代码或验证入口；已删除的 `tools/gui/` 与相关研究资料不要重新加入构建、测试或发布流程。
 
@@ -53,7 +53,7 @@ docs/               当前架构/发布文档及带日期的历史记录
 - Desktop 的 SSH/SFTP、主机和 Keychain 请求走子进程拥有的本机 WebSocket；私有父子 RPC 负责启动、关闭、系统加密和原生选钥。终端和 SFTP 的二进制内容不能在传输层提前转成字符串。
 - Client、载体和 Host 都必须提供明确的 `dispose`/释放路径；页面重挂载、WebSocket 断开和 Host 意外退出不能留下会话、监听器或定时器。
 - 两种 Web Host 都只绑定 `127.0.0.1` 并校验 Origin/Host。浏览器访问使用启动 token 和会话 cookie；Desktop 主进程注入单独的 bearer 凭据。`SSH_CORDIS_NO_WEB_CARRIER=1` 只关闭附带浏览器入口，不关闭 Desktop 内部 Web Host。不能新增公开监听参数。
-- Desktop 凭据通过系统加密 provider 保存。Web 只保存主机元数据和已信任指纹，不持久化密码、口令、私钥内容或私钥路径，且与 Desktop 使用分离的数据目录。
+- Desktop 凭据通过系统加密 provider 保存。没有可用 provider 时，入口上报仅当前会话的凭据，并拒绝保存密钥，而不是退回明文。Web 只保存主机元数据和已信任指纹，不持久化密码、口令、私钥内容或私钥路径，且与 Desktop 使用分离的数据目录。
 
 ## 命令
 
@@ -87,7 +87,7 @@ npm run version:sync
 ## 测试与变更验证
 
 - 根据改动面运行最小充分检查：协议/Host/UI 逻辑优先运行相关 Node 测试；Electron 载体、进程、更新或资源路径变更运行 `npm run verify:electron`；打包或 staging 变更追加 `npm run verify:package:windows`。
-- 代码、依赖边界或构建脚本变更在合并前运行 `npm run verify`。文档-only 修改至少运行 `npm run release:check`、Markdown 链接检查和 `git diff --check`。
+- 代码、依赖边界或构建脚本变更在合并前运行 `npm run verify`。文档-only 修改至少运行 `npm run release:check` 和 `git diff --check`，并检查所改文档里的相对链接都能解析 —— 这项检查靠人工，没有脚本会替你做。
 - 报告实际运行的命令和结果。退出码 2 的已识别环境限制不算测试通过；不要用进程存在、旧 `dist/` 或历史通过次数代替成功信号。
 - 测试使用仓库内夹具、随机回环端口和临时数据目录，不连接用户的远端主机，不覆盖用户 SSH 数据。
 - 测试描述行为和失败条件。改变旧行为时同步更新对应测试，并在 PR 中说明兼容性影响。

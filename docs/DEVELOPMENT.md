@@ -4,7 +4,7 @@
 
 This guide describes the local development workflow for PureTerm. PureTerm is a TypeScript/Cordis SSH and SFTP client with an Electron Desktop entry point and a standalone local Web entry point. Both entry points initiate SSH from the user’s computer; the Web server binds only to `127.0.0.1` and is not a public service.
 
-The [architecture](architecture.md) is the source of truth for runtime behavior, the [layout decision](../LAYOUT-PROPOSAL.md) is the source of truth for package boundaries, and the [release guide](desktop-release.md) is the source of truth for installers and GitHub Releases. Dated records under [`docs/superpowers/`](superpowers/) preserve historical decisions and are not current task lists.
+The [architecture](architecture.md) is the source of truth for runtime behavior, the [layout decision](../LAYOUT-PROPOSAL.md) is the source of truth for package boundaries, the [design system](design-system.md) is the source of truth for UI tokens and stylesheet layout, and the [release guide](desktop-release.md) is the source of truth for installers and GitHub Releases. Dated records under [`docs/superpowers/`](superpowers/) preserve historical decisions and are not current task lists, and the root `design-qa.md` is a dated design review rather than current documentation.
 
 ## Development environment
 
@@ -40,7 +40,7 @@ Useful environment variables:
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | Disable Desktop launch-profile reads and writes |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | Disable automatic Electron no-sandbox fallback |
 
-Do not commit `.env` files, passwords, private keys, tokens, certificates, or real host records. Desktop credentials use the operating-system encryption provider. Standalone Web stores host metadata and trusted fingerprints only; passwords, passphrases, and browser-selected private-key content stay in the current page.
+Do not commit `.env` files, passwords, private keys, tokens, certificates, or real host records. Desktop credentials use the operating-system encryption provider; where no usable one exists it reports session-only credentials and refuses to persist a secret rather than falling back to plaintext. Standalone Web stores host metadata and trusted fingerprints only; passwords, passphrases, and browser-selected private-key content stay in the current page.
 
 ## Repository layout
 
@@ -103,7 +103,7 @@ npm run verify:electron
 
 This command verifies Desktop custom-scheme boot, WebSocket SSH/Keychain behavior, the attached browser entry, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, and shared Client scope lifecycle. The Desktop and standalone Web flows also connect to the local SSH fixture and assert a fixture resource snapshot with its session facts rendered through the real UI, on a connection that still carries terminal and SFTP traffic. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
 
-Documentation-only changes must run `npm run release:check`, a Markdown relative-link check, and `git diff --check`. Report the actual commands and results in the pull request. Do not use an old `dist/` directory, process existence, or a historical pass count as evidence of success.
+Documentation-only changes must run `npm run release:check` and `git diff --check`, and check that relative links in the documents they touched resolve; the link check is manual because no script performs it. Report the actual commands and results in the pull request. Do not use an old `dist/` directory, process existence, or a historical pass count as evidence of success.
 
 ## Targeted entry-point checks
 
