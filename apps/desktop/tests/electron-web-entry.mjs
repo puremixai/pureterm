@@ -22,6 +22,8 @@ try {
     entry: fileURLToPath(new URL('../dist/electron/host/entry.js', import.meta.url)),
     dataDir,
     credentials: { persistent: true,
+      // 与下面的 seal 用同一个判据，两者不能各说各话。
+      credentialPersistence: safeStorage.isEncryptionAvailable() ? 'encrypted' : 'session',
       seal: plain => safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(plain).toString('base64') : undefined,
       unseal: sealed => safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(sealed, 'base64')) : undefined },
     pickPrivateKey: async () => undefined,

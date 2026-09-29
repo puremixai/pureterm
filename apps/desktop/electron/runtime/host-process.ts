@@ -47,6 +47,9 @@ export async function startHostProcess(options: {
       listen(listener) { child.on('message', listener); return () => { child.off('message', listener) } },
     },
     request(method, args) {
+      // 子进程据此上报能力，而不是自己断定「桌面端就能加密」：加解密属于父进程，
+      // 只有它知道这台机器此刻拿不拿得到系统密钥。
+      if (method === 'platform:capabilities') return { credentialPersistence: options.credentials.credentialPersistence }
       if (method === 'platform:seal' && typeof args[0] === 'string') return options.credentials.seal(args[0])
       if (method === 'platform:unseal' && typeof args[0] === 'string') return options.credentials.unseal(args[0])
       if (method === 'platform:pick-key' && typeof args[0] === 'string') return options.pickPrivateKey(args[0])
