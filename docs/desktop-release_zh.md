@@ -71,7 +71,7 @@ macOS 的两个架构在同一个 job 生成，保留包含两者的更新元数
 
 Linux job 在 `xvfb-run` 下运行 Electron 检查。`npm ci` 不保留 setuid 位，因此该 job 在运行前修复 `chrome-sandbox` 的属主与权限；否则 Electron 会直接中止，而不是无沙箱启动。这样 Linux 检查仍走 Chromium 沙箱，而不是传 `--no-sandbox`。
 
-该 runner 也没有 secret service。Electron 的 `safeStorage` 会退回 `basic_text` 后端，而 Desktop 壳层会拒绝它（它不用系统密钥加密），因此 Desktop smoke 的密钥步骤在那里跑不了，`Verify Electron on Linux` 停在该步骤。Linux job 要跑完需要提供 keyring（例如在 `dbus-run-session` 里起 `gnome-keyring`）；在此之前，Electron 验收以 Windows 和 macOS job 为准。
+该 runner 没有 secret service，Electron 的 `safeStorage` 会退回 `basic_text` 后端，它不用系统密钥加密。这不会让该 job 停下：正是这种情况，Desktop 壳层上报 `credentialPersistence: 'session'`，Host 拒绝写入自己无法加密的凭据而不是退回明文，而 smoke 断言的也正是这次拒绝，而不是加密保存。`Verify Electron on Linux` 在未加密后端上照样跑完，因此 Electron 验收来自全部三个平台。
 
 ## 版本与 CHANGELOG
 

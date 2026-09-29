@@ -15,7 +15,7 @@ English is the default reading language for every maintained Markdown document. 
 - Current entry points are `apps/desktop/` and `apps/web/`; shared capabilities are in `packages/host/`, `packages/protocol/`, `packages/transport/`, and `packages/ui/`.
 - Electron starts an independent Node-mode Web Host child process for Desktop; standalone Web assembles the same Web Host in its own ordinary Node process.
 - The root `package-lock.json` is the only lockfile. Run all install, build, and verification commands from the repository root.
-- Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `VERSION.txt`, `docs/architecture.md`, `docs/DEVELOPMENT.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`.
+- Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `VERSION.txt`, `docs/architecture.md`, `docs/DEVELOPMENT.md`, `docs/design-system.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`. The root `design-qa.md` is a dated design-review record, not a current authority.
 - Dated files under `docs/superpowers/` are historical implementation records and specifications. They may preserve durable criteria, correct advice, and explicitly rejected options, but do not treat them as current commands, paths, branches, or test results. Removed archive, review, and screenshot research material is not a current source.
 - Screenshot and mouse/keyboard drivers are not product runtime code or verification entry points. Do not reintroduce the deleted `tools/gui/` directory or related research into build, test, or release flows.
 
@@ -53,7 +53,7 @@ Organize directories by entry point and capability. Do not copy deepseek-harness
 - Desktop SSH/SFTP, hosts, and Keychain requests use the child-owned loopback WebSocket; private parent/child RPC handles startup, shutdown, system encryption, and native key selection. Terminal and SFTP bytes must not be converted to strings in the transport layer.
 - Client, carriers, and Host expose explicit `dispose` paths. Page remounts, WebSocket disconnects, and unexpected Host exits must not leave sessions, listeners, or timers behind.
 - Both Web Hosts bind only to `127.0.0.1` and validate Origin/Host. Browser access uses a startup token and session cookie; Desktop injects a separate bearer credential from its main process. `SSH_CORDIS_NO_WEB_CARRIER=1` disables only attached browser access, never the internal Desktop Web Host. Do not add a public listening option.
-- Desktop credentials use an operating-system encryption provider. Web stores host metadata and trusted fingerprints only, never passwords, passphrases, private-key content, or private-key paths, and uses a data directory separate from Desktop.
+- Desktop credentials use an operating-system encryption provider. Where no usable one exists, the entry point reports session-only credentials and refuses to persist a secret rather than falling back to plaintext. Web stores host metadata and trusted fingerprints only, never passwords, passphrases, private-key content, or private-key paths, and uses a data directory separate from Desktop.
 
 ## Commands
 
@@ -87,7 +87,7 @@ npm run version:sync
 ## Test and change verification
 
 - Run the smallest sufficient checks for the change: focused Node tests for protocol/Host/UI logic; `npm run verify:electron` for Electron carriers, processes, updates, or resource paths; and `npm run verify:package:windows` for packaging or staging changes.
-- Before merging code, dependency-boundary, or build-script changes, run `npm run verify`. Documentation-only changes must at least run `npm run release:check`, the Markdown link check, and `git diff --check`.
+- Before merging code, dependency-boundary, or build-script changes, run `npm run verify`. Documentation-only changes must at least run `npm run release:check` and `git diff --check`, and check that the relative links in the documents they touched resolve — that link check is manual, because no script performs it.
 - Report the commands and results that actually ran. A recognized environment limitation with exit code 2 is not a passing test; process existence, old `dist/`, and historical pass counts are not success signals.
 - Tests use repository fixtures, random loopback ports, and temporary data directories. They must not connect to a user’s remote host or overwrite user SSH data.
 - Tests describe behavior and failure conditions. When old behavior changes, update the relevant tests and explain compatibility impact in the PR.

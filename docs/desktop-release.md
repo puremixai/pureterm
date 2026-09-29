@@ -71,7 +71,7 @@ Ordinary builds save Actions artifacts only. Before upload, the Windows job inst
 
 The Linux job runs the Electron checks under `xvfb-run`. `npm ci` does not preserve the setuid bit, so the job repairs `chrome-sandbox` ownership and mode before running; otherwise Electron aborts instead of starting unsandboxed. This keeps the Linux check on Chromium's sandbox rather than passing `--no-sandbox`.
 
-The runner also has no secret service. Electron's `safeStorage` falls back to the `basic_text` backend, which the Desktop shell rejects because it does not encrypt with a system key, so the Desktop smoke's keychain step cannot run there and `Verify Electron on Linux` stops in that step. The Linux job needs a keyring (for example `gnome-keyring` inside a `dbus-run-session`) before it can complete; until then, Electron acceptance comes from the Windows and macOS jobs.
+The runner has no secret service, so Electron's `safeStorage` falls back to the `basic_text` backend, which does not encrypt with a system key. That does not stop the job: the Desktop shell reports `credentialPersistence: 'session'` for exactly this case, the Host refuses to write a credential it cannot encrypt rather than falling back to plaintext, and the smoke test asserts the refusal instead of the encrypted save. `Verify Electron on Linux` completes on the unencrypted backend, so Electron acceptance comes from all three platforms.
 
 ## Versions and CHANGELOG
 
