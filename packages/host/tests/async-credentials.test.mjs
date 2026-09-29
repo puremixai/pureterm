@@ -18,7 +18,7 @@ async function fixture(t, provider = {}) {
   const alive = new Set(['client'])
   const options = {
     bridge: { getRenderer: (id) => alive.has(id) ? { id, isAlive: () => alive.has(id), send: () => alive.has(id) } : undefined },
-    credentials: { persistent: true, seal: async (value) => seal(value), unseal: async (value) => unseal(value), ...provider },
+    credentials: { persistent: true, credentialPersistence: 'encrypted', seal: async (value) => seal(value), unseal: async (value) => unseal(value), ...provider },
     hostStoreFile: join(directory, 'hosts.json'), secretsFile: join(directory, 'secrets.json'),
     knownHostsFile: join(directory, 'known_hosts.json'), log: false,
     ssh: { readyTimeout: 1000, keepaliveInterval: 0 },

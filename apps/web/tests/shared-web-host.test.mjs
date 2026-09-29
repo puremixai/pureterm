@@ -75,6 +75,7 @@ function http(url) {
 test('shared Web Host applies injected encrypted credentials to actual host saves', { timeout: 15000 }, async t => {
   const credentials = {
     persistent: true,
+    credentialPersistence: 'encrypted',
     seal: async plain => `sealed:${Buffer.from(plain).toString('base64')}`,
     unseal: async sealed => Buffer.from(sealed.slice(7), 'base64').toString(),
   }
@@ -107,6 +108,7 @@ test('shutdown delivers the reply for an accepted credential save before closing
   const gate = new Promise(resolve => { releaseSeal = resolve })
   const credentials = {
     persistent: true,
+    credentialPersistence: 'encrypted',
     seal: async plain => { sealing = true; await gate; return `sealed:${Buffer.from(plain).toString('base64')}` },
     unseal: async sealed => Buffer.from(sealed.slice(7), 'base64').toString(),
   }

@@ -88,26 +88,56 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
       console.log('[SFTP-SMOKE-OK]')
       console.log('[CREDENTIAL-SMOKE-OK] system-encrypted credential crossed the Host process boundary')
     }
-    // Supplied only by the isolated local fixture runner, never by normal startup.
+    /*
+     * 密钥库验收。走真实 UI 与共享 WebSocket，不碰私有 IPC。
+     * `SSH_CORDIS_SMOKE_KEYCHAIN` 只由隔离的本地夹具启动器提供，正常启动永不设置。
+     *
+     * 这台机器**有没有**系统加密由 Host 说了算（`credentialPersistence`），冒烟只断言与
+     * 它相符的那一种结果：
+     *   - 'encrypted'：密钥必须存下来，并且能用来完成一次真实认证。
+     *   - 'session'：没有系统密钥（例如没有 keyring 的 headless Linux），Host 必须
+     *     **拒绝**保存，而不是退化成明文落盘。
+     * 两种都断言，谁也不跳过——拒绝本身就是安全属性，放行才是缺陷。两种标记恰好出现
+     * 哪一个由启动器核对（见 tests/smoke-electron.mjs）。
+     */
     if (process.env.SSH_CORDIS_SMOKE_KEYCHAIN) {
-      const keychainOk = await window.webContents.executeJavaScript(`(async () => {
-        const api = window.__smoke.api;
-        const config = ${JSON.stringify(config)};
-        const key = await api.keychain.save({ label: 'Web Host Keychain check', privateKey: ${JSON.stringify(process.env.SSH_CORDIS_SMOKE_KEYCHAIN)} });
-        if (key.privateKey || key.passphrase || !key.fingerprint) throw new Error('Unsafe Keychain public record');
-        const { password, ...connection } = config;
-        const host = await api.hosts.save({ ...connection, authMethod: 'privateKey', keyId: key.id });
-        let sessionId;
-        try {
-          sessionId = (await api.open({ ...connection, hostId: host.id })).sessionId;
-          return !!sessionId && (await api.keychain.list()).some(item => item.id === key.id);
-        } finally {
-          if (sessionId) api.close(sessionId);
-          await api.hosts.remove(host.id);
-        }
-      })()`)
-      if (!keychainOk) throw new Error('Desktop Keychain authentication failed')
-      console.log('[KEYCHAIN-WEB-OK] system-encrypted key authenticated through WebSocket and the Node Host')
+      const persistence = (surface.capabilities as { credentialPersistence?: string } | undefined)?.credentialPersistence
+      if (persistence === 'encrypted') {
+        const keychainOk = await window.webContents.executeJavaScript(`(async () => {
+          const api = window.__smoke.api;
+          const config = ${JSON.stringify(config)};
+          const key = await api.keychain.save({ label: 'Web Host Keychain check', privateKey: ${JSON.stringify(process.env.SSH_CORDIS_SMOKE_KEYCHAIN)} });
+          if (key.privateKey || key.passphrase || !key.fingerprint) throw new Error('Unsafe Keychain public record');
+          const { password, ...connection } = config;
+          const host = await api.hosts.save({ ...connection, authMethod: 'privateKey', keyId: key.id });
+          let sessionId;
+          try {
+            sessionId = (await api.open({ ...connection, hostId: host.id })).sessionId;
+            return !!sessionId && (await api.keychain.list()).some(item => item.id === key.id);
+          } finally {
+            if (sessionId) api.close(sessionId);
+            await api.hosts.remove(host.id);
+          }
+        })()`)
+        if (!keychainOk) throw new Error('Desktop Keychain authentication failed')
+        console.log('[KEYCHAIN-WEB-OK] system-encrypted key authenticated through WebSocket and the Node Host')
+      } else if (persistence === 'session') {
+        const refusal = await window.webContents.executeJavaScript(`(async () => {
+          const api = window.__smoke.api;
+          try {
+            await api.keychain.save({ label: 'Web Host Keychain check', privateKey: ${JSON.stringify(process.env.SSH_CORDIS_SMOKE_KEYCHAIN)} });
+          } catch (error) {
+            return { message: String(error && error.message ? error.message : error), listed: (await api.keychain.list()).length };
+          }
+          return null;
+        })()`) as { message: string; listed: number } | null
+        if (!refusal) throw new Error('Host stored a private key on a machine with no system encryption')
+        if (!refusal.message.includes('系统加密不可用')) throw new Error(`Keychain refused for the wrong reason: ${refusal.message}`)
+        if (refusal.listed !== 0) throw new Error('Keychain listed a record after a refused save')
+        console.log('[KEYCHAIN-SESSION-OK] no system encryption: the Host refused the key instead of storing it in plaintext')
+      } else {
+        throw new Error(`Invalid credentialPersistence from the Host: ${persistence}`)
+      }
     }
     /*
      * 资源监控的端到端验收。走真实 UI，不碰私有 IPC：连接 → 展开监控条 → 读到远端

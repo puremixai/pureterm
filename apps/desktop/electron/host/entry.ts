@@ -25,16 +25,25 @@ const rpc = createProcessRpc({
       const browserAccess = args[1]
       const desktopToken = randomBytes(24).toString('base64url')
       starting = (async () => {
+        // 能力由父进程给出：只有它持有 safeStorage。子进程不能假设「桌面端就能加密」——
+        // 没有 keyring 的 Linux 上 seal 返回 undefined，那时上报 'encrypted' 是假话，
+        // 界面会照常给出「记住凭据」而写入必然失败。
+        const answer = await rpc.call<{ credentialPersistence?: unknown }>('platform:capabilities', [])
+        const credentialPersistence = answer?.credentialPersistence
+        if (credentialPersistence !== 'encrypted' && credentialPersistence !== 'session') {
+          throw new Error('Invalid platform capability response')
+        }
         host = await startWebHost({
           staticDir: dirname(fileURLToPath(import.meta.resolve('@pureterm/ui/index.html'))),
           hostStoreFile: join(dataDir, 'hosts.json'),
           knownHostsFile: join(dataDir, 'known_hosts.json'),
           credentials: {
             persistent: true,
+            credentialPersistence,
             seal: plain => rpc.call<string | undefined>('platform:seal', [plain]),
             unseal: sealed => rpc.call<string | undefined>('platform:unseal', [sealed]),
           },
-          capabilities: { credentialPersistence: 'encrypted', privateKeyPicker: 'native' },
+          capabilities: { credentialPersistence, privateKeyPicker: 'native' },
           desktopToken,
           browserAccess,
           pickPrivateKey: id => rpc.call('platform:pick-key', [id]),

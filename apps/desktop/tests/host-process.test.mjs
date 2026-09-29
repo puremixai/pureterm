@@ -73,7 +73,8 @@ async function fixture(t, overrides = {}) {
   const gates = []
   const options = {
     entry, dataDir: directory, execPath: process.execPath,
-    credentials: { persistent: true, seal: async plain => crypto.seal(plain), unseal: async sealed => crypto.unseal(sealed) },
+    credentials: { persistent: true, credentialPersistence: 'encrypted',
+      seal: async plain => crypto.seal(plain), unseal: async sealed => crypto.unseal(sealed) },
     pickPrivateKey: async clientId => { picked.push(clientId); return { path: '/fixture/id_ed25519', encrypted: true } },
     onExit: error => exits.push(error),
     startupTimeoutMs: 3000, shutdownTimeoutMs: 500,
