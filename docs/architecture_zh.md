@@ -43,6 +43,7 @@ flowchart LR
 | `packages/host/src/host.ts` | 装配 Cordis Context、导出 Host、管理连接和插件树生命周期 |
 | `packages/host/src/services/`、`plugins/` | SSH、TOFU、主机存储、终端/SFTP 桥、有界 exec、Linux 资源监控与日志 |
 | `packages/host/src/credentials.ts` | 凭据提供器接口与默认本次会话策略 |
+| `packages/i18n/` | 文案目录与 `t()`；界面文案唯一存在的地方。Host 用 `@pureterm/protocol` 里的错误码报告失败，永不引入本包 |
 | `packages/protocol/` | 与运行环境无关的协议和公共数据结构 |
 | `packages/transport/` | 共享 Web Host 装配、dispatcher、HTTP/WS 与就绪报文校验 |
 | `packages/ui/` | Cordis Client、页面、终端、SFTP、客户端传输、浏览器私钥选择与会话资源抽屉 |

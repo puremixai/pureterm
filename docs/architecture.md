@@ -43,6 +43,7 @@ Resource monitoring is a request pair plus an event stream on that same dispatch
 | `packages/host/src/host.ts` | assemble Cordis Context, export Host, and manage connection/plugin-tree lifecycle |
 | `packages/host/src/services/`, `plugins/` | SSH, TOFU, host storage, terminal/SFTP bridge, bounded exec, Linux resource monitoring, and logging |
 | `packages/host/src/credentials.ts` | credential-provider interface and default session-only policy |
+| `packages/i18n/` | message catalog and `t()`; the only place user-facing copy lives. Host reports failures as codes from `@pureterm/protocol` and never imports this |
 | `packages/protocol/` | environment-neutral protocol and shared data structures |
 | `packages/transport/` | shared Web Host assembly, dispatcher, HTTP/WS, and readiness validation |
 | `packages/ui/` | Cordis Client, page, terminal, SFTP, client transport, browser key selection, and the session resource drawer |

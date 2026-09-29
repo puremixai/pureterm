@@ -4,7 +4,7 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 
-const sourceRoots = ['packages/host/src', 'packages/protocol/src', 'packages/ui/src', 'packages/transport/src', 'apps/web/src', 'apps/desktop/electron']
+const sourceRoots = ['packages/host/src', 'packages/i18n/src', 'packages/protocol/src', 'packages/ui/src', 'packages/transport/src', 'apps/web/src', 'apps/desktop/electron']
 const slash = (path) => path.replaceAll('\\', '/')
 
 function sourceFiles(directory) {
@@ -83,10 +83,11 @@ export function checkBoundaries(root) {
       }
       const workspaceImports = {
         'packages/host/src': ['@pureterm/protocol'],
-        'packages/ui/src': ['@pureterm/protocol'],
+        'packages/i18n/src': ['@pureterm/protocol'],
+        'packages/ui/src': ['@pureterm/protocol', '@pureterm/i18n'],
         'packages/transport/src': ['@pureterm/protocol', '@pureterm/host'],
-        'apps/web/src': ['@pureterm/protocol', '@pureterm/host', '@pureterm/ui/index.html', '@pureterm/transport/web-host'],
-        'apps/desktop/electron': ['@pureterm/protocol', '@pureterm/host', '@pureterm/ui/index.html', '@pureterm/transport/web-host', '@pureterm/transport/readiness'],
+        'apps/web/src': ['@pureterm/protocol', '@pureterm/host', '@pureterm/i18n', '@pureterm/ui/index.html', '@pureterm/transport/web-host'],
+        'apps/desktop/electron': ['@pureterm/protocol', '@pureterm/host', '@pureterm/i18n', '@pureterm/ui/index.html', '@pureterm/transport/web-host', '@pureterm/transport/readiness'],
       }
       if (specifier.startsWith('@pureterm/') && !workspaceImports[area]?.includes(specifier)) {
         fail(node, 'Package dependency must use an allowed public export.')

@@ -607,6 +607,186 @@ export interface SshApi {
   signalReady(payload: RendererReadyPayload): void
 }
 
+// ── 错误身份 ──────────────────────────────────────────────────────
+//
+// 失败原本是一句中文散文，跨线之后渲染层只能原样显示，也没法翻译。现在拆成
+// 三件东西：`code` 说明**发生了什么**（跨线，渲染层据此选文案和分类），
+// `params` 是这句话里的语义值（主机名、路径、退出码），`message` 是
+// **不做本地化**的诊断原文——只进日志，以及渲染层遇到不认识的 code 时的兜底。
+//
+// 这个数组同时是运行时清单：测试拿它证明每个码都有译文、都被分类器认领。
+// 顺序按来源分组，便于对照。
+export const HOST_ERROR_CODES = [
+  // ssh —— 连接与认证
+  'ssh.empty-host',
+  'ssh.empty-username',
+  'ssh.missing-credential',
+  'ssh.client-disconnected',
+  'ssh.auth-failed',
+  'ssh.key-passphrase-needed',
+  'ssh.key-unrecognized',
+  'ssh.key-unparseable',
+  'ssh.key-file-unreadable',
+  'ssh.banner-before-handshake',
+  'ssh.exec-channel-refused',
+  'ssh.sftp-subsystem-unavailable',
+  'ssh.channel-refused',
+  'ssh.connection-refused',
+  'ssh.dns-failed',
+  'ssh.timeout',
+  'ssh.host-key-changed',
+  'ssh.host-key-verification-failed',
+  'ssh.first-connection',
+  'ssh.connection-reset',
+  'ssh.handshake-closed',
+  'ssh.connection-error',
+  'ssh.connection-closed',
+  'ssh.server-disconnected',
+  'ssh.session-closed',
+  'ssh.session-gone',
+  'ssh.exec-cancelled',
+  'ssh.exec-output-limit',
+  'ssh.exec-timeout',
+  'ssh.exec-session-closed',
+  'ssh.failed',
+  // sftp —— 远端文件操作
+  'sftp.bad-name',
+  'sftp.no-such-file',
+  'sftp.no-such-directory',
+  'sftp.permission-denied',
+  'sftp.permission-denied-plain',
+  'sftp.op-unsupported',
+  'sftp.remove-failed',
+  'sftp.mkdir-failed',
+  'sftp.write-failed',
+  'sftp.failed-rejected',
+  'sftp.is-directory',
+  'sftp.download-too-large',
+  'sftp.upload-too-large',
+  'sftp.no-such-path',
+  'sftp.failed',
+  // keychain —— 密钥库
+  'keychain.desktop-store-in-web',
+  'keychain.invalid-store',
+  'keychain.invalid-record',
+  'keychain.decrypt-failed',
+  'keychain.material-undecryptable',
+  'keychain.entry-missing',
+  'keychain.label-required',
+  'keychain.id-invalid',
+  'keychain.field-not-text',
+  'keychain.passphrase-too-long',
+  'keychain.content-too-large',
+  'keychain.not-found',
+  'keychain.limit-reached',
+  'keychain.material-required',
+  'keychain.private-key-too-large',
+  'keychain.parse-failed',
+  'keychain.public-only',
+  'keychain.public-mismatch',
+  'keychain.encryption-unavailable',
+  // host —— 门面、终端桥、会话库
+  'host.closed',
+  'host.closed-mutation',
+  'host.closed-monitor',
+  'host.shutdown',
+  'host.client-closed',
+  'host.client-gone',
+  'host.client-disconnected',
+  'host.renderer-gone',
+  'host.renderer-closed',
+  'host.password-undecryptable',
+  'host.key-required',
+  'host.key-id-invalid',
+  'host.key-missing',
+  'host.key-in-use',
+  'host.session-not-owned',
+  'host.subscription-in-use',
+  'host.shell-closed',
+  'host.channel-error',
+  'host.write-failed',
+  'host.resize-failed',
+  'host.session-closed',
+  'host.user-disconnected',
+  'host.monitor-unavailable',
+  'host.store-has-credentials',
+  'host.store-has-legacy-credentials',
+  // monitor —— 资源采集
+  'monitor.probe-signalled',
+  'monitor.probe-exit-code',
+  'monitor.unsupported-os',
+  'monitor.no-metrics',
+  'monitor.probe-failed',
+  'monitor.frame.no-header',
+  'monitor.frame.duplicate',
+  'monitor.frame.expected-section',
+  'monitor.frame.missing-status',
+  'monitor.frame.status-range',
+  'monitor.frame.os-unavailable',
+  'monitor.frame.no-end-marker',
+  'monitor.frame.trailing-content',
+  'monitor.frame.missing-os',
+  // 载体与派发层的校验
+  'transport.params-not-array',
+  'dispatch.arg-not-object',
+  'dispatch.arg-not-string',
+  'dispatch.arg-not-number',
+  'dispatch.arg-not-bytes',
+  'dispatch.extra-field',
+  'dispatch.bad-session-id',
+  'dispatch.bad-subscription-id',
+  'dispatch.unknown-request',
+  'dispatch.unknown-notice',
+  // 兜底：不是 HostError 的东西跨线时落到这里
+  'internal',
+] as const
+
+export type HostErrorCode = (typeof HOST_ERROR_CODES)[number]
+
+/**
+ * 一个失败的线上形状。
+ *
+ * `message` 永远在：它是这个失败**不依赖语言**的那一面。渲染层认得出 `code`
+ * 就用目录里的句子，认不出（新旧版本错位）就退回它，界面至少还有一句话可读。
+ */
+export interface WireError {
+  code: HostErrorCode
+  params?: Readonly<Record<string, string | number>>
+  message: string
+}
+
+/**
+ * Host 侧抛出的结构化失败。
+ *
+ * 继承 `Error` 是为了让既有的 `throw` / `catch` / `reject` 路径不必改写：载体在
+ * 边界上把它拆成 `WireError`，Host 内部照旧当异常用。`message` 缺省时用
+ * code + params 拼一句，够日志用。
+ */
+export class HostError extends Error {
+  constructor(
+    readonly code: HostErrorCode,
+    readonly params?: Record<string, string | number>,
+    message?: string,
+  ) {
+    super(message ?? `${code}${params ? ` ${JSON.stringify(params)}` : ''}`)
+    this.name = 'HostError'
+  }
+}
+
+/** 任意异常 → 线上形状。认得 HostError 就保留身份，否则归到 internal。 */
+export function toWireError(error: unknown): WireError {
+  if (error instanceof HostError) {
+    return { code: error.code, ...(error.params ? { params: error.params } : {}), message: error.message }
+  }
+  return { code: 'internal', message: error instanceof Error ? error.message : String(error) }
+}
+
+/** 判断一个值是不是线上形状的错误。渲染层重建它之前要用。 */
+export function isWireError(value: unknown): value is WireError {
+  const candidate = value as WireError | null
+  return !!candidate && typeof candidate === 'object' && typeof candidate.code === 'string' && typeof candidate.message === 'string'
+}
+
 // ── WebSocket 载体的线格式 ────────────────────────────────────────
 //
 // 载体只搬这些东西，不理解业务。请求/响应用 id 配对，事件与通知不分 id

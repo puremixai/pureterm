@@ -1,0 +1,167 @@
+import type { MessageKey } from './en.js'
+
+/**
+ * The Chinese catalog.
+ *
+ * Typed as `Record<MessageKey, string>` on purpose: a missing key, an extra key
+ * or a renamed key is a compile error here rather than a blank string at
+ * runtime. Count-sensitive keys repeat the same sentence for `.one` and
+ * `.other`, because Chinese does not inflect the noun — the pair exists so the
+ * English side can.
+ */
+export const zh: Record<MessageKey, string> = {
+  // ── hosts list ────────────────────────────────────────────────────
+  'hosts.count.saved.one': '已保存 {count} 台',
+  'hosts.count.saved.other': '已保存 {count} 台',
+  'hosts.count.connected.one': '已连接 {count} 台',
+  'hosts.count.connected.other': '已连接 {count} 台',
+  'hosts.updated.days-ago.one': '{days} 天前',
+  'hosts.updated.days-ago.other': '{days} 天前',
+
+  // ── keychain ──────────────────────────────────────────────────────
+  'keychain.usage.one': '{count} 台主机',
+  'keychain.usage.other': '{count} 台主机',
+
+  // ── sftp action phrases ───────────────────────────────────────────
+  'sftp.action.list': '读取目录 {path}',
+  'sftp.action.stat': '读取 {path} 的属性',
+  'sftp.action.read': '读取 {path}',
+  'sftp.action.write': '写入 {path}',
+  'sftp.action.mkdir': '新建目录 {path}',
+  'sftp.action.remove': '删除 {path}',
+  'sftp.action-label.list': '读目录',
+  'sftp.action-label.stat': '读属性',
+  'sftp.action-label.read': '读文件',
+  'sftp.action-label.write': '写文件',
+  'sftp.action-label.mkdir': '建目录',
+  'sftp.action-label.remove': '删除',
+
+  // ── ssh ───────────────────────────────────────────────────────────
+  'error.ssh.empty-host': '主机地址不能为空。',
+  'error.ssh.empty-username': '用户名不能为空。',
+  'error.ssh.missing-credential': '缺少认证凭据：填密码、选私钥文件，或让 ssh-agent 先加载好密钥。',
+  'error.ssh.client-disconnected': '客户端已断开连接。',
+  'error.ssh.auth-failed': '认证失败：用户名、密码或私钥不正确。',
+  'error.ssh.key-passphrase-needed': '这把私钥有口令保护，请在「私钥口令」里填上。',
+  'error.ssh.key-unrecognized': '这个文件不是可识别的私钥（支持 OpenSSH / PEM 格式），请重新选一个。',
+  'error.ssh.key-unparseable': '私钥无法解析：口令可能不对，或这不是 OpenSSH/PEM 格式的私钥。',
+  'error.ssh.key-file-unreadable': '读不到私钥文件：{path}（{reason}）。',
+  'error.ssh.banner-before-handshake': '{host}:{port} 的 TCP 连接建立了，但对方在送出 SSH 横幅之前就断开了。这一步还没到认证，所以不是密钥或密码的问题。常见原因：这个端口上跑的不是 SSH 服务；对端安全组/防火墙只放通了 TCP 却丢弃数据；或对端瞬时不稳（隔几秒重试一次通常就好）。',
+  'error.ssh.exec-channel-refused': '{host}:{port} 连上了、登录也成功了，但这台服务器拒绝了这条命令通道。常见原因：账号被 ForceCommand 限制（只允许交互式 shell），或该账号的并发通道数已达上限（OpenSSH 的 MaxSessions，默认 10）。终端本身仍然可以用。',
+  'error.ssh.sftp-subsystem-unavailable': '{host}:{port} 连上了、登录也成功了，但这台服务器没能开起 SFTP 子系统。常见原因：sshd_config 里的 Subsystem sftp 被注释掉了（OpenSSH 默认是开的，很多精简镜像会关掉）；或者这个账号被 ForceCommand/ChrootDirectory 限制，不允许开子系统。终端本身仍然可以用。',
+  'error.ssh.channel-refused': '{host}:{port} 连上了、登录也成功了，但这台服务器没能开出这条通道。常见原因：该账号的并发通道数已达上限（OpenSSH 的 MaxSessions，默认 10）。',
+  'error.ssh.connection-refused': '无法连接 {host}:{port}：目标端口拒绝连接（服务未启动或被防火墙拦截）。',
+  'error.ssh.dns-failed': '无法解析主机名 {host}。',
+  'error.ssh.timeout': '连接 {host}:{port} 超时：网络不可达，或端口被丢弃。',
+  'error.ssh.host-key-changed': '主机密钥已改变，可能是中间人攻击。\n  本地记录：{known}\n  本次收到：{actual}\n确认无误后，删除 {file} 中该主机的记录再重连。',
+  'error.ssh.host-key-verification-failed': '主机密钥校验失败：{host}:{port} 的密钥与本地记录不一致。',
+  'error.ssh.first-connection': '首次连接该主机，指纹为 {fingerprint}（当前策略要求显式确认）。',
+  'error.ssh.connection-reset': '与 {host}:{port} 的连接被重置。',
+  'error.ssh.handshake-closed': 'SSH 连接在握手完成前已关闭。',
+  'error.ssh.connection-error': '连接错误：{detail}',
+  'error.ssh.connection-closed': '连接已关闭',
+  'error.ssh.server-disconnected': '服务器主动断开连接',
+  'error.ssh.session-closed': '会话已关闭',
+  'error.ssh.session-gone': '会话不存在或已关闭，请重新连接。',
+  'error.ssh.exec-cancelled': '命令执行已取消。',
+  'error.ssh.exec-output-limit': '命令输出超过 {maxBytes} 字节上限。',
+  'error.ssh.exec-timeout': '命令执行超时（{timeout}ms）。',
+  'error.ssh.exec-session-closed': '会话已关闭，命令已取消。',
+  'error.ssh.failed': '{host}:{port} 连接失败：{detail}',
+
+  // ── sftp ──────────────────────────────────────────────────────────
+  'error.sftp.bad-name': '名字不对：「{leaf}」。请只填一个名字——不要带斜杠，也不要填 . 或 ..',
+  'error.sftp.no-such-file': '远端没有 {path}——可能已经被移走或删掉了，点「刷新」再看一眼。',
+  'error.sftp.no-such-directory': '远端的目录不存在：{path} 不是一个能进去的目录。上传和新建都只能落在已经存在的目录里，先在终端里把它建出来，或者换一个位置。',
+  'error.sftp.permission-denied': '{describe} 失败：远端账号对这个位置没有权限（属主不对，或目录不可写）。',
+  'error.sftp.permission-denied-plain': '{describe} 失败：远端账号对这个位置没有权限。',
+  'error.sftp.op-unsupported': '远端 SFTP 服务不支持「{label}」这个操作。',
+  'error.sftp.remove-failed': '{describe} 失败：目录可能不是空的，或者它正被别的进程占用。空目录才能删。',
+  'error.sftp.mkdir-failed': '{describe} 失败：这个名字可能已经存在了（同名文件或目录）。',
+  'error.sftp.write-failed': '{describe} 失败：远端可能没有空间了，或者这个目录不可写。',
+  'error.sftp.failed-rejected': '{describe} 失败：远端拒绝了这次操作（{detail}）。',
+  'error.sftp.is-directory': '{path} 是一个目录，不能当文件下载。',
+  'error.sftp.download-too-large': '{path} 有 {size} 字节，超过单次传输上限 {limit} 字节。文件内容要整份走 base64 + JSON 过线（Web 载体的单条报文上限是 8 MiB），分块流式传输还没做。先用终端里的 scp / rsync 拿这个文件。',
+  'error.sftp.upload-too-large': '要上传的内容有 {size} 字节，超过单次传输上限 {limit} 字节。分块流式上传还没做，先换个小一点的文件。',
+  'error.sftp.no-such-path': '路径不对：{path} 指的是一个目录本身，没有东西可以删。',
+  'error.sftp.failed': '{describe} 失败：{detail}',
+
+  // ── keychain ──────────────────────────────────────────────────────
+  'error.keychain.desktop-store-in-web': '此目录含有 Desktop 密钥库，请为 Web 使用独立的数据目录。',
+  'error.keychain.invalid-store': '密钥库格式无效，未覆盖原文件。',
+  'error.keychain.invalid-record': '密钥库记录无效。',
+  'error.keychain.decrypt-failed': '无法解密密钥库，请检查系统加密服务。',
+  'error.keychain.material-undecryptable': '无法解密已保存的私钥，请检查系统加密服务或重新导入。',
+  'error.keychain.entry-missing': '选择的密钥不存在或已离开当前会话，请在 Keychain 中重新导入。',
+  'error.keychain.label-required': '请填写密钥名称（最多 200 字符）。',
+  'error.keychain.id-invalid': '密钥 ID 无效。',
+  'error.keychain.field-not-text': '密钥字段必须是文本。',
+  'error.keychain.passphrase-too-long': '私钥口令过长。',
+  'error.keychain.content-too-large': '密钥内容超过 256 KiB。',
+  'error.keychain.not-found': '密钥不存在，请刷新列表。',
+  'error.keychain.limit-reached': '密钥库最多保存 500 把密钥。',
+  'error.keychain.material-required': '请粘贴私钥或导入私钥文件。',
+  'error.keychain.private-key-too-large': '私钥超过 256 KiB。',
+  'error.keychain.parse-failed': '无法解析私钥：请检查格式；加密私钥需填写正确口令。',
+  'error.keychain.public-only': '需要私钥，不能只导入公钥。',
+  'error.keychain.public-mismatch': '公钥与私钥不匹配。可留空，由系统自动生成公钥。',
+  'error.keychain.encryption-unavailable': '系统加密不可用，密钥未保存；不会使用明文存储。',
+
+  // ── host facade, terminal bridge, session store ───────────────────
+  'error.host.closed': 'Host 已关闭，无法建立新连接。',
+  'error.host.closed-mutation': 'Host 已关闭，无法修改记录。',
+  'error.host.closed-monitor': 'Host 已关闭，无法开始监控。',
+  'error.host.shutdown': 'Host 已关闭。',
+  'error.host.client-closed': '客户端已关闭，操作已取消。',
+  'error.host.client-gone': '客户端已断开连接或 Host 已关闭。',
+  'error.host.client-disconnected': '客户端已断开连接。',
+  'error.host.renderer-gone': '渲染进程不可用。',
+  'error.host.renderer-closed': '渲染进程已关闭。',
+  'error.host.password-undecryptable': '已保存的密码无法解密（系统密钥可能已变更），请重新输入密码。',
+  'error.host.key-required': '请选择密钥或私钥文件。',
+  'error.host.key-id-invalid': '密钥 ID 无效。',
+  'error.host.key-missing': '选择的密钥不存在，请重新选择。',
+  'error.host.key-in-use': '此密钥正在被主机使用，请先更改主机的认证设置或删除对应主机。',
+  'error.host.session-not-owned': '这个会话不存在，或不属于当前客户端。',
+  'error.host.subscription-in-use': '这个订阅 ID 已经用在另一个会话上了。',
+  'error.host.shell-closed': '远端 shell 已关闭。',
+  'error.host.channel-error': '通道错误：{detail}',
+  'error.host.write-failed': '写入失败：{detail}',
+  'error.host.resize-failed': '调整窗口失败：{detail}',
+  'error.host.session-closed': '会话已关闭。',
+  'error.host.user-disconnected': '用户断开连接。',
+  'error.host.monitor-unavailable': '当前环境不支持资源监控。',
+  'error.host.store-has-credentials': '此数据目录含有已保存凭据，请为本机 Web 使用独立的数据目录。',
+  'error.host.store-has-legacy-credentials': '此数据目录含有旧版凭据密文，请使用 Desktop 读取，并为本机 Web 选择独立的数据目录。',
+
+  // ── monitor ───────────────────────────────────────────────────────
+  'error.monitor.probe-signalled': '远端采集命令被信号 {signal} 终止。',
+  'error.monitor.probe-exit-code': '远端采集命令以退出码 {code} 结束。',
+  'error.monitor.unsupported-os': '这台主机的操作系统是 {os}，暂不支持资源监控。',
+  'error.monitor.no-metrics': '远端没有给出任何可用的指标。',
+  'error.monitor.probe-failed': '监控探测失败。',
+  'error.monitor.frame.no-header': '监控输出不是可识别的数据帧：没有找到起始标记',
+  'error.monitor.frame.duplicate': '监控输出不是可识别的数据帧：出现了重复的帧',
+  'error.monitor.frame.expected-section': '监控输出不是可识别的数据帧：期望 {name} 分节，实际读到「{actual}」',
+  'error.monitor.frame.missing-status': '监控输出不是可识别的数据帧：{name} 分节没有结束状态行',
+  'error.monitor.frame.status-range': '监控输出不是可识别的数据帧：{name} 分节的退出状态超出范围',
+  'error.monitor.frame.os-unavailable': '监控输出不是可识别的数据帧：OS 分节不可用',
+  'error.monitor.frame.no-end-marker': '监控输出不是可识别的数据帧：没有找到结束标记',
+  'error.monitor.frame.trailing-content': '监控输出不是可识别的数据帧：结束标记之后还有内容',
+  'error.monitor.frame.missing-os': '监控输出不是可识别的数据帧：缺少 OS 分节',
+
+  // ── carrier and dispatcher validation ─────────────────────────────
+  'error.transport.params-not-array': '参数必须是数组。',
+  'error.dispatch.arg-not-object': '{where} 的第一个参数应当是一个对象。',
+  'error.dispatch.arg-not-string': '{where} 期望一个字符串参数，收到 {got}。',
+  'error.dispatch.arg-not-number': '{where} 期望一个数字参数，收到 {got}。',
+  'error.dispatch.arg-not-bytes': '{where} 期望一段字节（Uint8Array），收到 {got}。',
+  'error.dispatch.extra-field': '{where} 不接受字段「{key}」。',
+  'error.dispatch.bad-session-id': '{where} 的会话 ID 不合法。',
+  'error.dispatch.bad-subscription-id': '{where} 的订阅 ID 不合法。',
+  'error.dispatch.unknown-request': '不认识的请求：{method}',
+  'error.dispatch.unknown-notice': '不认识的通知：{name}',
+
+  // ── fallback ──────────────────────────────────────────────────────
+  'error.internal': '内部错误。',
+}

@@ -11,7 +11,7 @@ const checker = fileURLToPath(new URL('../../../scripts/check-boundaries.mjs', i
 function check(files) {
   const root = mkdtempSync(join(tmpdir(), 'pureterm-boundaries-'))
   try {
-    for (const directory of ['packages/host/src', 'packages/protocol/src', 'packages/ui/src', 'packages/transport/src', 'apps/web/src', 'apps/desktop/electron']) mkdirSync(join(root, directory), { recursive: true })
+    for (const directory of ['packages/host/src', 'packages/i18n/src', 'packages/protocol/src', 'packages/ui/src', 'packages/transport/src', 'apps/web/src', 'apps/desktop/electron']) mkdirSync(join(root, directory), { recursive: true })
     for (const [name, source] of Object.entries(files)) {
       const path = join(root, name)
       mkdirSync(dirname(path), { recursive: true })
@@ -34,6 +34,9 @@ test('accepts Electron adapters and type-only access through the Host facade', (
     'apps/web/src/server.ts': "import { startWebHost } from '@pureterm/transport/web-host'",
     'packages/host/src/host.ts': "import { Context } from 'cordis'",
     'packages/ui/src/app.ts': "import { Terminal } from '@xterm/xterm'; import type { SshApi } from '@pureterm/protocol'",
+    'packages/i18n/src/index.ts': "import type { WireError } from '@pureterm/protocol'; import { en } from './en.js'",
+    'apps/desktop/electron/app/menu.ts': "import { t } from '@pureterm/i18n'",
+    'apps/web/src/main.ts': "import { setLocale } from '@pureterm/i18n'",
     'packages/protocol/src/protocol.ts': "export interface SshApi {} // import 'electron' is a comment",
   })
   assert.equal(result.status, 0, result.output)
@@ -55,6 +58,11 @@ const violations = [
   ['apps/desktop/electron/runtime/plan.ts', "import Module from 'node:module'; const load = Module.createRequire(import.meta.url); load('electron')", 'Electron is restricted'],
   ['apps/desktop/electron/runtime/plan.ts', "import { createRequire } from 'node:module'; createRequire(import.meta.url)('electron')", 'Electron is restricted'],
   ['packages/host/src/ssh.ts', "import '../electron/app/main.js'", 'Relative source imports'],
+  // The Host reports failures as codes; it must never grow a dependency on the
+  // message catalog, or every error string would have to ship in two languages
+  // to a process that only ever emits identities.
+  ['packages/host/src/host.ts', "import { t } from '@pureterm/i18n'", 'allowed public export'],
+  ['packages/i18n/src/index.ts', "import { createHost } from '@pureterm/host'", 'allowed public export'],
   ['packages/ui/src/app.ts', "import { readFile } from 'node:fs'", 'Browser must not import'],
   ['packages/ui/src/app.ts', "import type { ReadStream } from 'fs'", 'Browser must not import'],
   ['packages/ui/src/app.ts', "import type { Host } from '@pureterm/host'", 'allowed public export'],

@@ -22,7 +22,7 @@ function compile(project, config = 'tsconfig.json') {
   clean(project)
   run(require.resolve('typescript/bin/tsc'), ['-p', resolve(root, project, config)])
 }
-for (const name of ['protocol', 'host', 'transport']) compile(`packages/${name}`)
+for (const name of ['protocol', 'i18n', 'host', 'transport']) compile(`packages/${name}`)
 clean('packages/ui')
 run(resolve(root, 'scripts/build-ui.mjs'))
 if (mode !== '--shared' && mode !== '--desktop') compile('apps/web')

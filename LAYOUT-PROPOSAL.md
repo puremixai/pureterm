@@ -67,7 +67,7 @@ The root `scripts/check-boundaries.mjs` enforces these rules with the TypeScript
 
 ## Build and acceptance
 
-Root build scripts build protocol, Host, transport, UI, and applications in that order and clean the relevant `dist/` directories. `build:web` and `build:desktop` build only the selected entry and its shared modules; `build` builds everything.
+Root build scripts build protocol, i18n, Host, transport, UI, and applications in that order and clean the relevant `dist/` directories. `build:web` and `build:desktop` build only the selected entry and its shared modules; `build` builds everything.
 
 | Resource | Artifact |
 | --- | --- |
