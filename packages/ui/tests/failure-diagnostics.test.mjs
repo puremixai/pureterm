@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { NODE_COUNT, STAGES, diagnose, stageLabel } from '../src/failure-diagnostics.ts'
+import { t } from '@pureterm/i18n'
+import { NODE_COUNT, STAGES, diagnose, stageKey } from '../src/failure-diagnostics.ts'
 
 // 这张表里的每一句中文都照抄 packages/host/src/services/ssh.ts 的
 // normalizeSshError（:121-184）与它的 pre-flight 抛出（:239-252）；英文那几条是
@@ -40,7 +41,8 @@ test('an unknown failure collapses the route instead of guessing', () => {
   const result = diagnose('10.0.0.7:22 连接失败：something nobody has seen before')
   assert.equal(result.stage, null)
   assert.equal(result.breakAt, -1)
-  assert.match(result.title, /\S/)
+  assert.match(t(result.title), /\S/)
+  assert.equal(result.suggestion, null, '认不出来时不给下一步，而不是给一句套话')
 })
 
 test('every stage folds onto one of the drawn nodes', () => {
@@ -59,8 +61,9 @@ test('every stage folds onto one of the drawn nodes', () => {
 test('a classified failure carries an actionable next step', () => {
   for (const [message, stage] of CASES) {
     const result = diagnose(message)
-    assert.match(result.suggestion, /\S/, `${stage} 得给下一步，不能只是「出错了」`)
-    assert.ok(result.suggestion.length <= 120, `${stage} 的建议太长，成了讲义：${result.suggestion}`)
-    assert.ok(STAGES.includes(stage) && stageLabel(stage).length > 0, `${stage} 不是 STAGES 里的阶段`)
+    const suggestion = result.suggestion === null ? '' : t(result.suggestion)
+    assert.match(suggestion, /\S/, `${stage} 得给下一步，不能只是「出错了」`)
+    assert.ok(suggestion.length <= 120, `${stage} 的建议太长，成了讲义：${suggestion}`)
+    assert.ok(STAGES.includes(stage) && t(stageKey(stage)).length > 0, `${stage} 不是 STAGES 里的阶段`)
   }
 })

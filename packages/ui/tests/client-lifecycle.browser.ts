@@ -638,6 +638,49 @@ async function runChecks() {
 
     checks.push('the status bar renders real fields, both chrome switches persist across a remount, and a theme change reaches every terminal')
 
+    /*
+     * 语言开关。这一节要证的正是 i18n 存在的理由：**一屏上只有一门语言**，而且
+     * 已经画出来的动态文案也跟着换 —— 静态 markup 由翻译那一遍改写，主机表那一列
+     * 却是 host-list.ts 在 render 里拼的，两者必须同时到达新语言。
+     *
+     * 默认必须是英文：目录的源语言是英文，没有存过选择时 t() 读的就是它。
+     */
+    client = createClient({ api: chrome.api, terminalFactory: chrome.terminalFactory })
+    assert((await client.ready).ok, 'locale client failed readiness')
+
+    assert(shell.dataset.locale === 'en' && shell.lang === 'en', 'the default locale is English, the catalog source')
+    assert(input('nav-hosts').getAttribute('aria-label') === 'Hosts', 'the static markup starts in English')
+    assert(document.querySelector('.host-row .host-cell.auth')!.textContent === 'Password',
+      'and so does the sentence the host list composes itself')
+
+    click('locale-toggle'); await tick()
+
+    assert(shell.dataset.locale === 'zh' && shell.lang === 'zh-CN', 'the switch writes the locale and the lang attribute')
+    assert(document.getElementById('locale-toggle')!.getAttribute('aria-pressed') === 'true',
+      'the switch reports its own state')
+    assert(input('nav-hosts').getAttribute('aria-label') === '主机', 'the static markup is retranslated in place')
+    assert(document.querySelector('.host-row .host-cell.auth')!.textContent === '密码',
+      'and a sentence composed by a module follows, which is why they cache keys instead of strings')
+    assert(input('status-state').textContent === '主机库', 'the status bar is redrawn by the switch broadcast')
+    assert(document.querySelector('.host-row .host-cell.when')!.textContent === '从未',
+      'including the date column, which is a key rather than a cached sentence')
+
+    const localePrefs = JSON.parse(window.localStorage.getItem('pureterm.chrome') ?? '{}')
+    assert(localePrefs.locale === 'zh', 'the choice persists under the same one chrome key')
+
+    await client.dispose()
+    client = createClient({ api: chrome.api, terminalFactory: chrome.terminalFactory })
+    assert((await client.ready).ok, 'restored locale client failed readiness')
+    assert(shell.dataset.locale === 'zh' && input('nav-hosts').getAttribute('aria-label') === '主机',
+      'a remount restores the remembered language before the first paint of the list')
+
+    window.localStorage.removeItem('pureterm.chrome')
+    delete shell.dataset.locale
+    shell.lang = 'en'
+    await client.dispose()
+
+    checks.push('the language switch moves the whole screen at once, dynamic sentences included, and is remembered')
+
     // 窗口按钮整组是桌面独有的，而且只在系统自己不画按钮的平台上出现（macOS 的红绿灯
     // 由系统画，桥因此不带这一项）。所以这一节先断言「没有桥就一个节点都没有」，再断言
     // 桥来了之后它出现、点得动、并且随客户端一起走。
@@ -724,16 +767,16 @@ async function runChecks() {
     assert(columns.querySelector('.host-content > .host-card-address')!.textContent === 'demo@localhost:22',
       'the card address must be a line of the name column and read as the connection string, not the table\'s address cell')
 
-    assert(columns.querySelector('.host-cell.auth')!.textContent === '密码', 'the auth column must name the method in the UI language')
+    assert(columns.querySelector('.host-cell.auth')!.textContent === 'Password', 'the auth column must name the method in the UI language')
 
-    assert(columns.querySelector('.host-cell.when')!.textContent === '从未', 'a host that was never updated must say so rather than print an empty date')
+    assert(columns.querySelector('.host-cell.when')!.textContent === 'Never', 'a host that was never updated must say so rather than print an empty date')
 
     // 通知只收「已经发生的事」：保存成功这句话原来写在表单里，用户早就离开那张表单了。
     click('host-new'); fill(); click('host-save'); await tick()
     const toast = document.querySelector<HTMLElement>('.toast')!
     assert(!!toast, 'saving a host must announce itself where the user can still see it')
     assert(toast.getAttribute('role') === 'status', 'a normal notice must not interrupt a screen reader')
-    assert(toast.querySelector('.toast-title')!.textContent!.includes('已保存'), 'the toast names what happened')
+    assert(toast.querySelector('.toast-title')!.textContent!.includes('saved'), 'the toast names what happened')
     assert(toast.querySelector('.toast-detail')!.textContent === 'Fixture', 'and names the record it happened to, not the form')
     assert(input('status').textContent === '', 'the form line goes quiet once the news moved out of it')
     toast.click()
@@ -991,7 +1034,7 @@ async function runChecks() {
     const brokenClient = createClient({ api: brokenApi.api, terminalFactory: brokenApi.terminalFactory })
     await tick()
     assert(!input('hosts-error').hidden, '一个读不出来的列表必须说出来，而不是安静地空着')
-    assert(input('hosts-error').querySelector('.list-error-title')!.textContent!.includes('读不出来'), '说的是列表读不出来')
+    assert(input('hosts-error').querySelector('.list-error-title')!.textContent!.includes('could not be read'), '说的是列表读不出来')
     assert(input('hosts-error').querySelector('.list-error-detail')!.textContent === '后端不在', '底层那句原文跟着走')
     await brokenClient.dispose()
 
@@ -1516,7 +1559,7 @@ async function runChecks() {
 
     assert(monitorValue('cpu') === '12.5%', 'cpu is drawn as a percentage')
 
-    assert(monitorValue('uptime') === '1 天 0 小时', 'the host uptime is drawn in readable units, not raw seconds')
+    assert(monitorValue('uptime') === '1d 0h', 'the host uptime is drawn in readable units, not raw seconds')
 
     assert(monitorValue('net').includes('↓') && monitorValue('net').includes('↑') && monitorValue('net').includes('kB/s'), 'throughput carries a direction and a kB unit')
 
@@ -1613,7 +1656,7 @@ async function runChecks() {
 
     assert(monitorStatus() === 'unsupported', 'a host without the monitor plugin renders unsupported, not broken')
 
-    assert(monitorText('monitor-detail').includes('不支持'), 'and it says so in words rather than showing a code')
+    assert(monitorText('monitor-detail').includes('unavailable in this environment'), 'and it says so in words rather than showing a code')
 
     await client.dispose()
 

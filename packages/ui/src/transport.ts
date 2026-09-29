@@ -24,6 +24,7 @@ import {
   type WireCall,
   type WireNotice,
 } from '@pureterm/protocol'
+import { t } from '@pureterm/i18n'
 import { withoutBootstrapToken } from './bootstrap-url.js'
 
 export type { SshApi }
@@ -115,7 +116,7 @@ export function createWebSocketTransport(): SshApi {
   }
 
   function connect(): Promise<WebSocket> {
-    if (disposed) return Promise.reject(new Error('客户端已卸载。'))
+    if (disposed) return Promise.reject(new Error(t('client.disposed')))
     if (socket && socket.readyState === WebSocket.OPEN) return Promise.resolve(socket)
     if (connecting) return connecting
 
@@ -150,7 +151,7 @@ export function createWebSocketTransport(): SshApi {
           // message or open callback must never affect the replacement connection.
           clearSocketHandlers(ws)
           ws.close()
-          reject(new Error(`连不上本机后端（${url}）。地址或 token 可能已经失效——重启应用后会换新的。`))
+          reject(new Error(t('transport.error.connect-failed', { url })))
         }
 
         ws.onclose = (event) => {
@@ -162,7 +163,7 @@ export function createWebSocketTransport(): SshApi {
           if (openingSocket === ws) openingSocket = null
           rejectOpening = null
           connecting = null
-          const reason = `与后端的连接已断开（${event.code}${event.reason ? ` ${event.reason}` : ''}）。`
+          const reason = t('transport.error.disconnected', { code: event.code, detail: event.reason ? ` ${event.reason}` : '' })
           failAllPending(reason)
           if (!settled) {
             settled = true
@@ -185,7 +186,7 @@ export function createWebSocketTransport(): SshApi {
           try {
             message = JSON.parse(event.data)
           } catch {
-            console.error('[transport] 收到不是 JSON 的报文，已忽略。')
+            console.error('[transport] ignoring an inbound frame that is not JSON.')
             return
           }
           handleInbound(message)
@@ -222,7 +223,7 @@ export function createWebSocketTransport(): SshApi {
       if (!entry) return
       pending.delete(candidate.id)
       if (candidate.ok === true) entry.resolve(decodeWire(candidate.value))
-      else entry.reject(new Error(typeof candidate.error === 'string' ? candidate.error : '后端报了一个没有说明的错误。'))
+      else entry.reject(new Error(typeof candidate.error === 'string' ? candidate.error : t('transport.error.unspecified')))
       return
     }
     if (candidate.kind !== 'event' || typeof candidate.name !== 'string') return
@@ -267,7 +268,7 @@ export function createWebSocketTransport(): SshApi {
 
   const call = async (method: string, params: unknown[]): Promise<unknown> => {
     const ws = await connect()
-    if (disposed) throw new Error('客户端已卸载。')
+    if (disposed) throw new Error(t('client.disposed'))
     const id = nextId++
     // 显式标成 WireCall：线格式就是协议文件里那个类型，不靠「看着像」对齐
     const wire: WireCall = { kind: 'call', id, method, params }
@@ -289,7 +290,7 @@ export function createWebSocketTransport(): SshApi {
         if (disposed) return
         ws.send(JSON.stringify(encodeWire(wire)))
       })
-      .catch((error: unknown) => { if (!disposed) console.error('[transport] 发送通知失败：', error) })
+      .catch((error: unknown) => { if (!disposed) console.error('[transport] sending a notice failed:', error) })
   }
 
   return {
@@ -366,8 +367,8 @@ export function createWebSocketTransport(): SshApi {
       if (disposed) return
       disposed = true
       connectionGeneration++
-      failAllPending('客户端已卸载。')
-      rejectOpening?.(new Error('客户端已卸载。'))
+      failAllPending(t('client.disposed'))
+      rejectOpening?.(new Error(t('client.disposed')))
       rejectOpening = null
       for (const ws of new Set([socket, openingSocket])) {
         if (!ws) continue

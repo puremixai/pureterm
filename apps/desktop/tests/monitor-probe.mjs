@@ -44,9 +44,9 @@ export const READY_EXPECTATIONS = {
   // 忙增量 100 / 总增量 200：idle 每轮 +100，user 和 system 各 +50。
   cpu: '50.0%',
   // 1000 kB 里可用 400 kB，即用了 60% = 614,400 字节。
-  memory: '60.0%（600 KB / 1000 KB）',
+  memory: '60.0% (600 KB / 1000 KB)',
   load: '0.50 1.00 2.00',
   // 分母是 used + available = 90，不是 total：保留块让 used + available 可以小于 total。
-  disk: '44.4%（40 KB / 100 KB）',
-  uptime: '1 天 0 小时',
+  disk: '44.4% (40 KB / 100 KB)',
+  uptime: '1d 0h',
 }

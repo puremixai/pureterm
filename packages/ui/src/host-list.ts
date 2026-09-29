@@ -1,5 +1,7 @@
 import type { HostRecord, KeyRecord } from '@pureterm/protocol'
+import { t, tPlural } from '@pureterm/i18n'
 import { DomListeners } from './client-runtime.js'
+import { formatTime } from './format.js'
 
 /**
  * 主机列表。**只做两件事：把记录画成行、把行上的动作翻译成回调。**
@@ -79,24 +81,30 @@ export function initialsOf(label: string): string {
  * ——查不到就只说「密钥库」，而不是编一个算法名。
  */
 function authFor(record: HostRecord, keys: readonly KeyRecord[]): { text: string; kind: 'keychain' | 'file' | 'password' } {
-  if (record.authMethod !== 'privateKey') return { text: '密码', kind: 'password' }
+  if (record.authMethod !== 'privateKey') return { text: t('host.auth.password'), kind: 'password' }
   if (record.keyId) {
     const type = keys.find(key => key.id === record.keyId)?.type?.toLowerCase()
-    return { text: type ? `密钥库 · ${type}` : '密钥库', kind: 'keychain' }
+    return { text: type ? t('hosts.auth.keychain-with-type', { type }) : t('hosts.auth.keychain'), kind: 'keychain' }
   }
-  return { text: '本机文件', kind: 'file' }
+  return { text: t('hosts.auth.file'), kind: 'file' }
 }
 
-/** updatedAt 是保存时间，不是连接时间 —— 后端没有最后连接时间，列名也就叫「更新」。 */
+/**
+ * updatedAt 是保存时间，不是连接时间 —— 后端没有最后连接时间，列名也就叫「更新」。
+ *
+ * 超过一个月就落到房子里的 `YYYY-MM-DD HH:mm`，而不是 `toLocaleDateString()`：那个
+ * 结果取决于运行时的 ICU 数据和进程的 locale，同一台主机在两台机器上会显示成两个
+ * 样子，而断言也就没法写成一个确切值。`formatTime` 收秒，这里转一下。
+ */
 function relative(iso: string): string {
-  if (!iso) return '从未'
+  if (!iso) return t('hosts.updated.never')
   const then = Date.parse(iso)
   if (Number.isNaN(then)) return '—'
   const days = Math.floor((Date.now() - then) / 86_400_000)
-  if (days <= 0) return '今天'
-  if (days === 1) return '昨天'
-  if (days < 30) return `${days} 天前`
-  return new Date(then).toLocaleDateString()
+  if (days <= 0) return t('hosts.updated.today')
+  if (days === 1) return t('hosts.updated.yesterday')
+  if (days < 30) return tPlural('hosts.updated.days-ago', days, { days })
+  return formatTime(Math.floor(then / 1000))
 }
 
 function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: DomListeners, keys: readonly KeyRecord[]): HTMLLIElement {
@@ -109,8 +117,9 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   const main = document.createElement('button')
   main.type = 'button'
   main.className = 'host-main'
-  main.title = '单击选中，双击连接'
-  main.setAttribute('aria-label', `${record.label}，${record.username}@${record.host}:${record.port}，单击选中，双击连接`)
+  const endpoint = `${record.username}@${record.host}:${record.port}`
+  main.title = t('hosts.row.title')
+  main.setAttribute('aria-label', t('hosts.row.aria', { label: record.label, endpoint }))
 
   const avatar = span('host-avatar', initialsOf(record.label || record.host))
   avatar.setAttribute('aria-hidden', 'true')
@@ -125,20 +134,20 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   // .host-cell.mono —— 那一格是行网格的一行，只能落在头像底下，和名称差着一个
   // 头像加一道间距的左边缘。连接串带上用户名：卡片没有「用户」那一列，地址得自己
   // 说全。表格视图把它藏起来，地址由表格自己那一列负责。
-  const address = span('host-card-address', `${record.username}@${record.host}:${record.port}`)
+  const address = span('host-card-address', endpoint)
   main.append(avatar, content)
 
   listeners.add(main, 'click', () => handlers.onSelect(record))
   listeners.add(main, 'dblclick', () => handlers.onConnect(record))
 
   const auth = authFor(record, keys)
-  const saved = record.hasSecret ? span('chip ok', '已存凭据') : null
-  if (saved) saved.title = '凭据已加密保存在本机，连接时可留空'
+  const saved = record.hasSecret ? span('chip ok', t('hosts.credential.saved')) : null
+  if (saved) saved.title = t('hosts.credential.saved-title')
 
   const actions = document.createElement('span')
   actions.className = 'host-actions'
-  actions.append(miniButton('编辑', 'edit', false, () => handlers.onEdit(record), listeners))
-  actions.append(miniButton('删除', 'delete', true, () => handlers.onDelete(record), listeners))
+  actions.append(miniButton(t('common.edit'), 'edit', false, () => handlers.onEdit(record), listeners))
+  actions.append(miniButton(t('common.delete'), 'delete', true, () => handlers.onDelete(record), listeners))
 
   if (saved) top.append(saved)
   content.append(top, address)

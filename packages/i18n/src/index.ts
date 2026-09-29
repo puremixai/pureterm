@@ -4,6 +4,16 @@ import { zh } from './zh.js'
 
 export type { MessageKey }
 
+/**
+ * The raw catalogs, for tests and tooling.
+ *
+ * Rendering goes through `t()` so the active locale is honoured; these are
+ * exported so a test can compare the two catalogs against each other, and so the
+ * markup test can prove the English shipped in `index.html` is the English the
+ * catalog holds.
+ */
+export { en, zh }
+
 export type Locale = 'en' | 'zh'
 export type MessageParams = Readonly<Record<string, string | number>>
 

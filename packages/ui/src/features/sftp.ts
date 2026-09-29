@@ -1,6 +1,8 @@
 import { Service, type Context } from 'cordis'
 import { MAX_TRANSFER_BYTES, type SftpDir, type SftpEntry } from '@pureterm/protocol'
+import { t } from '@pureterm/i18n'
 import { ClientScope, cleanError, type ClientView } from '../client-runtime.js'
+import { messageKey, messageText, resolveMessage, type MessageText } from '../message-text.js'
 import { createSftpPanel, type SftpView } from '../sftp-panel.js'
 import { readFileBytes, saveBytes } from '../local-file.js'
 import { formatBytes } from '../format.js'
@@ -14,7 +16,11 @@ interface FileState {
   navigation: number
   open: boolean
   busy: boolean
-  hint: string
+  /**
+   * 面板底下那一行提示。**存的是 key 不是句子**：它会一直留在屏幕上（「正在下载
+   * x …」「已删除 y。」），换语言之后得能重说一遍，而不是停在上一门语言里。
+   */
+  hint: MessageText
   kind: 'ok' | 'err' | 'pending' | ''
 }
 
@@ -76,6 +82,9 @@ export class ClientSftp extends Service {
     }, true)
     ctx.on('client/session-change', () => this.sync())
     ctx.on('client/connection-change', () => this.sync())
+    // 换语言：整块面板重画一遍。提示行存的是 key，所以它会跟着变；行上的按钮、
+    // 列和面包屑由 render() 重建。
+    ctx.on('client/locale-change', () => this.sync())
     ctx.on('client/tab-closed', tabId => {
       for (const [id, state] of this.states) if (state.tabId === tabId) this.states.delete(id)
       this.sync()
@@ -112,7 +121,7 @@ export class ClientSftp extends Service {
     let state = this.states.get(tab.sessionId)
     if (!state) {
       state = { tabId: tab.id, sessionId: tab.sessionId, directory: null, navigation: 0,
-        open: false, busy: false, hint: '打开文件面板以浏览远端目录。', kind: '' }
+        open: false, busy: false, hint: messageKey('sftp.hint.closed'), kind: '' }
       this.states.set(tab.sessionId, state)
     }
     return state
@@ -137,7 +146,6 @@ export class ClientSftp extends Service {
     // aria-orientation 说的是分隔条自己的朝向：这里它竖着立在两栏之间。
     element.setAttribute('aria-orientation', 'vertical')
     element.setAttribute('tabindex', '0')
-    element.setAttribute('aria-label', '调整终端与文件表的宽度')
     element.hidden = true
     terminal.after(element)
     this.grip = element
@@ -195,10 +203,12 @@ export class ClientSftp extends Service {
     const stored = this.ctx.clientTerminal.active?.split ?? null
     const ratio = this.clamp(stored ?? DEFAULT_SPLIT)
     const percent = Math.round(ratio * 100)
+    // aria-label 也在这里写：它是把手唯一的名字，而名字是会说两种语言的。
+    this.grip.setAttribute('aria-label', t('sftp.grip.label'))
     this.grip.setAttribute('aria-valuenow', String(percent))
     this.grip.setAttribute('aria-valuemin', String(Math.round(MIN_TERMINAL * 100)))
     this.grip.setAttribute('aria-valuemax', String(Math.round(MAX_TERMINAL * 100)))
-    this.grip.setAttribute('aria-valuetext', `终端占 ${percent}%`)
+    this.grip.setAttribute('aria-valuetext', t('sftp.grip.value', { percent }))
     if (this.ctx.clientView.window.matchMedia(NARROW).matches) {
       content.style.gridTemplateColumns = ''
       content.style.gridTemplateRows = stored === null
@@ -237,13 +247,14 @@ export class ClientSftp extends Service {
     view.element('session-workspace').classList.toggle('files-open', open)
     const toggle = view.element<HTMLButtonElement>('sftp-toggle')
     toggle.disabled = !state
-    toggle.textContent = open ? '收起文件' : '文件'
+    toggle.textContent = open ? t('sftp.toggle.open') : t('sftp.toggle.closed')
     toggle.setAttribute('aria-expanded', String(open))
     toggle.setAttribute('aria-controls', 'sftp')
     if (state) {
       this.panel.setBusy(state.busy)
       this.panel.render(state.directory)
-      if (state.hint) this.panel.setHint(state.hint, state.kind)
+      const hint = resolveMessage(state.hint)
+      if (hint) this.panel.setHint(hint, state.kind)
     }
     this.ctx.clientTerminal.fit()
   }
@@ -264,24 +275,24 @@ export class ClientSftp extends Service {
     if (!this.live(state)) return false
     const revision = ++state.navigation
     state.busy = true
-    state.hint = `正在读取 ${path} …`
+    state.hint = messageKey('sftp.hint.loading', { path })
     state.kind = 'pending'
     this.show(state)
     try {
       const directory = await this.ctx.clientTransport.api.sftp.list(state.sessionId, path)
       if (!this.live(state) || state.navigation !== revision) return false
       state.directory = directory
-      state.hint = ''
+      state.hint = messageText('')
       return true
     } catch (error) {
-      if (this.live(state) && state.navigation === revision) { state.hint = cleanError(error); state.kind = 'err' }
+      if (this.live(state) && state.navigation === revision) { state.hint = messageText(cleanError(error)); state.kind = 'err' }
       return false
     } finally {
       if (this.live(state) && state.navigation === revision) { state.busy = false; this.show(state) }
     }
   }
 
-  private async action(state: FileState, hint: string, run: () => Promise<string>): Promise<void> {
+  private async action(state: FileState, hint: MessageText, run: () => Promise<MessageText>): Promise<void> {
     if (!this.live(state) || state.busy) return
     const navigation = state.navigation
     state.busy = true
@@ -292,7 +303,7 @@ export class ClientSftp extends Service {
       const message = await run()
       if (this.live(state) && navigation === state.navigation) { state.hint = message; state.kind = 'ok' }
     } catch (error) {
-      if (this.live(state) && navigation === state.navigation) { state.hint = cleanError(error); state.kind = 'err' }
+      if (this.live(state) && navigation === state.navigation) { state.hint = messageText(cleanError(error)); state.kind = 'err' }
     } finally {
       if (this.live(state) && navigation === state.navigation) { state.busy = false; this.show(state) }
     }
@@ -306,25 +317,35 @@ export class ClientSftp extends Service {
   private async download(entry: SftpEntry): Promise<void> {
     const state = this.current()
     if (!state) return
-    if (entry.size > MAX_TRANSFER_BYTES) { state.hint = `文件超过单次传输上限 ${formatBytes(MAX_TRANSFER_BYTES)}。`; state.kind = 'err'; this.show(state); return }
-    await this.action(state, `正在下载 ${entry.name} …`, async () => {
+    if (entry.size > MAX_TRANSFER_BYTES) {
+      state.hint = messageKey('sftp.error.too-large', { limit: formatBytes(MAX_TRANSFER_BYTES) })
+      state.kind = 'err'
+      this.show(state)
+      return
+    }
+    await this.action(state, messageKey('sftp.hint.downloading', { name: entry.name }), async () => {
       const result = await this.ctx.clientTransport.api.sftp.read(state.sessionId, entry.path)
       if (this.live(state)) this.ctx.effect(() => saveBytes(result.bytes, entry.name), 'sftp.download')
-      return `已下载「${entry.name}」（${formatBytes(result.size)}）。`
+      return messageKey('sftp.status.downloaded', { name: entry.name, size: formatBytes(result.size) })
     })
   }
 
   private async upload(file: File): Promise<void> {
     const state = this.current()
     if (!state) return
-    if (file.size > MAX_TRANSFER_BYTES) { state.hint = `文件超过单次传输上限 ${formatBytes(MAX_TRANSFER_BYTES)}。`; state.kind = 'err'; this.show(state); return }
+    if (file.size > MAX_TRANSFER_BYTES) {
+      state.hint = messageKey('sftp.error.too-large', { limit: formatBytes(MAX_TRANSFER_BYTES) })
+      state.kind = 'err'
+      this.show(state)
+      return
+    }
     const directory = state.directory?.path ?? '.'
-    await this.action(state, `正在上传 ${file.name} 到 ${directory} …`, async () => {
+    await this.action(state, messageKey('sftp.hint.uploading', { name: file.name, directory }), async () => {
       const bytes = await readFileBytes(file)
-      if (!this.live(state)) return ''
+      if (!this.live(state)) return messageText('')
       const result = await this.ctx.clientTransport.api.sftp.write(state.sessionId, directory, file.name, bytes)
       await this.refreshAfter(state, directory)
-      return `已上传「${file.name}」（${formatBytes(result.size)}）。`
+      return messageKey('sftp.status.uploaded', { name: file.name, size: formatBytes(result.size) })
     })
   }
 
@@ -332,21 +353,25 @@ export class ClientSftp extends Service {
     const state = this.current()
     if (!state) return
     const directory = state.directory?.path ?? '.'
-    await this.action(state, `正在新建 ${name} …`, async () => {
+    await this.action(state, messageKey('sftp.hint.creating', { name }), async () => {
       await this.ctx.clientTransport.api.sftp.mkdir(state.sessionId, directory, name)
       await this.refreshAfter(state, directory)
-      return `已新建目录「${name}」。`
+      return messageKey('sftp.status.created', { name })
     })
   }
 
   private async remove(entry: SftpEntry): Promise<void> {
     const state = this.current()
-    if (!state || !this.ctx.clientView.window.confirm(`删除远端${entry.isDirectory ? '目录' : '文件'}「${entry.path}」？此操作不可恢复。`)) return
+    if (!state) return
+    const question = entry.isDirectory
+      ? t('sftp.confirm.delete-dir', { path: entry.path })
+      : t('sftp.confirm.delete-file', { path: entry.path })
+    if (!this.ctx.clientView.window.confirm(question)) return
     const directory = state.directory?.path ?? '.'
-    await this.action(state, `正在删除 ${entry.path} …`, async () => {
+    await this.action(state, messageKey('sftp.hint.deleting', { path: entry.path }), async () => {
       await this.ctx.clientTransport.api.sftp.remove(state.sessionId, entry.path)
       await this.refreshAfter(state, directory)
-      return `已删除「${entry.name}」。`
+      return messageKey('sftp.status.deleted', { name: entry.name })
     })
   }
 }

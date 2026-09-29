@@ -33,7 +33,7 @@ test('Web connection sends selected key contents and never browser fake paths or
   assert.deepEqual(connectionCredentials(browser, { ...fields, authMethod: 'password' }, privateKey), {
     password: 'page-password',
   })
-  assert.throws(() => connectionCredentials(browser, fields), /选择私钥/)
+  assert.throws(() => connectionCredentials(browser, fields), /Choose a private key file/)
 })
 
 test('Desktop retains native paths and encrypted credential references without crossing auth modes', () => {
@@ -83,16 +83,16 @@ test('browser file reader rejects oversize and public keys before retaining any 
   let read = false
   await assert.rejects(readBrowserPrivateKey({ name: 'large', size: MAX_PRIVATE_KEY_BYTES + 1, text: async () => { read = true; return privateKey.content } }), /256 KiB/)
   assert.equal(read, false)
-  await assert.rejects(readBrowserPrivateKey(new File(['ssh-ed25519 AAAA'], 'id.pub')), /不是私钥/)
-  await assert.rejects(readBrowserPrivateKey(new File([], 'empty')), /空文件/)
-  await assert.rejects(readBrowserPrivateKey(new File(['-----BEGIN PRIVATE KEY-----\ntruncated'], 'broken')), /不是私钥/)
+  await assert.rejects(readBrowserPrivateKey(new File(['ssh-ed25519 AAAA'], 'id.pub')), /does not look like a private key/)
+  await assert.rejects(readBrowserPrivateKey(new File([], 'empty')), /private key file is empty/)
+  await assert.rejects(readBrowserPrivateKey(new File(['-----BEGIN PRIVATE KEY-----\ntruncated'], 'broken')), /does not look like a private key/)
   assert.deepEqual(await readBrowserPrivateKey(new File([privateKey.content], privateKey.name)), privateKey)
 })
 
 test('missing or invalid capabilities fail closed instead of enabling remembered credentials', () => {
-  assert.throws(() => parseRuntimeCapabilities(undefined), /能力/)
-  assert.throws(() => parseRuntimeCapabilities({ privateKeyPicker: 'native' }), /能力/)
-  assert.throws(() => parseRuntimeCapabilities({ credentialPersistence: 'encrypted', privateKeyPicker: 'unknown' }), /能力/)
+  assert.throws(() => parseRuntimeCapabilities(undefined), /credential capabilities/)
+  assert.throws(() => parseRuntimeCapabilities({ privateKeyPicker: 'native' }), /credential capabilities/)
+  assert.throws(() => parseRuntimeCapabilities({ credentialPersistence: 'encrypted', privateKeyPicker: 'unknown' }), /credential capabilities/)
   assert.deepEqual(parseRuntimeCapabilities(browser), browser)
   assert.deepEqual(parseRuntimeCapabilities(desktop), desktop)
 })

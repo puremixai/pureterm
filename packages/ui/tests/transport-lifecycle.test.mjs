@@ -122,7 +122,7 @@ test('Web transport subscriptions unsubscribe and disposal rejects requests with
   instances[0].message({ kind: 'event', name: 'terminal:opened', params: ['second', 80, 24] })
   assert.equal(opened, 1)
   const pending = api.hosts.list()
-  const rejected = assert.rejects(pending, /卸载/)
+  const rejected = assert.rejects(pending, /disposed/)
   await Promise.resolve()
   api.dispose()
   api.dispose()
@@ -131,7 +131,7 @@ test('Web transport subscriptions unsubscribe and disposal rejects requests with
   assert.equal(instances[0].onmessage, null)
   instances[0].message({ kind: 'event', name: 'terminal:data', params: ['second', { $bytes: 'YQ==' }] })
   assert.equal(data, 0)
-  await assert.rejects(api.getCapabilities(), /卸载/)
+  await assert.rejects(api.getCapabilities(), /disposed/)
   api.input('second', 'ignored')
   assert.equal(instances.length, 1)
 })
@@ -139,7 +139,7 @@ test('Web transport subscriptions unsubscribe and disposal rejects requests with
 test('disposing during the initial WebSocket handshake cancels its waiting request', async t => {
   const instances = environment(t)
   const api = createWebSocketTransport()
-  const rejected = assert.rejects(api.getCapabilities(), /卸载/)
+  const rejected = assert.rejects(api.getCapabilities(), /disposed/)
   api.dispose()
   await rejected
   assert.equal(instances[0].readyState, 3)
@@ -150,7 +150,7 @@ test('a failed handshake cannot close or reject RPCs belonging to a replacement 
   const instances = environment(t)
   const api = createWebSocketTransport()
   t.after(() => api.dispose())
-  const failed = assert.rejects(api.getCapabilities(), /连不上/)
+  const failed = assert.rejects(api.getCapabilities(), /Cannot reach the local backend/)
   const staleClose = instances[0].onclose
   const staleError = instances[0].onerror
   instances[0].onerror({})
@@ -179,7 +179,7 @@ test('stale socket messages cannot resolve new RPCs or emit terminal events', as
   t.after(() => api.dispose())
   let opened = 0
   api.onOpened(() => { opened++ })
-  const failed = assert.rejects(api.getCapabilities(), /连不上/)
+  const failed = assert.rejects(api.getCapabilities(), /Cannot reach the local backend/)
   const staleMessage = instances[0].onmessage
   const staleOpen = instances[0].onopen
   instances[0].onerror({})
@@ -216,7 +216,7 @@ test('an established socket closes its own session once and cannot disrupt the n
   instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: {} })
   await initial
   instances[0].message({ kind: 'event', name: 'terminal:opened', params: ['first-session', 80, 24] })
-  const oldRequest = assert.rejects(api.hosts.list(), /连接已断开/)
+  const oldRequest = assert.rejects(api.hosts.list(), /connection to the backend was lost/)
   await Promise.resolve()
   const staleClose = instances[0].onclose
   instances[0].close()
@@ -305,7 +305,7 @@ test('disposing during unresolved bootstrap promptly rejects callers and never c
     signalReady() {},
   }
   const api = createTransport()
-  const rejected = assert.rejects(api.hosts.list(), /卸载/)
+  const rejected = assert.rejects(api.hosts.list(), /disposed/)
   await Promise.resolve()
   api.dispose()
   await rejected
@@ -415,7 +415,7 @@ test('monitor subscriptions unsubscribe, and disposal clears both listener sets'
   assert.equal(updates.length, 1, 'an unsubscribed monitor update was still delivered')
 
   const pending = api.hosts.list()
-  const rejected = assert.rejects(pending, /卸载/)
+  const rejected = assert.rejects(pending, /disposed/)
   await Promise.resolve()
   api.dispose()
   api.dispose()
@@ -425,8 +425,8 @@ test('monitor subscriptions unsubscribe, and disposal clears both listener sets'
   assert.equal(updates.length, 1)
   assert.equal(facts.length, 1)
   // The request side is closed with the transport, exactly like every other call.
-  await assert.rejects(api.monitor.start({ sessionId: 's1', subscriptionId: 'sub-1' }), /卸载/)
-  await assert.rejects(api.monitor.stop('sub-1'), /卸载/)
+  await assert.rejects(api.monitor.start({ sessionId: 's1', subscriptionId: 'sub-1' }), /disposed/)
+  await assert.rejects(api.monitor.stop('sub-1'), /disposed/)
 })
 
 test('a monitor update for a session that was never opened is still delivered, because the tab owns the filter', async t => {

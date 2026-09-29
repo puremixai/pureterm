@@ -45,7 +45,7 @@ try {
       assert.ok(monitorLine, 'missing structured monitor report')
       const monitor = JSON.parse(monitorLine.slice('[MONITOR-SMOKE] '.length))
       assert.equal(monitor.collapsed, true, 'the monitor row must start collapsed')
-      assert.equal(monitor.beforeExpand, '已暂停', 'a collapsed row reports paused, not loading')
+      assert.equal(monitor.beforeExpand, 'Paused', 'a collapsed row reports paused, not loading')
       assert.notEqual(monitor.facts.cipher, '—', 'the cipher cell must be filled from session facts')
       assert.notEqual(monitor.facts.key, '—', 'the host-key cell must be filled from session facts')
       assert.equal(monitor.first, READY_EXPECTATIONS.memory, 'the first snapshot is already partial')

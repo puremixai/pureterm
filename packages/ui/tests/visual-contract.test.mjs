@@ -253,7 +253,7 @@ test('the prototype\'s rearrangements are in the markup', () => {
     'nothing may write a library title into the strip either')
   assert.doesNotMatch(html, /aria-labelledby="hosts-tab"/,
     'no element may still point at the removed tab')
-  assert.match(html, /<div id="workspace-tabs" class="workspace-tabs" role="tablist" aria-label="会话标签"><\/div>/,
+  assert.match(html, /<div id="workspace-tabs" class="workspace-tabs" role="tablist" aria-label="Session tabs" data-i18n-attr="aria-label:app\.tabs"><\/div>/,
     'the strip ships empty and services/terminal.ts appends session tabs to it')
   assert.doesNotMatch(rules, /\.workspace-tabs > \.app-tab/,
     'the rule that cancelled the active tab\'s hairline has no subject left; keeping it would re-arm the bug')

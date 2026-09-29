@@ -14,7 +14,7 @@ export function mountPageClient(mount: () => Client = () => createClient(), view
     restoring = restoring.then(async () => {
       await previous.dispose()
       if (alive && current === revision) client = mount()
-    }).catch(error => { console.error('[client] 恢复页面失败：', error) })
+    }).catch(error => { console.error('[client] restoring the page failed:', error) })
   }
   view.addEventListener('pagehide', onHide)
   view.addEventListener('pageshow', onShow)

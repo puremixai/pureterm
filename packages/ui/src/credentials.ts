@@ -1,4 +1,5 @@
 import type { AuthMethod, HostSaveRequest, RuntimeCapabilities, TerminalOpenRequest } from '@pureterm/protocol'
+import { t } from '@pureterm/i18n'
 
 export interface CredentialFields {
   authMethod: AuthMethod
@@ -25,7 +26,7 @@ export function parseRuntimeCapabilities(value: unknown): RuntimeCapabilities {
   if (
     (credentialPersistence !== 'encrypted' && credentialPersistence !== 'session') ||
     (privateKeyPicker !== 'native' && privateKeyPicker !== 'browser')
-  ) throw new Error('无法确认本机后端的凭据能力，请重新启动应用并刷新页面。')
+  ) throw new Error(t('credentials.error.capabilities'))
   return { credentialPersistence, privateKeyPicker }
 }
 
@@ -51,7 +52,7 @@ export function connectionCredentials(
   if (fields.authMethod === 'privateKey') {
     if (fields.keyId) { credentials.keyId = fields.keyId; return credentials }
     if (capabilities.privateKeyPicker === 'browser') {
-      if (!selectedKey) throw new Error('请先选择私钥文件')
+      if (!selectedKey) throw new Error(t('hosts.error.choose-key'))
       credentials.privateKey = selectedKey.content
     } else if (fields.privateKeyPath) credentials.privateKeyPath = fields.privateKeyPath
     if (fields.passphrase) credentials.passphrase = fields.passphrase
@@ -92,12 +93,12 @@ export class BrowserPrivateKeySelection {
 }
 
 export async function readBrowserPrivateKey(file: Pick<File, 'name' | 'size' | 'text'>): Promise<BrowserPrivateKey> {
-  if (file.size === 0) throw new Error('私钥是空文件，请重新选择。')
-  if (file.size > MAX_PRIVATE_KEY_BYTES) throw new Error('私钥文件超过 256 KiB，请确认选择的是私钥文件。')
+  if (file.size === 0) throw new Error(t('credentials.error.empty-key'))
+  if (file.size > MAX_PRIVATE_KEY_BYTES) throw new Error(t('credentials.error.key-too-large'))
   const content = await file.text()
   const header = content.match(/-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----/)
   if (!header || !content.includes(`-----END ${header[1]}-----`)) {
-    throw new Error('这个文件看起来不是私钥（需要完整的 PRIVATE KEY 头和尾）。')
+    throw new Error(t('credentials.error.not-a-key'))
   }
   return { name: file.name, content }
 }

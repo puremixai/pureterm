@@ -1,9 +1,11 @@
 import { Service, type Context } from 'cordis'
 import type { TerminalOpenRequest, TerminalOpenResult } from '@pureterm/protocol'
+import { t } from '@pureterm/i18n'
 import { ClientScope, cleanError, DomListeners } from '../client-runtime.js'
+import { messageKey, messageText, resolveMessage, type MessageText } from '../message-text.js'
 import { createTerminalView, type TerminalFactory, type TerminalView } from '../terminal-view.js'
 import { initialsOf } from '../host-list.js'
-import { diagnose, stageLabel, type Failure } from '../failure-diagnostics.js'
+import { diagnose, stageKey, type Failure } from '../failure-diagnostics.js'
 
 export type TabState = 'connecting' | 'connected' | 'disconnected' | 'failed'
 export interface TerminalTab {
@@ -14,8 +16,13 @@ export interface TerminalTab {
   readonly container: HTMLElement
   sessionId: string | null
   state: TabState
-  message: string
-  logs: string[]
+  /**
+   * 会话栏上那一句状态。存 key 不存句子：它是常驻的（「已连接」会一直挂着），
+   * 换语言之后必须跟着变，而它就是用户判断这个标签页现在怎么样的地方。
+   */
+  message: MessageText
+  /** 失败页那份过程记录。第一行是页面自己说的（key），后面是宿主报的原文。 */
+  logs: MessageText[]
   /** 终端与文件表的比例（0-1）。跟着会话走：null = 用 CSS 里的默认模板。 */
   split: number | null
   /** 失败分诊结果：null = 还没失败，或失败的原因认不出来。 */
@@ -29,7 +36,7 @@ interface OwnedTab extends TerminalTab {
   release(): void
   attempt: number
 }
-interface EarlyEvents { chunks: Uint8Array[]; bytes: number; closed?: string }
+interface EarlyEvents { chunks: Uint8Array[]; bytes: number; closed?: MessageText }
 
 declare module 'cordis' {
   interface Context { clientTerminal: ClientTerminal }
@@ -59,6 +66,13 @@ declare module 'cordis' {
      * 发送方是 ClientChrome，它在写完之后广播。
      */
     'client/theme-change'(theme: 'dark' | 'light'): void
+    /**
+     * 语言切换。静态 markup 由 ClientChrome 自己重译，但凡是**已经画出来**的动态
+     * 文案都得重画一次 —— 标签名、失败页、状态栏、资源面板都是在各自 render() 里
+     * 拼的句子，换一门语言它们不会自己变。发送方是 ClientChrome，它在切换后广播，
+     * 挂载时也广播一次（那些插件都排在它前面构造）。
+     */
+    'client/locale-change'(locale: 'en' | 'zh'): void
   }
 }
 
@@ -112,7 +126,7 @@ export class ClientTerminal extends Service {
       const pending = this.early.get(id)
       if (!pending) return
       if (pending.bytes + chunk.byteLength > 1024 * 1024) {
-        pending.closed = '连接初始化期间输出过多，请重新连接。'
+        pending.closed = messageKey('session.error.early-overflow')
         api.close(id)
         return
       }
@@ -122,10 +136,10 @@ export class ClientTerminal extends Service {
     ctx.effect(() => api.onClosed((id, reason) => {
       if (this.stopped || !id) return
       const tab = this.bySession.get(id)
-      if (tab) this.ended(tab, reason)
+      if (tab) this.ended(tab, reason ? messageText(reason) : messageKey('session.state.ended'))
       else {
         const pending = this.early.get(id)
-        if (pending) pending.closed = reason || '连接已结束。'
+        if (pending) pending.closed = reason ? messageText(reason) : messageKey('session.state.ended')
       }
     }), 'terminal.closed')
     this.scope.listen(view.element('disconnect'), 'click', () => this.disconnect())
@@ -175,6 +189,9 @@ export class ClientTerminal extends Service {
       return () => observer.disconnect()
     }, 'terminal.layout')
     ctx.on('client/theme-change', () => this.applyTheme())
+    // 换语言：整块重画一次。标签栏的 title、会话栏那一句、失败页的标题/建议/日志
+    // 都是拼出来的，它们不会自己变 —— 而失败页恰好是最需要读懂的一屏。
+    ctx.on('client/locale-change', () => this.render())
     this.select(null)
   }
 
@@ -216,8 +233,8 @@ export class ClientTerminal extends Service {
     close.type = 'button'
     close.className = 'tab-close'
     close.dataset.tabClose = id
-    close.setAttribute('aria-label', `关闭标签 ${title}`)
-    close.title = '关闭标签 (Ctrl+W)'
+    close.setAttribute('aria-label', t('session.tab.close-aria', { title }))
+    close.title = t('session.tab.close-title')
     close.innerHTML = '<i class="ti ti-x" aria-hidden="true"></i>'
     strip.append(button, close)
     this.ctx.clientView.element('workspace-tabs').append(strip)
@@ -226,7 +243,7 @@ export class ClientTerminal extends Service {
     pane.container.setAttribute('aria-labelledby', id)
     const listeners = new DomListeners()
     const tab: OwnedTab = { id, title, request: { ...request }, ...pane, button, label, strip, listeners,
-      sessionId: null, state: 'connecting', message: '正在连接…', logs: [], attempt: 0, split: null, failure: null,
+      sessionId: null, state: 'connecting', message: messageKey('session.state.connecting'), logs: [], attempt: 0, split: null, failure: null,
       release: () => { listeners.clear(); data.dispose(); resize.dispose(); pane.terminal.dispose(); pane.container.remove(); strip.remove() },
     }
     const data = pane.terminal.onData(value => { if (tab.sessionId) this.ctx.clientTransport.api.input(tab.sessionId, value) })
@@ -284,7 +301,7 @@ export class ClientTerminal extends Service {
       tab.strip.classList.toggle('is-active', selected)
       tab.button.setAttribute('aria-selected', String(selected))
       tab.button.tabIndex = selected ? 0 : -1
-      tab.button.title = `${tab.title} · ${tab.request.username}@${tab.request.host}:${tab.request.port ?? 22} · ${tab.message}`
+      tab.button.title = `${tab.title} · ${tab.request.username}@${tab.request.host}:${tab.request.port ?? 22} · ${resolveMessage(tab.message)}`
       tab.container.hidden = !selected || tab.state === 'failed'
     }
     const failed = active?.state === 'failed'
@@ -292,7 +309,7 @@ export class ClientTerminal extends Service {
     view.element('terminal').hidden = !!failed
     if (!active) return
     view.element('session-address').textContent = `${active.request.username}@${active.request.host}:${active.request.port ?? 22}`
-    view.element('session-state').textContent = active.message
+    view.element('session-state').textContent = resolveMessage(active.message)
     view.element('session-state').className = active.state
     view.element<HTMLButtonElement>('disconnect').disabled = !active.sessionId
     view.element('session-reconnect').hidden = active.state !== 'disconnected'
@@ -301,9 +318,9 @@ export class ClientTerminal extends Service {
     // 「认证被拒绝」会挂在这一台上。认不出阶段时不给结论，这和路由整条收起是同一条
     // 规矩。
     const chip = view.element('failure-chip')
-    chip.textContent = failed ? active.failure?.title ?? '' : ''
+    chip.textContent = failed && active.failure ? t(active.failure.title) : ''
     chip.hidden = !failed || !active.failure?.stage
-    view.element('failure-raw').textContent = failed ? active.logs.at(-1) ?? '' : ''
+    view.element('failure-raw').textContent = failed ? resolveMessage(active.logs.at(-1)) : ''
     if (failed) {
       view.element('failure-title').textContent = active.title
       view.element('failure-endpoint').textContent = `SSH ${active.request.host}:${active.request.port ?? 22}`
@@ -324,8 +341,10 @@ export class ClientTerminal extends Service {
       }
       // 阶段再用文字说一遍：路线是 aria-hidden 的，屏幕 reader 和色觉障碍用户
       // 都不该只靠一个红点理解这句话。
-      view.element('failure-stage').textContent = failure?.stage ? `失败在「${stageLabel(failure.stage)}」这一步` : ''
-      view.element('failure-suggestion').textContent = failure?.suggestion ?? ''
+      view.element('failure-stage').textContent = failure?.stage
+        ? t('failure.stage-line', { stage: t(stageKey(failure.stage)) })
+        : ''
+      view.element('failure-suggestion').textContent = failure?.suggestion ? t(failure.suggestion) : ''
       const log = view.element('failure-log')
       log.replaceChildren()
       for (const [index, entry] of active.logs.entries()) {
@@ -337,7 +356,7 @@ export class ClientTerminal extends Service {
         number.setAttribute('aria-hidden', 'true')
         number.textContent = String(index + 1)
         const text = view.document.createElement('span')
-        text.textContent = entry
+        text.textContent = resolveMessage(entry)
         const mark = view.document.createElement('i')
         // 最后一行是真正的失败，其余是过程记录：图标不一样，才不用读字也知道哪行是要看的。
         mark.className = index === active.logs.length - 1 ? 'ti ti-alert-circle' : 'ti ti-chevron-right'
@@ -345,7 +364,8 @@ export class ClientTerminal extends Service {
         row.append(number, mark, text)
         log.append(row)
       }
-      view.element('failure-copy').textContent = '复制日志'
+      // 写的是那枚标签而不是整个按钮：字形在它左边，写按钮会把图标一起冲掉。
+      view.element('failure-copy-label').textContent = t('failure.copy')
     }
   }
 
@@ -371,11 +391,12 @@ export class ClientTerminal extends Service {
     const attempt = ++tab.attempt
     const api = this.ctx.clientTransport.api
     const current = () => !this.stopped && this.owned.get(tab.id) === tab && tab.attempt === attempt
+    const endpoint = `${tab.request.host}:${tab.request.port ?? 22}`
     tab.state = 'connecting'
-    tab.message = '正在连接…'
-    tab.logs = [`正在连接 ${tab.request.host}:${tab.request.port ?? 22}`]
+    tab.message = messageKey('session.state.connecting')
+    tab.logs = [messageKey('session.log.connecting', { endpoint })]
     tab.terminal.write('\x1b[2J\x1b[H\x1b[3J')
-    tab.terminal.write(`\x1b[36m── ${tab.request.username}@${tab.request.host}:${tab.request.port ?? 22} ──\x1b[0m\r\n`)
+    tab.terminal.write(`\x1b[36m── ${tab.request.username}@${endpoint} ──\x1b[0m\r\n`)
     this.changed(tab)
     this.opening++
     try {
@@ -387,13 +408,13 @@ export class ClientTerminal extends Service {
       if (!current()) { api.close(result.sessionId); return }
       tab.sessionId = result.sessionId
       tab.state = 'connected'
-      tab.message = '已连接'
+      tab.message = messageKey('session.state.connected')
       // 连上了就把上一次的路线清掉：留着它，下一次失败之前用户看到的仍是一张
       // 「死在认证」的图，而那台服务器刚刚连上。
       tab.failure = null
       // 后台标签连上了用户是看不见的：这一条正是原来表单里 #status 会漏掉的那种。
       if (tab.id !== this.activeId) {
-        this.ctx.clientToasts.notify({ title: '已连接', detail: `${tab.request.username}@${tab.request.host}` })
+        this.ctx.clientToasts.notify({ title: t('session.toast.connected'), detail: `${tab.request.username}@${tab.request.host}` })
       }
       this.bySession.set(result.sessionId, tab)
       for (const chunk of early?.chunks ?? []) tab.terminal.write(chunk)
@@ -405,8 +426,8 @@ export class ClientTerminal extends Service {
       if (current()) {
         tab.sessionId = null
         tab.state = 'failed'
-        tab.message = '连接失败'
-        tab.logs.push(cleanError(error))
+        tab.message = messageKey('session.state.failed')
+        tab.logs.push(messageText(cleanError(error)))
         tab.failure = diagnose(cleanError(error))
         this.changed(tab)
       }
@@ -417,12 +438,14 @@ export class ClientTerminal extends Service {
     }
   }
 
-  private ended(tab: OwnedTab, reason: string): void {
+  private ended(tab: OwnedTab, reason: MessageText): void {
     if (tab.sessionId) this.bySession.delete(tab.sessionId)
     tab.sessionId = null
     tab.state = 'disconnected'
-    tab.message = reason || '连接已结束'
-    tab.terminal.write(`\r\n\x1b[33m连接已结束：${tab.message}\x1b[0m\r\n`)
+    tab.message = reason
+    // 这一行是写进终端回滚缓冲的字节，不是 chrome：它落下之后就不属于任何一次
+    // 重画，所以它在落笔的那一刻用当时那门语言，之后不跟着变（和远端输出一样）。
+    tab.terminal.write(`\r\n\x1b[33m${t('session.terminal.ended', { reason: resolveMessage(reason) })}\x1b[0m\r\n`)
     this.changed(tab)
   }
 
@@ -430,7 +453,7 @@ export class ClientTerminal extends Service {
     const tab = this.active && this.owned.get(this.active.id)
     if (!tab?.sessionId) return
     const sessionId = tab.sessionId
-    this.ended(tab, '用户断开连接。')
+    this.ended(tab, messageKey('error.host.user-disconnected'))
     this.ctx.clientTransport.api.close(sessionId)
   }
 
@@ -455,7 +478,7 @@ export class ClientTerminal extends Service {
     if (!tab || this.stopped || tab.container.hidden) return
     const { width, height } = tab.container.getBoundingClientRect()
     if (width < 40 || height < 40) return
-    try { tab.terminal.fit() } catch (error) { console.warn('[renderer] fit 失败', error) }
+    try { tab.terminal.fit() } catch (error) { console.warn('[renderer] fit failed', error) }
   }
 
   /**
@@ -506,14 +529,15 @@ export class ClientTerminal extends Service {
   private async copyLogs(): Promise<void> {
     const tab = this.active
     if (!tab) return
-    const button = this.ctx.clientView.element('failure-copy')
+    // 写的是那枚标签而不是整个按钮：字形在它左边，写按钮会把图标一起冲掉。
+    const label = this.ctx.clientView.element('failure-copy-label')
     try {
-      await this.ctx.clientView.window.navigator.clipboard.writeText(tab.logs.join('\n'))
+      await this.ctx.clientView.window.navigator.clipboard.writeText(tab.logs.map(resolveMessage).join('\n'))
       if (this.active?.id !== tab.id || this.stopped) return
-      button.textContent = '已复制'
-      if (await this.scope.delay(1600) && this.active?.id === tab.id) button.textContent = '复制日志'
+      label.textContent = t('failure.copied')
+      if (await this.scope.delay(1600) && this.active?.id === tab.id) label.textContent = t('failure.copy')
     } catch {
-      if (!this.stopped && this.active?.id === tab.id) button.textContent = '复制失败，请选中日志复制'
+      if (!this.stopped && this.active?.id === tab.id) label.textContent = t('failure.copy-failed')
     }
   }
 }

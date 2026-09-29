@@ -1,5 +1,6 @@
 import { Service, type Context } from 'cordis'
 import type { RendererReadyPayload } from '@pureterm/protocol'
+import { t } from '@pureterm/i18n'
 import { ClientScope, cleanError } from '../client-runtime.js'
 import type { SmokeReport } from '../transport.js'
 
@@ -13,7 +14,7 @@ export class ClientApplication extends Service {
   constructor(ctx: Context) {
     super(ctx, 'clientApplication')
     this.scope = new ClientScope(ctx)
-    const stopped = new Promise<RendererReadyPayload>(resolve => this.scope.onDispose(() => resolve({ ok: false, hosts: 0, cols: 0, rows: 0, error: '客户端已卸载。' })))
+    const stopped = new Promise<RendererReadyPayload>(resolve => this.scope.onDispose(() => resolve({ ok: false, hosts: 0, cols: 0, rows: 0, error: t('client.disposed') })))
     this.ready = Promise.race([this.initialize(), stopped])
     const window = ctx.clientView.window
     if (new URLSearchParams(window.location.search).get('smoke') === '1') {
@@ -27,12 +28,12 @@ export class ClientApplication extends Service {
   private async initialize(): Promise<RendererReadyPayload> {
     try {
       await this.ctx.clientHosts.ready
-      if (!this.scope.alive) return { ok: false, hosts: 0, cols: 0, rows: 0, error: '客户端已卸载。' }
+      if (!this.scope.alive) return { ok: false, hosts: 0, cols: 0, rows: 0, error: t('client.disposed') }
       await this.ctx.clientTerminal.settleLayout()
-      if (!this.scope.alive) return { ok: false, hosts: 0, cols: 0, rows: 0, error: '客户端已卸载。' }
+      if (!this.scope.alive) return { ok: false, hosts: 0, cols: 0, rows: 0, error: t('client.disposed') }
       const terminal = this.ctx.clientTerminal.terminal
       const payload = { ok: true, hosts: this.ctx.clientHosts.count, cols: terminal.cols, rows: terminal.rows }
-      this.ctx.clientView.status('就绪')
+      this.ctx.clientView.status(t('app.ready'))
       this.ctx.clientTransport.api.signalReady(payload)
       return payload
     } catch (error) {
@@ -51,20 +52,20 @@ export class ClientApplication extends Service {
     let unregister: (() => void) | undefined
     try {
       const result = await this.ctx.clientTerminal.open({ ...config, cols: 100, rows: 30, term: 'xterm-256color' })
-      if (!result) throw new Error('终端连接失败')
+      if (!result) throw new Error('The terminal could not connect.')
       const terminal = this.ctx.clientTerminal.active!.terminal
       report.sessionId = result.sessionId
       report.openedSize = { cols: result.cols, rows: result.rows }
-      if (!await this.scope.delay(800)) throw new Error('客户端已卸载。')
+      if (!await this.scope.delay(800)) throw new Error(t('client.disposed'))
       api.input(result.sessionId, 'ls\r')
-      if (!await this.scope.delay(400)) throw new Error('客户端已卸载。')
+      if (!await this.scope.delay(400)) throw new Error(t('client.disposed'))
       api.resize(result.sessionId, 120, 40)
-      if (!await this.scope.delay(200)) throw new Error('客户端已卸载。')
+      if (!await this.scope.delay(200)) throw new Error(t('client.disposed'))
       const closed = new Promise<string>(resolve => { unsubscribe = api.onClosed((id, reason) => { if (id === result.sessionId) resolve(reason) }) })
       unregister = this.scope.cancelOnDispose(() => unsubscribe?.())
       api.close(result.sessionId)
       report.closedReason = await Promise.race([closed, this.scope.delay(1500).then(() => null)])
-      if (!await this.scope.delay(250)) throw new Error('客户端已卸载。')
+      if (!await this.scope.delay(250)) throw new Error(t('client.disposed'))
       report.text = terminal.text()
       report.replacementChars = (report.text.match(/\uFFFD/g) ?? []).length
     } catch (error) { report.error = cleanError(error) }
