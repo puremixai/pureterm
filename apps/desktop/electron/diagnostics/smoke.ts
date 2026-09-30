@@ -127,12 +127,13 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           try {
             await api.keychain.save({ label: 'Web Host Keychain check', privateKey: ${JSON.stringify(process.env.SSH_CORDIS_SMOKE_KEYCHAIN)} });
           } catch (error) {
-            return { message: String(error && error.message ? error.message : error), listed: (await api.keychain.list()).length };
+            return { code: error && error.code ? error.code : '', listed: (await api.keychain.list()).length };
           }
           return null;
-        })()`) as { message: string; listed: number } | null
+        })()`) as { code: string; listed: number } | null
         if (!refusal) throw new Error('Host stored a private key on a machine with no system encryption')
-        if (!refusal.message.includes('系统加密不可用')) throw new Error(`Keychain refused for the wrong reason: ${refusal.message}`)
+        // 断言**码**而不是那句话：句子跟着语言开关走，码才是跨线的契约（和 tests/integration-helpers.mjs 同一条理由）
+        if (refusal.code !== 'keychain.encryption-unavailable') throw new Error(`Keychain refused for the wrong reason: ${refusal.code || 'no code'}`)
         if (refusal.listed !== 0) throw new Error('Keychain listed a record after a refused save')
         console.log('[KEYCHAIN-SESSION-OK] no system encryption: the Host refused the key instead of storing it in plaintext')
       } else {
