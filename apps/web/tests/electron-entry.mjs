@@ -117,6 +117,27 @@ async function main() {
       document.querySelector('.terminal-pane:not([hidden]) .xterm-helper-textarea').dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
     })()`)
     const visibleText = 'document.querySelector(".terminal-pane:not([hidden]) .xterm-rows").textContent'
+    /*
+     * 工具轨的一次快照。和 Desktop 那支采集的是同一组事实：归属（轨道在工作区里、
+     * 按钮只在轨道上）、互斥（同一时刻最多一格面板）、管理页退场。
+     */
+    const railFacts = () => evaluate(`(() => {
+      const workspace = document.getElementById('session-workspace');
+      const tools = document.getElementById('session-tools');
+      const toolbar = document.querySelector('.session-toolbar');
+      const buttons = [...tools.querySelectorAll('.session-tool')];
+      const shown = id => { const node = document.getElementById(id); return !!node && !node.hidden; };
+      return {
+        local: workspace.contains(tools),
+        onRail: buttons.map(button => button.id),
+        expanded: Object.fromEntries(buttons.map(button => [button.id, button.getAttribute('aria-expanded')])),
+        controls: Object.fromEntries(buttons.map(button => [button.id, button.getAttribute('aria-controls')])),
+        named: buttons.every(button => (button.getAttribute('aria-label') || '').length > 0),
+        toolbarDuplicates: ['sftp-toggle', 'monitor-toggle'].filter(id => toolbar.contains(document.getElementById(id))).length,
+        files: shown('sftp'),
+        monitor: shown('session-monitor'),
+      };
+    })()`)
     await paste('beta-only')
     await until(() => evaluate(`${visibleText}.includes('echo:beta-only')`), 'Beta output')
     await evaluate('document.getElementById("workspace-home").click()')
@@ -156,6 +177,7 @@ async function main() {
       const key = document.getElementById('status-key').textContent;
       return cipher !== '—' && key !== '—' ? { cipher, key } : null;
     })()`), 'session facts in the status bar')
+    const railClosed = await railFacts()
     // 折叠是默认值：展开之前不该有任何探测。
     const collapsed = await evaluate('document.getElementById("session-monitor").hidden')
     assert.equal(collapsed, true, 'the monitor row must start collapsed')
@@ -172,6 +194,7 @@ async function main() {
       const read = metric => document.querySelector('#monitor-body .monitor-field[data-metric=' + metric + '] .monitor-value').textContent;
       return { cpu: read('cpu'), memory: read('memory'), load: read('load'), disk: read('disk'), net: read('net'), uptime: read('uptime') };
     })()`), 'second monitor snapshot', 15000)
+    const railMonitor = await railFacts()
     // 同一条连接：终端仍然收发。
     await paste('monitor-alive')
     await until(() => evaluate(`${visibleText}.includes('echo:monitor-alive')`), 'terminal echo on the monitored session')
@@ -182,10 +205,40 @@ async function main() {
       return path ? { path, files: document.querySelectorAll('#sftp-list .file-row').length } : null;
     })()`), 'SFTP listing on the monitored session')
     assert.ok(listing.files >= 1, 'SFTP must list the fixture file')
+    const railFiles = await railFacts()
     await evaluate('document.getElementById("disconnect").click()')
     await until(() => evaluate('document.getElementById("disconnect").disabled'), 'monitored session disconnect')
+    // 管理页：整块终端工作区退场，轨道作为它的后代一起消失 —— 不能留在 #app 或右边缘上。
+    await evaluate('document.getElementById("nav-hosts").click()')
+    const railManagement = await evaluate(`({
+      workspaceHidden: document.getElementById('session-workspace').hidden,
+      railVisible: document.getElementById('session-tools').getClientRects().length > 0,
+      panelVisible: document.getElementById('session-tool-panel').getClientRects().length > 0,
+    })`)
     await evaluate(`(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); })()`)
-    console.log('[WEB-MONITOR] ' + JSON.stringify({ collapsed, facts, first, ready, listing }))
+    /*
+     * 工具轨：终端工作区里的一列，只有两颗工具按钮，同一时刻最多一格面板，
+     * 管理页上整块跟着工作区退场。顺序由 ClientSessionTools 的 ORDER 钉住。
+     */
+    assert.equal(railClosed.local, true, 'the rail must be a descendant of the terminal workspace')
+    assert.deepEqual(railClosed.onRail, ['sftp-toggle', 'monitor-toggle'], 'the rail holds exactly Files then Monitor')
+    assert.deepEqual(railClosed.expanded,
+      { 'sftp-toggle': 'false', 'monitor-toggle': 'false' }, 'a new session starts with both tools collapsed')
+    assert.deepEqual(railClosed.controls,
+      { 'sftp-toggle': 'sftp', 'monitor-toggle': 'session-monitor' }, 'each tool controls its own panel')
+    assert.equal(railClosed.named, true, 'icon-only rail buttons must still carry an accessible name')
+    assert.equal(railClosed.toolbarDuplicates, 0, 'the toolbar must not keep duplicate tool entries')
+    assert.equal(railClosed.files || railClosed.monitor, false, 'a new session starts with no panel')
+    assert.deepEqual([railMonitor.files, railMonitor.monitor], [false, true], 'Monitor replaces the closed slot')
+    assert.deepEqual([railMonitor.expanded['monitor-toggle'], railMonitor.expanded['sftp-toggle']],
+      ['true', 'false'], 'the open tool reports aria-expanded')
+    assert.deepEqual([railFiles.files, railFiles.monitor], [true, false], 'Files replaces Monitor in the one slot')
+    assert.equal(railFiles.local && railMonitor.local, true, 'the rail stays terminal-local across tool switches')
+    assert.equal(railManagement.workspaceHidden, true, 'the terminal workspace leaves the management page')
+    assert.equal(railManagement.railVisible, false, 'the rail must not remain on a management page')
+    assert.equal(railManagement.panelVisible, false, 'the panel must not remain on a management page')
+    console.log('[WEB-MONITOR] ' + JSON.stringify({ collapsed, facts, first, ready, listing,
+      rail: { closed: railClosed, monitor: railMonitor, files: railFiles, management: railManagement } }))
     console.log('[WEB-MONITOR-OK] fixture snapshot and session facts rendered through the real UI')
 
     // A real browser file input reads a real fixture file. Clicking the actual UI

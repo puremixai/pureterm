@@ -73,6 +73,25 @@ try {
       assert.equal(monitor.ready.uptime, READY_EXPECTATIONS.uptime)
       assert.match(monitor.ready.net, /^↓ .+\/s ↑ .+\/s$/)
       assert.ok(monitor.listing.files >= 1, 'SFTP listed the fixture file on the monitored session')
+      /*
+       * 工具轨：和 Desktop 那支断的是同一组事实。共享 UI 的归属、互斥和顺序在这里
+       * 对着**真实样式下的独立 Web 入口**再证一次，而不是只信 Desktop 那一份。
+       */
+      assert.equal(monitor.rail.closed.local, true, 'the rail must be a descendant of the terminal workspace')
+      assert.deepEqual(monitor.rail.closed.onRail, ['sftp-toggle', 'monitor-toggle'], 'the rail holds exactly Files then Monitor')
+      assert.deepEqual(monitor.rail.closed.expanded,
+        { 'sftp-toggle': 'false', 'monitor-toggle': 'false' }, 'a new session starts with both tools collapsed')
+      assert.deepEqual(monitor.rail.closed.controls,
+        { 'sftp-toggle': 'sftp', 'monitor-toggle': 'session-monitor' }, 'each tool controls its own panel')
+      assert.equal(monitor.rail.closed.named, true, 'icon-only rail buttons must still carry an accessible name')
+      assert.equal(monitor.rail.closed.toolbarDuplicates, 0, 'the toolbar must not keep duplicate tool entries')
+      assert.equal(monitor.rail.closed.files || monitor.rail.closed.monitor, false, 'a new session starts with no panel')
+      assert.deepEqual([monitor.rail.monitor.files, monitor.rail.monitor.monitor], [false, true], 'Monitor replaces the closed slot')
+      assert.deepEqual([monitor.rail.files.files, monitor.rail.files.monitor], [true, false], 'Files replaces Monitor in the one slot')
+      assert.equal(monitor.rail.files.local && monitor.rail.monitor.local, true, 'the rail stays terminal-local across tool switches')
+      assert.equal(monitor.rail.management.workspaceHidden, true, 'the terminal workspace leaves the management page')
+      assert.equal(monitor.rail.management.railVisible, false, 'the rail must not remain on a management page')
+      assert.equal(monitor.rail.management.panelVisible, false, 'the panel must not remain on a management page')
       // 独立的第三份证据：探测确实以 exec 到达了夹具，而不是被本地伪造出来。
       assert.ok(ssh.exec.commands.some(command => command.includes('PURETERM_MONITOR_V1')),
         'the monitor probe must reach the SSH fixture as an exec')

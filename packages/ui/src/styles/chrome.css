@@ -3,6 +3,11 @@
    reshape them. Heights come from --chrome-h and --status-h and nowhere else. */
 #app {
   display: grid;
+  /* 一列，且下界为 0。没有这一条时这一列是隐式的 auto，会被某个子元素的最小内容
+     宽度撑大 —— 状态栏那排不换行的字段在 821px 上就有 925px 的最小内容宽度，于是
+     整个外壳被撑宽、右端的工具图标栏被挤出视口。钉成 minmax(0, 1fr) 之后，撑不下
+     的内容只能在自己的格子里被裁剪，不会再把外壳推开。 */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--chrome-h) minmax(0, 1fr) var(--status-h);
   height: 100dvh;
   min-height: 0;

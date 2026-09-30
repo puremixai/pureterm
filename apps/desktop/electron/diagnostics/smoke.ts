@@ -1,5 +1,17 @@
 import { app, type BrowserWindow } from 'electron'
 
+/** 工具轨的一次快照，由渲染层采集、启动器断言（见 tests/smoke-electron.mjs）。 */
+interface SessionRailFacts {
+  local: boolean
+  onRail: string[]
+  expanded: Record<string, string | null>
+  controls: Record<string, string | null>
+  named: boolean
+  toolbarDuplicates: number
+  files: boolean
+  monitor: boolean
+}
+
 interface SmokeReport {
   preload: string
   sessionId: string | null
@@ -167,6 +179,30 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
         const value = metric => document.querySelector('#monitor-body .monitor-field[data-metric=' + metric + '] .monitor-value').textContent;
         const facts = () => ({ cipher: document.getElementById('status-cipher').textContent, key: document.getElementById('status-key').textContent });
         const visible = () => document.getElementById('monitor-state').textContent;
+        /*
+         * 工具轨的一次快照。
+         *
+         * 验收要看的是**归属**（轨道在工作区里、按钮只在轨道上）、**互斥**（同一时刻最多
+         * 一格面板）和**管理页退场**，所以快照里同时记下祖先、按钮 id、面板可见性，以及
+         * 工具栏里还剩几颗重复入口。定值断言在启动器里（tests/smoke-electron.mjs）。
+         */
+        const railFacts = () => {
+          const workspace = document.getElementById('session-workspace');
+          const tools = document.getElementById('session-tools');
+          const toolbar = document.querySelector('.session-toolbar');
+          const buttons = [...tools.querySelectorAll('.session-tool')];
+          const shown = id => { const node = document.getElementById(id); return !!node && !node.hidden; };
+          return {
+            local: workspace.contains(tools),
+            onRail: buttons.map(button => button.id),
+            expanded: Object.fromEntries(buttons.map(button => [button.id, button.getAttribute('aria-expanded')])),
+            controls: Object.fromEntries(buttons.map(button => [button.id, button.getAttribute('aria-controls')])),
+            named: buttons.every(button => (button.getAttribute('aria-label') || '').length > 0),
+            toolbarDuplicates: ['sftp-toggle', 'monitor-toggle'].filter(id => toolbar.contains(document.getElementById(id))).length,
+            files: shown('sftp'),
+            monitor: shown('session-monitor'),
+          };
+        };
         Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
         document.dispatchEvent(new Event('visibilitychange'));
         try {
@@ -179,6 +215,7 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           document.getElementById('connect').click();
           await wait(() => document.getElementById('session-state').className === 'connected' ? true : null, 'session to connect');
           const held = await wait(() => { const seen = facts(); return seen.cipher !== '—' && seen.key !== '—' ? seen : null; }, 'handshake facts');
+          const railClosed = railFacts();
           // 折叠是默认值：展开之前一次探测都不该发生，状态文字要说的是「暂停」而不是「读取中」。
           // 外层面板的可见性归共享工具服务：收起时 #session-monitor 带着 hidden 属性，
           // 面板主体因此也看不见。
@@ -188,6 +225,7 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, 'the first snapshot');
           const ready = await wait(() => visible() === 'Updated'
             ? { cpu: value('cpu'), memory: value('memory'), load: value('load'), disk: value('disk'), net: value('net'), uptime: value('uptime') } : null, 'the second snapshot');
+          const railMonitor = railFacts();
           /*
            * 同一条连接：终端仍然收发。
            *
@@ -218,9 +256,18 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           document.getElementById('sftp-toggle').click();
           const path = await wait(() => document.getElementById('sftp-path').value || null, 'SFTP listing');
           const files = document.querySelectorAll('#sftp-list .file-row').length;
+          const railFiles = railFacts();
           document.getElementById('disconnect').click();
           await wait(() => document.getElementById('disconnect').disabled ? true : null, 'disconnected');
-          return { collapsed, beforeExpand, facts: held, first, ready, path, files };
+          // 管理页：整块终端工作区退场，轨道作为它的后代一起消失 —— 不能留在 #app 或右边缘上。
+          document.getElementById('nav-hosts').click();
+          const railManagement = {
+            workspaceHidden: document.getElementById('session-workspace').hidden,
+            railVisible: document.getElementById('session-tools').getClientRects().length > 0,
+            panelVisible: document.getElementById('session-tool-panel').getClientRects().length > 0,
+          };
+          return { collapsed, beforeExpand, facts: held, first, ready, path, files,
+            rail: { closed: railClosed, monitor: railMonitor, files: railFiles, management: railManagement } };
         } finally {
           delete document.hidden;
           document.dispatchEvent(new Event('visibilitychange'));
@@ -228,11 +275,22 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
       })()`) as {
         collapsed: boolean; beforeExpand: string; facts: { cipher: string; key: string }
         first: string; ready: Record<string, string>; path: string; files: number
+        rail: { closed: SessionRailFacts; monitor: SessionRailFacts; files: SessionRailFacts
+          management: { workspaceHidden: boolean; railVisible: boolean; panelVisible: boolean } }
       }
       // 便宜的完整性检查留在这里，好让失败能落到这一块；定值断言在启动器里。
       if (!monitor.collapsed || monitor.beforeExpand !== 'Paused') throw new Error('Monitor panel must be collapsed by default')
       if (!monitor.ready?.cpu || !monitor.ready?.net || !monitor.ready?.uptime) throw new Error('Monitor panel did not render a complete snapshot')
       if (monitor.files < 1 || !monitor.path.startsWith('/')) throw new Error('SFTP listing failed on the monitored session')
+      if (!monitor.rail?.closed?.local || monitor.rail.closed.onRail.join() !== 'sftp-toggle,monitor-toggle') {
+        throw new Error('The Desktop rail must be terminal-local and hold exactly the two tool buttons')
+      }
+      if (monitor.rail.closed.files || monitor.rail.closed.monitor) throw new Error('A new session must start with no tool panel')
+      if (monitor.rail.monitor.files || !monitor.rail.monitor.monitor) throw new Error('Monitor must replace the closed slot')
+      if (!monitor.rail.files.files || monitor.rail.files.monitor) throw new Error('Files must replace Monitor in the one slot')
+      if (!monitor.rail.management.workspaceHidden || monitor.rail.management.railVisible || monitor.rail.management.panelVisible) {
+        throw new Error('The rail and panel must leave with the terminal workspace on a management page')
+      }
       console.log('[MONITOR-SMOKE] ' + JSON.stringify(monitor))
       console.log('[MONITOR-SMOKE-OK] fixture snapshot and session facts rendered through the real UI')
     }
