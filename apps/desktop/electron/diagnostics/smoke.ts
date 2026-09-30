@@ -3,11 +3,12 @@ import { app, type BrowserWindow } from 'electron'
 /** 工具轨的一次快照，由渲染层采集、启动器断言（见 tests/smoke-electron.mjs）。 */
 interface SessionRailFacts {
   local: boolean
+  /** 工作区的直接子元素 id：会话栏删掉之后只剩内容主体一条。 */
+  bands: string[]
   onRail: string[]
   expanded: Record<string, string | null>
   controls: Record<string, string | null>
   named: boolean
-  toolbarDuplicates: number
   files: boolean
   monitor: boolean
 }
@@ -184,21 +185,22 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
          *
          * 验收要看的是**归属**（轨道在工作区里、按钮只在轨道上）、**互斥**（同一时刻最多
          * 一格面板）和**管理页退场**，所以快照里同时记下祖先、按钮 id、面板可见性，以及
-         * 工具栏里还剩几颗重复入口。定值断言在启动器里（tests/smoke-electron.mjs）。
+         * 工作区里还画着几条横带。定值断言在启动器里（tests/smoke-electron.mjs）。
          */
         const railFacts = () => {
           const workspace = document.getElementById('session-workspace');
           const tools = document.getElementById('session-tools');
-          const toolbar = document.querySelector('.session-toolbar');
           const buttons = [...tools.querySelectorAll('.session-tool')];
           const shown = id => { const node = document.getElementById(id); return !!node && !node.hidden; };
           return {
             local: workspace.contains(tools),
+            // 会话栏删掉之后，「工具入口不在别处另有一份」落在这一条上：工作区里只剩内容
+            // 主体，顶栏和状态栏都挂在 #app 上，不属于这个工作区。
+            bands: [...workspace.children].map(node => node.id),
             onRail: buttons.map(button => button.id),
             expanded: Object.fromEntries(buttons.map(button => [button.id, button.getAttribute('aria-expanded')])),
             controls: Object.fromEntries(buttons.map(button => [button.id, button.getAttribute('aria-controls')])),
             named: buttons.every(button => (button.getAttribute('aria-label') || '').length > 0),
-            toolbarDuplicates: ['sftp-toggle', 'monitor-toggle'].filter(id => toolbar.contains(document.getElementById(id))).length,
             files: shown('sftp'),
             monitor: shown('session-monitor'),
           };
@@ -213,7 +215,9 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           document.getElementById('pass').value = config.password;
           document.getElementById('host-label').value = 'Monitor fixture';
           document.getElementById('connect').click();
-          await wait(() => document.getElementById('session-state').className === 'connected' ? true : null, 'session to connect');
+          // 会话状态的唯一来源是状态栏那一格，它按当前标签的 state 写 data-state。以前这里
+          // 读的是会话栏的 #session-state，那一栏已经删掉了。
+          await wait(() => document.getElementById('status-dot').dataset.state === 'connected' ? true : null, 'session to connect');
           const held = await wait(() => { const seen = facts(); return seen.cipher !== '—' && seen.key !== '—' ? seen : null; }, 'handshake facts');
           const railClosed = railFacts();
           // 折叠是默认值：展开之前一次探测都不该发生，状态文字要说的是「暂停」而不是「读取中」。
@@ -257,15 +261,20 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           const path = await wait(() => document.getElementById('sftp-path').value || null, 'SFTP listing');
           const files = document.querySelectorAll('#sftp-list .file-row').length;
           const railFiles = railFacts();
-          document.getElementById('disconnect').click();
-          await wait(() => document.getElementById('disconnect').disabled ? true : null, 'disconnected');
           // 管理页：整块终端工作区退场，轨道作为它的后代一起消失 —— 不能留在 #app 或右边缘上。
+          // 这一步趁标签还活着做：此刻面板正开着，轨道正显示着，退场才算数。
           document.getElementById('nav-hosts').click();
           const railManagement = {
             workspaceHidden: document.getElementById('session-workspace').hidden,
             railVisible: document.getElementById('session-tools').getClientRects().length > 0,
             panelVisible: document.getElementById('session-tool-panel').getClientRects().length > 0,
           };
+          // 关标签是这条会话唯一的结束方式（用户主动断开那颗按钮已经没有了），也是这次冒烟
+          // 给下一条用例让路的清理。前面那条 SSH 流程也留了一个标签，所以按「少了一个」
+          // 等，而不是按「一个不剩」等，并且关的是最后开的那一个 —— 监控会话那个。
+          const tabsBeforeClose = document.querySelectorAll('.session-tab').length;
+          [...document.querySelectorAll('.session-tab [data-tab-close]')].at(-1).click();
+          await wait(() => document.querySelectorAll('.session-tab').length < tabsBeforeClose ? true : null, 'the tab to close');
           return { collapsed, beforeExpand, facts: held, first, ready, path, files,
             rail: { closed: railClosed, monitor: railMonitor, files: railFiles, management: railManagement } };
         } finally {

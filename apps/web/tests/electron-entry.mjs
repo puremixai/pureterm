@@ -99,6 +99,10 @@ async function main() {
     assert.ok(report.sessionId && report.closedReason)
     console.log('[WEB-SMOKE] standalone Node SSH roundtrip succeeded')
 
+    // 会话状态的唯一来源是状态栏那一格：它按当前标签的 state 写 data-state。以前这几处读的
+    // 是会话栏的 #session-state，那一栏已经删掉了。
+    const sessionReady = () => evaluate('document.getElementById("status-dot").dataset.state === "connected"')
+
     for (const label of ['Alpha terminal', 'Beta terminal']) {
       await evaluate(`(() => {
         document.getElementById('host-new').click();
@@ -109,7 +113,7 @@ async function main() {
         document.getElementById('host-label').value = ${JSON.stringify(label)};
         document.getElementById('connect').click();
       })()`)
-      await until(() => evaluate('document.getElementById("session-state").className === "connected"'), 'independent SSH tab connection')
+      await until(() => sessionReady(), 'independent SSH tab connection')
     }
     assert.equal(await evaluate('document.querySelectorAll(".session-tab[data-state=connected]").length'), 2)
     const paste = async text => evaluate(`(() => {
@@ -124,16 +128,17 @@ async function main() {
     const railFacts = () => evaluate(`(() => {
       const workspace = document.getElementById('session-workspace');
       const tools = document.getElementById('session-tools');
-      const toolbar = document.querySelector('.session-toolbar');
       const buttons = [...tools.querySelectorAll('.session-tool')];
       const shown = id => { const node = document.getElementById(id); return !!node && !node.hidden; };
       return {
         local: workspace.contains(tools),
+        // 会话栏删掉之后，「工具入口不在别处另有一份」落在这一条上：工作区里只剩内容主体，
+        // 顶栏和状态栏都挂在 #app 上，不属于这个工作区。
+        bands: [...workspace.children].map(node => node.id),
         onRail: buttons.map(button => button.id),
         expanded: Object.fromEntries(buttons.map(button => [button.id, button.getAttribute('aria-expanded')])),
         controls: Object.fromEntries(buttons.map(button => [button.id, button.getAttribute('aria-controls')])),
         named: buttons.every(button => (button.getAttribute('aria-label') || '').length > 0),
-        toolbarDuplicates: ['sftp-toggle', 'monitor-toggle'].filter(id => toolbar.contains(document.getElementById(id))).length,
         files: shown('sftp'),
         monitor: shown('session-monitor'),
       };
@@ -169,7 +174,7 @@ async function main() {
       document.getElementById('host-label').value = 'Monitor fixture';
       document.getElementById('connect').click();
     })()`)
-    await until(() => evaluate('document.getElementById("session-state").className === "connected"'), 'monitored session connection')
+    await until(() => sessionReady(), 'monitored session connection')
     // 握手事实与监控是两条独立的通道：cipher 与 host key 直接来自 transport，
     // 卸载监控插件不该让这两格空掉。
     const facts = await until(() => evaluate(`(() => {
@@ -206,15 +211,18 @@ async function main() {
     })()`), 'SFTP listing on the monitored session')
     assert.ok(listing.files >= 1, 'SFTP must list the fixture file')
     const railFiles = await railFacts()
-    await evaluate('document.getElementById("disconnect").click()')
-    await until(() => evaluate('document.getElementById("disconnect").disabled'), 'monitored session disconnect')
     // 管理页：整块终端工作区退场，轨道作为它的后代一起消失 —— 不能留在 #app 或右边缘上。
+    // 这一步趁标签还活着、面板还开着做：此刻轨道正显示着，退场才算数。
     await evaluate('document.getElementById("nav-hosts").click()')
     const railManagement = await evaluate(`({
       workspaceHidden: document.getElementById('session-workspace').hidden,
       railVisible: document.getElementById('session-tools').getClientRects().length > 0,
       panelVisible: document.getElementById('session-tool-panel').getClientRects().length > 0,
     })`)
+    // 关标签是这条会话唯一的结束方式（用户主动断开那颗按钮已经没有了）。
+    const tabsBeforeClose = await evaluate('document.querySelectorAll(".session-tab").length')
+    await evaluate('document.querySelector(".session-tab [data-tab-close]").click()')
+    await until(() => evaluate(`document.querySelectorAll(".session-tab").length < ${tabsBeforeClose}`), 'monitored session tab to close')
     await evaluate(`(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); })()`)
     /*
      * 工具轨：终端工作区里的一列，只有两颗工具按钮，同一时刻最多一格面板，
@@ -227,7 +235,8 @@ async function main() {
     assert.deepEqual(railClosed.controls,
       { 'sftp-toggle': 'sftp', 'monitor-toggle': 'session-monitor' }, 'each tool controls its own panel')
     assert.equal(railClosed.named, true, 'icon-only rail buttons must still carry an accessible name')
-    assert.equal(railClosed.toolbarDuplicates, 0, 'the toolbar must not keep duplicate tool entries')
+    assert.deepEqual(railClosed.bands, ['session-body'],
+      'the terminal workspace draws one band, the session body: the session toolbar is gone')
     assert.equal(railClosed.files || railClosed.monitor, false, 'a new session starts with no panel')
     assert.deepEqual([railMonitor.files, railMonitor.monitor], [false, true], 'Monitor replaces the closed slot')
     assert.deepEqual([railMonitor.expanded['monitor-toggle'], railMonitor.expanded['sftp-toggle']],
@@ -258,7 +267,7 @@ async function main() {
     })()`)
     assert.equal(await evaluate('document.getElementById("key-path").value'), basename(process.env.PURETERM_TEST_PRIVATE_KEY), 'renaming a host must not discard its selected private key')
     await evaluate('document.getElementById("connect").click()')
-    await until(() => evaluate('document.getElementById("session-state").className === "connected"'), 'SSH authentication using the browser-selected private key')
+    await until(() => sessionReady(), 'SSH authentication using the browser-selected private key')
     await evaluate(`(() => {
       const text = new DataTransfer();
       text.setData('text/plain', 'browser-key-check\\r');
@@ -267,8 +276,10 @@ async function main() {
       }));
     })()`)
     await until(() => evaluate('document.querySelector(".terminal-pane:not([hidden]) .xterm-rows").textContent.includes("echo:browser-key-check")'), 'private-key terminal echo through browser paste')
-    await evaluate('document.getElementById("disconnect").click()')
-    await until(() => evaluate('document.getElementById("disconnect").disabled'), 'private-key SSH disconnect')
+    // 关标签就是断开，所以这里按活动标签自己的关闭按钮来结束这条会话。
+    const tabsBeforeKeyClose = await evaluate('document.querySelectorAll(".session-tab").length')
+    await evaluate('document.querySelector(".session-tab.is-active [data-tab-close]").click()')
+    await until(() => evaluate(`document.querySelectorAll(".session-tab").length < ${tabsBeforeKeyClose}`), 'private-key SSH tab to close')
     console.log('[WEB-BROWSER-KEY-AUTH] browser-selected private key authenticated and terminal echo completed')
     await evaluate(`(() => {
       document.getElementById('key-pass').value = 'browser-key-passphrase-never-persist';
@@ -300,7 +311,7 @@ async function main() {
     await savedToast('Host saved', 'Browser key host')
     assert.equal(await evaluate(`document.getElementById('host-direct-key').hidden`), true)
     await evaluate(`document.getElementById('connect').click()`)
-    await until(() => evaluate(`document.getElementById('session-state').className === 'connected'`), 'SSH authentication using Keychain ID')
+    await until(() => sessionReady(), 'SSH authentication using Keychain ID')
     await paste('keychain-authenticated')
     await until(() => evaluate(`${visibleText}.includes('echo:keychain-authenticated')`), 'Keychain-authenticated SSH terminal echo')
     await evaluate(`document.querySelector('.session-tab.is-active [data-tab-close]').click(); document.getElementById('nav-keychain').click()`)
