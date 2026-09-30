@@ -286,8 +286,14 @@ export interface MonitorUpdate {
   sequence: number
   status: 'ready' | 'partial' | 'unsupported' | 'error'
   snapshot: MonitorSnapshot | null
-  /** 远端可控文本：按文本渲染，绝不当作标记语言。上限 512 字符 */
-  message?: string
+  /**
+   * 这一轮为什么没成（`error` / `unsupported` 状态必带）。
+   *
+   * 从前这里是一句**宿主写的话**，于是远端可控的部分（操作系统名、采集脚本的 stderr）
+   * 和宿主写的部分混在同一个字符串里，整句都没法翻译。现在拆开了：码说明发生了什么，
+   * `params` 带远端那部分数据，`message` 是只进日志的诊断原文。
+   */
+  error?: WireError
 }
 
 export interface SessionFacts {
@@ -446,21 +452,22 @@ export function parseMonitorUpdate(value: unknown): MonitorUpdate {
   if (!isPositiveSafeInteger(value.sequence)) fail('sequence')
   const status = value.status
   if (status !== 'ready' && status !== 'partial' && status !== 'unsupported' && status !== 'error') fail('status')
-  let message: string | undefined
-  if (value.message !== undefined) {
-    if (typeof value.message !== 'string' || value.message.length > MAX_MESSAGE_LENGTH) fail('message')
-    message = value.message
+  let error: WireError | undefined
+  if (value.error !== undefined) {
+    if (!isWireError(value.error)) fail('error')
+    // 诊断原文只进日志，所以在这里封顶就够：远端可控的是 params 里的数据，不是它。
+    error = { code: value.error.code, ...(value.error.params ? { params: value.error.params } : {}), message: value.error.message.slice(0, MAX_MESSAGE_LENGTH) }
   }
   if (status === 'error' || status === 'unsupported') {
     if (value.snapshot !== null) fail(`${status} 的 snapshot`)
-    if (!message) fail(`${status} 的 message`)
+    if (!error) fail(`${status} 的 error`)
     return {
       sessionId: value.sessionId as string,
       subscriptionId: value.subscriptionId as string,
       sequence: value.sequence,
       status,
       snapshot: null,
-      ...(message ? { message } : {}),
+      ...(error ? { error } : {}),
     }
   }
   if (value.snapshot === null || value.snapshot === undefined) fail(`${status} 的 snapshot`)
@@ -473,7 +480,7 @@ export function parseMonitorUpdate(value: unknown): MonitorUpdate {
     sequence: value.sequence,
     status,
     snapshot,
-    ...(message ? { message } : {}),
+    ...(error ? { error } : {}),
   }
 }
 
@@ -554,7 +561,7 @@ export interface SshApi {
   pickPrivateKey(): Promise<PickedPrivateKey | undefined>
   onOpened(listener: (sessionId: string, cols: number, rows: number) => void): () => void
   onData(listener: (sessionId: string, chunk: Uint8Array) => void): () => void
-  onClosed(listener: (sessionId: string, reason: string) => void): () => void
+  onClosed(listener: (sessionId: string, reason: WireError) => void): () => void
   /** Carrier connection loss, including when no SSH terminal is open. */
   onDisconnected(listener: (reason: string) => void): () => void
   /** Release this client's subscriptions and transport resources. */
@@ -728,6 +735,14 @@ export const HOST_ERROR_CODES = [
   'monitor.frame.missing-os',
   // 载体与派发层的校验
   'transport.params-not-array',
+  /**
+   * 载体与后端之间的连接断了。
+   *
+   * 这是**客户端自己**认出来的失败，不是后端报的：socket 掉了之后没有人再能告诉
+   * 会话它为什么结束，而「界面停在已连接」比一个笼统的原因坏得多。所以它和后端
+   * 报的失败走同一个形状，由渲染层给同一套译文。
+   */
+  'transport.disconnected',
   'dispatch.arg-not-object',
   'dispatch.arg-not-string',
   'dispatch.arg-not-number',
@@ -773,18 +788,40 @@ export class HostError extends Error {
   }
 }
 
+/**
+ * 任意异常 → `HostError`。
+ *
+ * Host 内部有几处把「不知道是什么的东西」当异常接住，而它之后要**当作失败继续传**
+ * （广播给渲染层、作为会话结束的原因）。那几处必须能拿到一个带 code 的东西，
+ * 否则一条 `TypeError` 会以「不认识的码」到达界面，而它的原文本该被保留下来。
+ */
+export function asHostError(error: unknown): HostError {
+  if (error instanceof HostError) return error
+  return new HostError('internal', undefined, error instanceof Error ? error.message : String(error))
+}
+
 /** 任意异常 → 线上形状。认得 HostError 就保留身份，否则归到 internal。 */
 export function toWireError(error: unknown): WireError {
-  if (error instanceof HostError) {
-    return { code: error.code, ...(error.params ? { params: error.params } : {}), message: error.message }
-  }
-  return { code: 'internal', message: error instanceof Error ? error.message : String(error) }
+  const host = asHostError(error)
+  return { code: host.code, ...(host.params ? { params: host.params } : {}), message: host.message }
 }
 
 /** 判断一个值是不是线上形状的错误。渲染层重建它之前要用。 */
 export function isWireError(value: unknown): value is WireError {
   const candidate = value as WireError | null
   return !!candidate && typeof candidate === 'object' && typeof candidate.code === 'string' && typeof candidate.message === 'string'
+}
+
+/**
+ * 线上形状 → 渲染层手里的异常。
+ *
+ * 渲染层拿到的是同一个 `HostError` 类型，所以 `catch` 里 `instanceof` 和读 `code`
+ * 与 Host 内部写法一致。`code` 认不出来（新旧版本错位）时不抛：它照旧是个
+ * `HostError`，只是分类表里没有这一格，界面于是退回 `message` —— 那句话是
+ * **不做本地化**的诊断原文，可读但不漂亮，好过一片空白。
+ */
+export function fromWireError(wire: WireError): HostError {
+  return new HostError(wire.code, wire.params ? { ...wire.params } : undefined, wire.message)
 }
 
 // ── WebSocket 载体的线格式 ────────────────────────────────────────
@@ -805,7 +842,7 @@ export interface WireNotice {
   params: unknown[]
 }
 
-export type WireReply = { kind: 'reply'; id: number; ok: true; value: unknown } | { kind: 'reply'; id: number; ok: false; error: string }
+export type WireReply = { kind: 'reply'; id: number; ok: true; value: unknown } | { kind: 'reply'; id: number; ok: false; error: WireError }
 
 export interface WireEvent {
   kind: 'event'

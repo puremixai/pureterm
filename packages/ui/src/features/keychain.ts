@@ -1,7 +1,8 @@
 import { Service, type Context } from 'cordis'
 import { MAX_PRIVATE_KEY_BYTES, type KeyRecord, type KeySaveRequest } from '@pureterm/protocol'
 import { t, tPlural } from '@pureterm/i18n'
-import { ClientScope, cleanError, DomListeners } from '../client-runtime.js'
+import { ClientScope, DomListeners } from '../client-runtime.js'
+import { errorMessage, errorText } from '../failure-diagnostics.js'
 import { messageKey, resolveMessage, type MessageText } from '../message-text.js'
 import { saveBytes } from '../local-file.js'
 import { formatBytes, formatTime } from '../format.js'
@@ -146,7 +147,7 @@ export class ClientKeychain extends Service {
       this.el<HTMLButtonElement>('keychain-new').disabled = false
       this.renderPolicy()
       await this.refresh()
-    } catch (error) { if (this.scope.alive) this.notice({ text: cleanError(error) }, true) }
+    } catch (error) { if (this.scope.alive) this.notice(errorMessage(error), true) }
   }
 
   /** 凭据怎么存这一句是常驻说明，所以它得跟着语言走，而不是在 initialize 里写死。 */
@@ -188,7 +189,7 @@ export class ClientKeychain extends Service {
       this.notice({ text: '' })
       this.render()
       this.ctx.emit('client/keychain-change')
-    } catch (error) { if (this.scope.alive && revision === this.listRevision) this.notice({ text: cleanError(error) }, true) }
+    } catch (error) { if (this.scope.alive && revision === this.listRevision) this.notice(errorMessage(error), true) }
     finally { if (this.scope.alive && revision === this.listRevision) this.el('keychain-list').setAttribute('aria-busy', 'false') }
   }
 
@@ -385,7 +386,7 @@ export class ClientKeychain extends Service {
       this.ctx.clientToasts.notify({ title: t('keys.toast.saved'), detail: t('keys.toast.saved-detail') })
       this.ctx.emit('client/keychain-change')
       await this.refresh()
-    } catch (error) { if (this.scope.alive && revision === this.revision) this.status(cleanError(error), 'err') }
+    } catch (error) { if (this.scope.alive && revision === this.revision) this.status(errorText(error), 'err') }
     finally { if (this.scope.alive && operation === this.operation) this.setBusy(false) }
   }
 
@@ -409,7 +410,7 @@ export class ClientKeychain extends Service {
       this.render()
       this.status(t('keys.status.imported', { name: file.name }))
       this.el('keychain-passphrase').focus()
-    } catch (error) { if (this.scope.alive && revision === this.revision) this.status(cleanError(error), 'err') }
+    } catch (error) { if (this.scope.alive && revision === this.revision) this.status(errorText(error), 'err') }
     finally { if (this.scope.alive && operation === this.operation) this.setBusy(false) }
   }
 
@@ -427,7 +428,7 @@ export class ClientKeychain extends Service {
       this.close()
       await this.refresh()
       if (this.scope.alive && operation === this.operation) this.notice(messageKey('keys.notice.deleted', { label: key.label }))
-    } catch (error) { if (this.scope.alive && operation === this.operation) this.status(cleanError(error), 'err') }
+    } catch (error) { if (this.scope.alive && operation === this.operation) this.status(errorText(error), 'err') }
     finally { if (this.scope.alive && operation === this.operation) this.setBusy(false) }
   }
 

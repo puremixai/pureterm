@@ -1,7 +1,8 @@
 import { Service, type Context } from 'cordis'
 import type { RendererReadyPayload } from '@pureterm/protocol'
 import { t } from '@pureterm/i18n'
-import { ClientScope, cleanError } from '../client-runtime.js'
+import { ClientScope } from '../client-runtime.js'
+import { errorText } from '../failure-diagnostics.js'
 import type { SmokeReport } from '../transport.js'
 
 declare module 'cordis' { interface Context { clientApplication: ClientApplication } }
@@ -37,7 +38,7 @@ export class ClientApplication extends Service {
       this.ctx.clientTransport.api.signalReady(payload)
       return payload
     } catch (error) {
-      const message = cleanError(error)
+      const message = errorText(error)
       const payload = { ok: false, hosts: 0, cols: 0, rows: 0, error: message }
       if (this.scope.alive) { this.ctx.clientView.status(message, 'err'); this.ctx.clientTransport.api.signalReady(payload) }
       return payload
@@ -61,14 +62,16 @@ export class ClientApplication extends Service {
       if (!await this.scope.delay(400)) throw new Error(t('client.disposed'))
       api.resize(result.sessionId, 120, 40)
       if (!await this.scope.delay(200)) throw new Error(t('client.disposed'))
-      const closed = new Promise<string>(resolve => { unsubscribe = api.onClosed((id, reason) => { if (id === result.sessionId) resolve(reason) }) })
+      // 结束的原因是一个错误码，报告里记码而不是句子：报告是给冒烟断言读的，
+      // 断言一个稳定的身份比断言一句会随语言变的文案结实。
+      const closed = new Promise<string>(resolve => { unsubscribe = api.onClosed((id, reason) => { if (id === result.sessionId) resolve(reason.code) }) })
       unregister = this.scope.cancelOnDispose(() => unsubscribe?.())
       api.close(result.sessionId)
       report.closedReason = await Promise.race([closed, this.scope.delay(1500).then(() => null)])
       if (!await this.scope.delay(250)) throw new Error(t('client.disposed'))
       report.text = terminal.text()
       report.replacementChars = (report.text.match(/\uFFFD/g) ?? []).length
-    } catch (error) { report.error = cleanError(error) }
+    } catch (error) { report.error = errorText(error) }
     finally { unsubscribe?.(); unregister?.() }
     return report
   }

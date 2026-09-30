@@ -1,7 +1,8 @@
 import { Service, type Context } from 'cordis'
 import { MAX_TRANSFER_BYTES, type SftpDir, type SftpEntry } from '@pureterm/protocol'
 import { t } from '@pureterm/i18n'
-import { ClientScope, cleanError, type ClientView } from '../client-runtime.js'
+import { ClientScope, type ClientView } from '../client-runtime.js'
+import { errorMessage } from '../failure-diagnostics.js'
 import { messageKey, messageText, resolveMessage, type MessageText } from '../message-text.js'
 import { createSftpPanel, type SftpView } from '../sftp-panel.js'
 import { readFileBytes, saveBytes } from '../local-file.js'
@@ -285,7 +286,7 @@ export class ClientSftp extends Service {
       state.hint = messageText('')
       return true
     } catch (error) {
-      if (this.live(state) && state.navigation === revision) { state.hint = messageText(cleanError(error)); state.kind = 'err' }
+      if (this.live(state) && state.navigation === revision) { state.hint = errorMessage(error); state.kind = 'err' }
       return false
     } finally {
       if (this.live(state) && state.navigation === revision) { state.busy = false; this.show(state) }
@@ -303,7 +304,7 @@ export class ClientSftp extends Service {
       const message = await run()
       if (this.live(state) && navigation === state.navigation) { state.hint = message; state.kind = 'ok' }
     } catch (error) {
-      if (this.live(state) && navigation === state.navigation) { state.hint = messageText(cleanError(error)); state.kind = 'err' }
+      if (this.live(state) && navigation === state.navigation) { state.hint = errorMessage(error); state.kind = 'err' }
     } finally {
       if (this.live(state) && navigation === state.navigation) { state.busy = false; this.show(state) }
     }

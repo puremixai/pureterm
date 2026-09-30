@@ -1,6 +1,7 @@
 import { Service, type Context } from 'cordis'
 import type { FileEntryWithStats, SFTPWrapper, Stats } from 'ssh2'
 import {
+  HostError,
   MAX_TRANSFER_BYTES,
   type SftpDir,
   type SftpEntry,
@@ -102,7 +103,7 @@ export function remoteName(path: string): string {
 export function requireName(name: string): string {
   const leaf = (name ?? '').trim()
   if (!leaf || leaf === '.' || leaf === '..' || leaf.includes('/')) {
-    throw new Error(`名字不对：「${leaf}」。请只填一个名字——不要带斜杠，也不要填 . 或 ..`)
+    throw new HostError('sftp.bad-name', { name: leaf })
   }
   return leaf
 }
@@ -129,26 +130,14 @@ export function orderEntries(entries: SftpEntry[]): SftpEntry[] {
   })
 }
 
-/** 操作类别。错误文案要按它分叉——同一个失败码在不同操作下是不同的事 */
+/**
+ * 操作类别。它只做一件事：**选码**。
+ *
+ * 从前它还负责拼句子的主语（「读取目录 X 失败」），所以那些句子是宿主写的、跨线之后
+ * 没法翻译。现在句子里只有 `path`，操作由码本身说 —— `sftp.remove-failed` 与
+ * `sftp.write-failed` 是两个码，不需要再在文案里重复一遍是谁失败了。
+ */
 export type SftpAction = 'list' | 'stat' | 'read' | 'write' | 'mkdir' | 'remove'
-
-const DESCRIBE: Record<SftpAction, (path: string) => string> = {
-  list: (path) => `读取目录 ${path}`,
-  stat: (path) => `读取 ${path} 的属性`,
-  read: (path) => `读取 ${path}`,
-  write: (path) => `写入 ${path}`,
-  mkdir: (path) => `新建目录 ${path}`,
-  remove: (path) => `删除 ${path}`,
-}
-
-const ACTION_LABEL: Record<SftpAction, string> = {
-  list: '读目录',
-  stat: '读属性',
-  read: '读文件',
-  write: '写文件',
-  mkdir: '建目录',
-  remove: '删除',
-}
 
 /** SFTP 的状态码。ssh2 把它放在 error.code 上（数字） */
 const SFTP_STATUS = {
@@ -159,55 +148,47 @@ const SFTP_STATUS = {
 } as const
 
 /**
- * 把 ssh2 的 SFTP 错误翻译成「用户知道下一步该干什么」的中文。
+ * 把 ssh2 的 SFTP 失败认成一个**错误码**。
  *
- * 和 `normalizeSshError` 一样导出：这些文案是对着真实性状表驱动测出来的，
- * 抄错一个词就会静默失效、把英文原文漏给用户，而那正是已经犯过的错。纯函数。
+ * 和 `classifySshError` 一样导出：这些状态码是对着真实性状表驱动测出来的，
+ * 认错一格就会静默失效、把失败报成笼统的 `sftp.failed`，而那正是已经犯过的错。纯函数。
  *
  * 关键的一条：`FAILURE`(4) 是个**什么都可能是**的兜底码，OpenSSH 在
- * 「删非空目录」「目录已存在」「磁盘满」这几个场景上都回它。所以文案必须按
- * **操作**分叉，而不是按码——只按码只能写出一句「操作失败」，用户拿它做不了任何事。
+ * 「删非空目录」「目录已存在」「磁盘满」这几个场景上都回它。所以这里按**操作**
+ * 分叉成三个不同的码——只给一个码的话，界面只能写出一句「操作失败」，
+ * 用户拿它做不了任何事。
  */
-export function normalizeSftpError(error: unknown, action: SftpAction, path: string): Error {
+export function classifySftpError(error: unknown, action: SftpAction, path: string): HostError {
   const message = error instanceof Error ? error.message : String(error)
   const raw = (error as { code?: unknown } | null | undefined)?.code
   const status =
     typeof raw === 'number' ? raw : typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : undefined
 
   if (status === SFTP_STATUS.NO_SUCH_FILE) {
-    return new Error(
-      action === 'write' || action === 'mkdir'
-        ? `远端的目录不存在：${path} 不是一个能进去的目录。上传和新建都只能落在**已经存在**的目录里，` +
-            `先在终端里把它建出来，或者换一个位置。`
-        : `远端没有 ${path}——可能已经被移走或删掉了，点「刷新」再看一眼。`,
-    )
+    return action === 'write' || action === 'mkdir'
+      ? new HostError('sftp.no-such-directory', { path }, message)
+      : new HostError('sftp.no-such-file', { path }, message)
   }
   if (status === SFTP_STATUS.PERMISSION_DENIED) {
-    return new Error(`${DESCRIBE[action](path)} 失败：远端账号对这个位置没有权限（属主不对，或目录不可写）。`)
+    return new HostError('sftp.permission-denied', { path }, message)
   }
   if (status === SFTP_STATUS.OP_UNSUPPORTED) {
-    return new Error(`远端 SFTP 服务不支持「${ACTION_LABEL[action]}」这个操作。`)
+    return new HostError('sftp.op-unsupported', { path }, message)
   }
   if (status === SFTP_STATUS.FAILURE) {
-    if (action === 'remove') {
-      return new Error(`${DESCRIBE[action](path)} 失败：目录可能不是空的，或者它正被别的进程占用。空目录才能删。`)
-    }
-    if (action === 'mkdir') {
-      return new Error(`${DESCRIBE[action](path)} 失败：这个名字可能已经存在了（同名文件或目录）。`)
-    }
-    if (action === 'write') {
-      return new Error(`${DESCRIBE[action](path)} 失败：远端可能没有空间了，或者这个目录不可写。`)
-    }
-    return new Error(`${DESCRIBE[action](path)} 失败：远端拒绝了这次操作（${message}）。`)
+    if (action === 'remove') return new HostError('sftp.remove-failed', { path }, message)
+    if (action === 'mkdir') return new HostError('sftp.mkdir-failed', { path }, message)
+    if (action === 'write') return new HostError('sftp.write-failed', { path }, message)
+    return new HostError('sftp.failed-rejected', { path, detail: message }, message)
   }
   // 码拿不到时兜一层文案匹配。顺序不能反：有些实现只给文案不给码。
   if (/no such file|not exist/i.test(message)) {
-    return new Error(`远端没有 ${path}——可能已经被移走或删掉了，点「刷新」再看一眼。`)
+    return new HostError('sftp.no-such-file', { path }, message)
   }
   if (/permission denied/i.test(message)) {
-    return new Error(`${DESCRIBE[action](path)} 失败：远端账号对这个位置没有权限。`)
+    return new HostError('sftp.permission-denied-plain', { path }, message)
   }
-  return new Error(`${DESCRIBE[action](path)} 失败：${message}`)
+  return new HostError('sftp.failed', { path, detail: message }, message)
 }
 
 export class SftpBridge extends Service {
@@ -229,7 +210,7 @@ export class SftpBridge extends Service {
     const absolute = await this.realpath(sftp, await this.expand(sftp, path, 'list'), 'list')
     const found = await new Promise<FileEntryWithStats[]>((resolve, reject) => {
       sftp.readdir(absolute, (error, list) => {
-        if (error) reject(normalizeSftpError(error, 'list', absolute))
+        if (error) reject(classifySftpError(error, 'list', absolute))
         else resolve(list ?? [])
       })
     })
@@ -260,18 +241,14 @@ export class SftpBridge extends Service {
     const absolute = await this.realpath(sftp, await this.expand(sftp, path, 'read'), 'read')
     const stats = await this.stat(sftp, absolute, 'read')
 
-    if (stats.isDirectory()) throw new Error(`${absolute} 是一个目录，不能当文件下载。`)
+    if (stats.isDirectory()) throw new HostError('sftp.is-directory', { path: absolute })
     if (stats.size > MAX_TRANSFER_BYTES) {
-      throw new Error(
-        `${absolute} 有 ${stats.size} 字节，超过单次传输上限 ${MAX_TRANSFER_BYTES} 字节。` +
-          `文件内容要整份走 base64 + JSON 过线（Web 载体的单条报文上限是 8 MiB），` +
-          `分块流式传输还没做。先用终端里的 scp / rsync 拿这个文件。`,
-      )
+      throw new HostError('sftp.download-too-large', { path: absolute, size: stats.size, limit: MAX_TRANSFER_BYTES })
     }
 
     const bytes = await new Promise<Buffer>((resolve, reject) => {
       sftp.readFile(absolute, (error, data) => {
-        if (error) reject(normalizeSftpError(error, 'read', absolute))
+        if (error) reject(classifySftpError(error, 'read', absolute))
         else resolve(data)
       })
     })
@@ -287,16 +264,15 @@ export class SftpBridge extends Service {
     // 不复制：只在这段内存上开一个视图，大文件下省一次整份拷贝
     const data = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
     if (data.length > MAX_TRANSFER_BYTES) {
-      throw new Error(
-        `要上传的内容有 ${data.length} 字节，超过单次传输上限 ${MAX_TRANSFER_BYTES} 字节。` +
-          `分块流式上传还没做，先换个小一点的文件。`,
+      throw new HostError('sftp.upload-too-large', { size: data.length, limit: MAX_TRANSFER_BYTES },
+        `upload is ${data.length} bytes, over the ${MAX_TRANSFER_BYTES} byte single-transfer limit.`,
       )
     }
 
     const target = await this.resolveTarget(sftp, dir, name, 'write')
     await new Promise<void>((resolve, reject) => {
       sftp.writeFile(target.full, data, (error) => {
-        if (error) reject(normalizeSftpError(error, 'write', target.full))
+        if (error) reject(classifySftpError(error, 'write', target.full))
         else resolve()
       })
     })
@@ -309,7 +285,7 @@ export class SftpBridge extends Service {
     const target = await this.resolveTarget(sftp, dir, name, 'mkdir')
     await new Promise<void>((resolve, reject) => {
       sftp.mkdir(target.full, (error) => {
-        if (error) reject(normalizeSftpError(error, 'mkdir', target.full))
+        if (error) reject(classifySftpError(error, 'mkdir', target.full))
         else resolve()
       })
     })
@@ -320,7 +296,7 @@ export class SftpBridge extends Service {
     const sftp = await this.ctx.ssh.sftpSession(sessionId)
     const expanded = await this.expand(sftp, path, 'remove')
     const name = remoteName(expanded)
-    if (!name) throw new Error(`路径不对：${path} 指的是一个目录本身，没有东西可以删。`)
+    if (!name) throw new HostError('sftp.no-such-path', { path })
 
     /*
      * 这里**绝不能** realpath 整个路径：realpath 会跟随软链，于是
@@ -338,7 +314,7 @@ export class SftpBridge extends Service {
     const drop: 'rmdir' | 'unlink' = stats.isDirectory() ? 'rmdir' : 'unlink'
     await new Promise<void>((resolve, reject) => {
       sftp[drop](target.full, (error) => {
-        if (error) reject(normalizeSftpError(error, 'remove', target.full))
+        if (error) reject(classifySftpError(error, 'remove', target.full))
         else resolve()
       })
     })
@@ -386,7 +362,7 @@ export class SftpBridge extends Service {
   private realpath(sftp: SFTPWrapper, path: string, action: SftpAction): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       sftp.realpath(path, (error, absolute) => {
-        if (error) reject(normalizeSftpError(error, action, path))
+        if (error) reject(classifySftpError(error, action, path))
         else resolve(absolute)
       })
     })
@@ -395,7 +371,7 @@ export class SftpBridge extends Service {
   private stat(sftp: SFTPWrapper, path: string, action: SftpAction): Promise<Stats> {
     return new Promise<Stats>((resolve, reject) => {
       sftp.stat(path, (error, stats) => {
-        if (error) reject(normalizeSftpError(error, action, path))
+        if (error) reject(classifySftpError(error, action, path))
         else resolve(stats)
       })
     })
@@ -405,7 +381,7 @@ export class SftpBridge extends Service {
   private lstat(sftp: SFTPWrapper, path: string, action: SftpAction): Promise<Stats> {
     return new Promise<Stats>((resolve, reject) => {
       sftp.lstat(path, (error, stats) => {
-        if (error) reject(normalizeSftpError(error, action, path))
+        if (error) reject(classifySftpError(error, action, path))
         else resolve(stats)
       })
     })

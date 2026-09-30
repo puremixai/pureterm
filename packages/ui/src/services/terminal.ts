@@ -1,11 +1,11 @@
 import { Service, type Context } from 'cordis'
 import type { TerminalOpenRequest, TerminalOpenResult } from '@pureterm/protocol'
 import { t } from '@pureterm/i18n'
-import { ClientScope, cleanError, DomListeners } from '../client-runtime.js'
-import { messageKey, messageText, resolveMessage, type MessageText } from '../message-text.js'
+import { ClientScope, DomListeners } from '../client-runtime.js'
+import { messageKey, resolveMessage, type MessageText } from '../message-text.js'
 import { createTerminalView, type TerminalFactory, type TerminalView } from '../terminal-view.js'
 import { initialsOf } from '../host-list.js'
-import { diagnose, stageKey, type Failure } from '../failure-diagnostics.js'
+import { diagnose, errorMessage, stageKey, type Failure } from '../failure-diagnostics.js'
 
 export type TabState = 'connecting' | 'connected' | 'disconnected' | 'failed'
 export interface TerminalTab {
@@ -135,11 +135,13 @@ export class ClientTerminal extends Service {
     }), 'terminal.data')
     ctx.effect(() => api.onClosed((id, reason) => {
       if (this.stopped || !id) return
+      // 结束的原因是一个错误码，不是一个句子：宿主报什么码，界面就按当前语言说哪句话。
+      const ended = errorMessage(reason)
       const tab = this.bySession.get(id)
-      if (tab) this.ended(tab, reason ? messageText(reason) : messageKey('session.state.ended'))
+      if (tab) this.ended(tab, ended)
       else {
         const pending = this.early.get(id)
-        if (pending) pending.closed = reason ? messageText(reason) : messageKey('session.state.ended')
+        if (pending) pending.closed = ended
       }
     }), 'terminal.closed')
     this.scope.listen(view.element('disconnect'), 'click', () => this.disconnect())
@@ -318,7 +320,7 @@ export class ClientTerminal extends Service {
     // 「认证被拒绝」会挂在这一台上。认不出阶段时不给结论，这和路由整条收起是同一条
     // 规矩。
     const chip = view.element('failure-chip')
-    chip.textContent = failed && active.failure ? t(active.failure.title) : ''
+    chip.textContent = failed && active.failure ? resolveMessage(active.failure.title) : ''
     chip.hidden = !failed || !active.failure?.stage
     view.element('failure-raw').textContent = failed ? resolveMessage(active.logs.at(-1)) : ''
     if (failed) {
@@ -427,8 +429,8 @@ export class ClientTerminal extends Service {
         tab.sessionId = null
         tab.state = 'failed'
         tab.message = messageKey('session.state.failed')
-        tab.logs.push(messageText(cleanError(error)))
-        tab.failure = diagnose(cleanError(error))
+        tab.logs.push(errorMessage(error))
+        tab.failure = diagnose(error)
         this.changed(tab)
       }
       return undefined

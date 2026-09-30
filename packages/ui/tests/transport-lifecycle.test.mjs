@@ -77,7 +77,7 @@ test('WebSocket loss closes every live terminal tab once', async t => {
   instances[0].message({ kind: 'reply', id: instances[0].sent[0].id, ok: true, value: {} })
   await initial
   for (const id of ['one', 'two', 'three']) instances[0].message({ kind: 'event', name: 'terminal:opened', params: [id, 80, 24] })
-  instances[0].message({ kind: 'event', name: 'terminal:closed', params: ['two', 'user closed'] })
+  instances[0].message({ kind: 'event', name: 'terminal:closed', params: ['two', { code: 'host.session-closed', message: 'host.session-closed' }] })
   instances[0].close()
   assert.deepEqual(closed, ['two', 'one', 'three'])
 })

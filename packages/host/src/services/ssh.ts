@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 import { Socket } from 'node:net'
 import type { Client as SshClient, ClientChannel, ConnectConfig, NegotiatedAlgorithms, PseudoTtyOptions, SFTPWrapper } from 'ssh2'
 import { StringDecoder } from 'node:string_decoder'
-import type { SessionFacts } from '@pureterm/protocol'
+import { HostError, type SessionFacts } from '@pureterm/protocol'
 import { HostKeyStore } from './host-key-store.js'
 
 /*
@@ -23,7 +23,7 @@ declare module 'cordis' {
     /** 新会话建立。广播语义：谁关心谁订阅，不参与调用链。 */
     'ssh/session-opened'(sessionId: string, target: string): void
     /** 会话结束（正常关闭 / 断线 / 出错）。reason 永远非空，不允许静默消失。 */
-    'ssh/session-closed'(sessionId: string, reason: string): void
+    'ssh/session-closed'(sessionId: string, reason: HostError): void
     /** 首次记录某主机的密钥（TOFU）。 */
     'ssh/host-key-learned'(target: string, fingerprint: string): void
     /**
@@ -66,7 +66,9 @@ export interface SshConnectOptions {
 
 /**
  * 读私钥文件。只读一次、不缓存——私钥不是我们的数据，用完即弃。
- * 读不到时给的是「哪个文件、为什么」，而不是把 ENOENT 直接抛给用户。
+ *
+ * 路径和 errno 都进 params，所以界面说的是「哪个文件、为什么」——而 errno 本身
+ * 进 `message`，那是给日志看的、不做本地化的那一面。
  */
 function readPrivateKey(path: string | undefined): string | undefined {
   if (!path) return undefined
@@ -74,9 +76,7 @@ function readPrivateKey(path: string | undefined): string | undefined {
     return readFileSync(path, 'utf8')
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
-    const reason =
-      code === 'ENOENT' ? '文件不存在' : code === 'EACCES' ? '没有读取权限' : (error as Error).message
-    throw new Error(`读不到私钥文件：${path}（${reason}）。`)
+    throw new HostError('ssh.key-file-unreadable', { path, reason: code ?? 'unknown' }, `read ${path}: ${(error as Error).message}`)
   }
 }
 
@@ -115,7 +115,7 @@ interface InternalSession extends SshSessionInfo {
    * 会话被丢弃时要一次性拒绝它们：连接没了之后它们永远不会再收到数据，
    * 让调用方一直等到超时，等于把「连接断了」报成「命令太慢」。
    */
-  execs: Set<(reason: string) => void>
+  execs: Set<(reason: HostError) => void>
   /** 最近一次握手的协商结果。ssh2 只在 handshake 事件里给一次，所以必须自己存。 */
   facts?: SessionFacts
   /**
@@ -152,7 +152,15 @@ function clamp(value: number | undefined, min: number, max: number, fallback: nu
 }
 
 /**
- * 把 ssh2 的英文底层错误翻译成用户能看懂、且能据此行动的信息。
+ * 把 ssh2 的英文底层错误认成一个**错误码**。
+ *
+ * 这里匹配的仍然是句子，但匹配的是 **ssh2 自己的话**，不是宿主写的话：`ECONNREFUSED`、
+ * `Cannot parse privateKey`、`Unable to start subsystem` 都是库吐出来的原文，没有
+ * 第二份可对。认出来之后返回 `{code, params}`，句子由文案目录按当前语言给 ——
+ * 从前这里返回的是一句中文散文，跨线之后渲染层只能原样显示，也就没法翻译。
+ *
+ * 认不出来的一律落到 `ssh.failed`，原文进 `message`（只进日志、以及渲染层遇到
+ * 不认识的码时的兜底）。绝不猜：`ssh.failed` 是「连接失败」而不是「认证失败」。
  *
  * `context` 只影响「通道开不起来」这一类：ssh2 对子系统被拒和命令被拒报的是同一句
  * `Channel open failure`，但两件事的下一步完全不同（一个要改 sshd_config 的
@@ -160,91 +168,74 @@ function clamp(value: number | undefined, min: number, max: number, fallback: nu
  * 哪条通道，而不是让文案替用户猜。其它分支与 context 无关。
  *
  * 导出是为了能对**真实的 ssh2 文案**做表驱动测试（`tests/smoke-host.mjs`）：
- * 这些字符串是精确匹配出来的，抄错一个词就会静默失效、把英文原文漏给用户，
+ * 这些字符串是精确匹配出来的，抄错一个词就会静默失效、把失败报成 `ssh.failed`，
  * 而那正是已经犯过的错。纯函数，没有副作用。
  */
-export function normalizeSshError(error: Error, host: string, port: number, context?: 'sftp' | 'exec'): Error {
-  const message = error?.message ?? String(error)
-  if (/All configured authentication methods failed/i.test(message)) {
-    return new Error('认证失败：用户名、密码或私钥不正确。')
+export function classifySshError(error: Error, host: string, port: number, context?: 'sftp' | 'exec'): HostError {
+  const detail = error?.message ?? String(error)
+  const at = { host, port }
+  if (/All configured authentication methods failed/i.test(detail)) {
+    return new HostError('ssh.auth-failed', undefined, detail)
   }
   // 「有口令但没给」要用户去填口令，「文件根本不是密钥」要用户换文件，「口令不对」才是猜错——
   // 三种得给三种不同的下一步动作，糊成一句「无法解析」用户不知道该怎么办。
   // 注意顺序：② 必须在 ③ 之前，因为 client 侧统一包成 `Cannot parse privateKey: <真因>`，③ 也能命中。
-  if (/encrypted .*key detected, but no passphrase given/i.test(message)) {
-    return new Error('这把私钥有口令保护，请在「私钥口令」里填上。')
+  if (/encrypted .*key detected, but no passphrase given/i.test(detail)) {
+    return new HostError('ssh.key-passphrase-needed', undefined, detail)
   }
-  if (/Unsupported key format|does not contain a \(valid\) private key/i.test(message)) {
-    return new Error('这个文件不是可识别的私钥（支持 OpenSSH / PEM 格式），请重新选一个。')
+  if (/Unsupported key format|does not contain a \(valid\) private key/i.test(detail)) {
+    return new HostError('ssh.key-unrecognized', undefined, detail)
   }
   if (
     /Cannot parse privateKey|Decryption failed|bad passphrase|Invalid key|integrity check failed|Failed to generate information to decrypt key/i.test(
-      message,
+      detail,
     )
   ) {
-    return new Error('私钥无法解析：口令可能不对，或这不是 OpenSSH/PEM 格式的私钥。')
+    return new HostError('ssh.key-unparseable', undefined, detail)
   }
   // TCP 通了、但对方在给出 SSH 横幅之前就断开。这条最容易把人带偏：用户会以为是密钥不对，
-  // 其实连认证都还没走到。所以必须明说「与密钥无关」并给出该查什么。
-  if (/Connection lost before handshake/i.test(message)) {
-    return new Error(
-      `${host}:${port} 的 TCP 连接建立了，但对方在送出 SSH 横幅之前就断开了。` +
-        `这一步还没到认证，所以不是密钥或密码的问题。` +
-        `常见原因：这个端口上跑的不是 SSH 服务；对端安全组/防火墙只放通了 TCP 却丢弃数据；` +
-        `或对端瞬时不稳（隔几秒重试一次通常就好）。`,
-    )
+  // 其实连认证都还没走到。所以它是一个**单独的码**，不是「连接失败」的一种说法。
+  if (/Connection lost before handshake/i.test(detail)) {
+    return new HostError('ssh.banner-before-handshake', at, detail)
   }
   /*
    * 非交互命令通道开不起来。和 SFTP 那条共用同一句 ssh2 文案，所以必须靠 context
    * 分开：对探测说「SFTP 子系统没开」会把用户指向一个与失败无关的配置项。
    */
-  if (context === 'exec' && /Channel open failure|Unable to exec|exec request failed/i.test(message)) {
-    return new Error(
-      `${host}:${port} 连上了、登录也成功了，但这台服务器拒绝了这条命令通道。` +
-        `常见原因：账号被 ForceCommand 限制（只允许交互式 shell），` +
-        `或该账号的并发通道数已达上限（OpenSSH 的 MaxSessions，默认 10）。` +
-        `终端本身仍然可以用。`,
-    )
+  if (context === 'exec' && /Channel open failure|Unable to exec|exec request failed/i.test(detail)) {
+    return new HostError('ssh.exec-channel-refused', at, detail)
   }
   /*
    * SFTP 子系统开不起来。**这是「连上了但功能用不了」，不是认证失败**，
    * 所以必须和连接错误分开说：用户会以为是密码不对，然后去反复重填密码。
    * 这两句文案只可能来自子系统请求本身，所以不需要 context 就能认定。
    */
-  if (/Unable to start subsystem|establishing SFTP session|SFTP session termination/i.test(message)) {
-    return new Error(
-      `${host}:${port} 连上了、登录也成功了，但这台服务器没能开起 SFTP 子系统。` +
-        `常见原因：sshd_config 里的 \`Subsystem sftp\` 被注释掉了（OpenSSH 默认是开的，` +
-        `很多精简镜像会关掉）；或者这个账号被 ForceCommand/ChrootDirectory 限制，` +
-        `不允许开子系统。终端本身仍然可以用。`,
-    )
+  if (/Unable to start subsystem|establishing SFTP session|SFTP session termination/i.test(detail)) {
+    return new HostError('ssh.sftp-subsystem-unavailable', at, detail)
   }
   /*
    * 通道被拒，但调用方没说这是哪条通道（终端、SFTP 之外的情形）。
-   * 这一句只能描述事实，不能替用户猜是哪一项配置的问题。
+   * 这个码只能描述事实，不能替用户猜是哪一项配置的问题。
    */
-  if (/Channel open failure/i.test(message)) {
-    return new Error(
-      `${host}:${port} 连上了、登录也成功了，但这台服务器没能开出这条通道。` +
-        `常见原因：该账号的并发通道数已达上限（OpenSSH 的 MaxSessions，默认 10）。`,
-    )
+  if (/Channel open failure/i.test(detail)) {
+    return new HostError('ssh.channel-refused', at, detail)
   }
-  if (/ECONNREFUSED/i.test(message)) {
-    return new Error(`无法连接 ${host}:${port}：目标端口拒绝连接（服务未启动或被防火墙拦截）。`)
+  if (/ECONNREFUSED/i.test(detail)) {
+    return new HostError('ssh.connection-refused', at, detail)
   }
-  if (/ENOTFOUND|EAI_AGAIN/i.test(message)) {
-    return new Error(`无法解析主机名 ${host}。`)
+  if (/ENOTFOUND|EAI_AGAIN/i.test(detail)) {
+    return new HostError('ssh.dns-failed', { host }, detail)
   }
-  if (/ETIMEDOUT|Timed out while waiting|Timed out/i.test(message)) {
-    return new Error(`连接 ${host}:${port} 超时：网络不可达，或端口被丢弃。`)
+  if (/ETIMEDOUT|Timed out while waiting|Timed out/i.test(detail)) {
+    return new HostError('ssh.timeout', at, detail)
   }
-  if (/Host verification failed|Host key verification failed/i.test(message)) {
-    return new Error(`主机密钥校验失败：${host}:${port} 的密钥与本地记录不一致。`)
+  if (/Host verification failed|Host key verification failed/i.test(detail)) {
+    return new HostError('ssh.host-key-verification-failed', at, detail)
   }
-  if (/Socket closed|ECONNRESET/i.test(message)) {
-    return new Error(`与 ${host}:${port} 的连接被重置。`)
+  if (/Socket closed|ECONNRESET/i.test(detail)) {
+    return new HostError('ssh.connection-reset', at, detail)
   }
-  return new Error(`${host}:${port} 连接失败：${message}`)
+  return new HostError('ssh.failed', { ...at, detail }, detail)
 }
 
 /**
@@ -325,20 +316,20 @@ export class SshService extends Service {
   }
 
   async connect(options: SshConnectOptions): Promise<SshSessionInfo> {
-    if (options.signal?.aborted) throw new Error('客户端已断开连接。')
+    if (options.signal?.aborted) throw new HostError('ssh.client-disconnected')
     const host = options.host?.trim()
     const port = options.port ?? 22
-    if (!host) throw new Error('主机地址不能为空。')
-    if (!options.username) throw new Error('用户名不能为空。')
+    if (!host) throw new HostError('ssh.empty-host')
+    if (!options.username) throw new HostError('ssh.empty-username')
 
     // 私钥内容优先用调用方给的；否则按路径现读（读不到时错误里带着文件名和原因）
     const privateKey = options.privateKey ?? readPrivateKey(options.privateKeyPath)
     if (!options.password && !privateKey && !process.env.SSH_AUTH_SOCK) {
-      throw new Error('缺少认证凭据：填密码、选私钥文件，或让 ssh-agent 先加载好密钥。')
+      throw new HostError('ssh.missing-credential')
     }
 
     const acceptUnknown = options.acceptUnknownHostKey ?? true
-    const verifier: { error?: Error; learned?: string } = {}
+    const verifier: { error?: HostError; learned?: string } = {}
 
     const config: ConnectConfig = {
       host,
@@ -352,14 +343,13 @@ export class SshService extends Service {
         const verdict = this.hostKeys.check(host, port, key)
         if (verdict.status === 'match') return true
         if (verdict.status === 'changed') {
-          verifier.error = new Error(
-            `主机密钥已改变，可能是中间人攻击。\n  本地记录：${verdict.knownFingerprint}\n  本次收到：${verdict.fingerprint}\n` +
-              `确认无误后，删除 ${this.hostKeys.file} 中该主机的记录再重连。`,
-          )
+          verifier.error = new HostError('ssh.host-key-changed', {
+            host, port, known: verdict.knownFingerprint ?? '', received: verdict.fingerprint,
+          })
           return false
         }
         if (!acceptUnknown) {
-          verifier.error = new Error(`首次连接该主机，指纹为 ${verdict.fingerprint}（当前策略要求显式确认）。`)
+          verifier.error = new HostError('ssh.first-connection', { fingerprint: verdict.fingerprint })
           return false
         }
         verifier.learned = this.hostKeys.remember(host, port, key)
@@ -408,7 +398,7 @@ export class SshService extends Service {
         socket.off('error', onSocketError)
         options.signal?.removeEventListener('abort', onAbort)
       }
-      const fail = (error: Error): void => {
+      const fail = (error: HostError): void => {
         if (settled) return
         settled = true
         cleanup()
@@ -427,10 +417,10 @@ export class SshService extends Service {
         cleanup()
         resolve()
       }
-      const onError = (error: Error): void => fail(verifier.error ?? normalizeSshError(error, host, port))
-      const onSocketError = (error: Error): void => fail(normalizeSshError(error, host, port))
-      const onClose = (): void => fail(new Error('SSH 连接在握手完成前已关闭。'))
-      const onAbort = (): void => fail(new Error('客户端已断开连接。'))
+      const onError = (error: Error): void => fail(verifier.error ?? classifySshError(error, host, port))
+      const onSocketError = (error: Error): void => fail(classifySshError(error, host, port))
+      const onClose = (): void => fail(new HostError('ssh.handshake-closed'))
+      const onAbort = (): void => fail(new HostError('ssh.client-disconnected'))
       client.once('ready', onReady)
       client.once('error', onError)
       client.once('close', onClose)
@@ -445,7 +435,7 @@ export class SshService extends Service {
         // connect() 会把「私钥解析不了」这类问题**同步抛出**（不是走 error 事件），
         // 所以这条路径也必须过一遍翻译，否则用户看到的是 `Cannot parse privateKey: ...` 原文。
         const cause = error instanceof Error ? error : new Error(String(error))
-        fail(verifier.error ?? normalizeSshError(cause, host, port))
+        fail(verifier.error ?? classifySshError(cause, host, port))
       }
     })
 
@@ -457,9 +447,9 @@ export class SshService extends Service {
     this.sessions.set(id, session)
 
     // ready 之后的长生命周期错误：必须有出口
-    client.on('error', (error: Error) => this.drop(id, `连接错误：${error.message}`))
-    client.on('close', () => this.drop(id, '连接已关闭'))
-    client.on('end', () => this.drop(id, '服务器主动断开连接'))
+    client.on('error', (error: Error) => this.drop(id, classifySshError(error, host, port)))
+    client.on('close', () => this.drop(id, new HostError('ssh.connection-closed')))
+    client.on('end', () => this.drop(id, new HostError('ssh.server-disconnected')))
 
     if (verifier.learned) this.ctx.emit('ssh/host-key-learned', `${host}:${port}`, verifier.learned)
     this.ctx.emit('ssh/session-opened', id, `${host}:${port}`)
@@ -488,7 +478,7 @@ export class SshService extends Service {
         if (settled) return
         settled = true
         signal?.removeEventListener('abort', onAbort)
-        reject(new Error('客户端已断开连接。'))
+        reject(new HostError('ssh.client-disconnected'))
       }
       signal?.addEventListener('abort', onAbort, { once: true })
       if (signal?.aborted) { onAbort(); return }
@@ -496,7 +486,7 @@ export class SshService extends Service {
         if (settled) { channel?.close(); return }
         settled = true
         signal?.removeEventListener('abort', onAbort)
-        if (error) reject(normalizeSshError(error, session.host, session.port))
+        if (error) reject(classifySshError(error, session.host, session.port))
         else resolve(channel)
       })
     })
@@ -522,7 +512,7 @@ export class SshService extends Service {
     if (!session.sftpOpening) {
       session.sftpOpening = new Promise<SFTPWrapper>((resolve, reject) => {
         session.client.sftp((error, sftp) => {
-          if (error) reject(normalizeSshError(error, session.host, session.port, 'sftp'))
+          if (error) reject(classifySshError(error, session.host, session.port, 'sftp'))
           else resolve(sftp)
         })
       })
@@ -610,18 +600,18 @@ export class SshService extends Service {
       const closeChannel = (): void => {
         try { channel?.close() } catch { /* 通道可能已经关了 */ }
       }
-      const cancel = (reason: string): void => settle(() => { closeChannel(); reject(new Error(reason)) })
-      const onAbort = (): void => cancel('命令执行已取消。')
+      const cancel = (error: HostError): void => settle(() => { closeChannel(); reject(error) })
+      const onAbort = (): void => cancel(new HostError('ssh.exec-cancelled'))
       const onData = (chunk: Buffer): void => {
         if (settled) return
         bytes += chunk.length
-        if (bytes > maxBytes) { cancel(`命令输出超过 ${maxBytes} 字节上限。`); return }
+        if (bytes > maxBytes) { cancel(new HostError('ssh.exec-output-limit', { limit: maxBytes })); return }
         out.push(outDecoder.write(chunk))
       }
       const onStderr = (chunk: Buffer): void => {
         if (settled) return
         bytes += chunk.length
-        if (bytes > maxBytes) { cancel(`命令输出超过 ${maxBytes} 字节上限。`); return }
+        if (bytes > maxBytes) { cancel(new HostError('ssh.exec-output-limit', { limit: maxBytes })); return }
         err.push(errDecoder.write(chunk))
       }
       const onExit = (exitCode: number | null, exitSignal?: string): void => {
@@ -633,16 +623,16 @@ export class SshService extends Service {
         err.push(errDecoder.end())
         resolve({ stdout: out.join(''), stderr: err.join(''), code, signal: signalName })
       })
-      const onError = (streamError: Error): void => settle(() => reject(streamError))
+      const onError = (streamError: Error): void => settle(() => reject(classifySshError(streamError, session.host, session.port)))
 
       session.execs.add(cancel)
       signal?.addEventListener('abort', onAbort, { once: true })
-      if (timeout) timer = setTimeout(() => cancel(`命令执行超时（${timeout}ms）。`), timeout)
+      if (timeout) timer = setTimeout(() => cancel(new HostError('ssh.exec-timeout', { timeout })), timeout)
       if (signal?.aborted) { onAbort(); return }
 
       session.client.exec(command, (error, opened) => {
         if (error) {
-          settle(() => reject(normalizeSshError(error, session.host, session.port, 'exec')))
+          settle(() => reject(classifySshError(error, session.host, session.port, 'exec')))
           return
         }
         // 超时或取消之后才到的通道：它没有任何人持有，必须当场关掉，
@@ -663,24 +653,24 @@ export class SshService extends Service {
   }
 
   /** 主动断开：统一走 drop，保证只发一次 session-closed */
-  dispose(sessionId: string, reason = '会话已关闭'): void {
+  dispose(sessionId: string, reason: HostError = new HostError('host.session-closed')): void {
     this.drop(sessionId, reason)
   }
 
   private requireSession(sessionId: string): InternalSession {
     const session = this.sessions.get(sessionId)
-    if (!session) throw new Error('会话不存在或已关闭，请重新连接。')
+    if (!session) throw new HostError('ssh.session-gone')
     return session
   }
 
-  private drop(sessionId: string, reason: string): void {
+  private drop(sessionId: string, reason: HostError): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
     this.sessions.delete(sessionId)
     session.closed = true
     // 先拒在途的 exec，再拆连接：反过来的话，通道关闭会让它们以「拿到了半截
     // 输出」结束，而真正的消息是「连接断了」。
-    for (const cancel of [...session.execs]) cancel('会话已关闭，命令已取消。')
+    for (const cancel of [...session.execs]) cancel(new HostError('ssh.exec-session-closed'))
     session.client.off('handshake', session.handshakeListener)
     try {
       session.client.end()

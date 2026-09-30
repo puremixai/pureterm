@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
-import { decodeWire, encodeWire, isWireCall, isWireNotice, type WireEvent, type WireReply } from '@pureterm/protocol'
+import { HostError, decodeWire, encodeWire, isWireCall, isWireNotice, toWireError, type WireEvent, type WireReply } from '@pureterm/protocol'
 import type { RendererHandle } from '@pureterm/host'
 import type { Carrier } from './carrier.js'
 import type { Dispatcher } from './dispatch.js'
@@ -119,7 +119,7 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
   const token = randomBytes(TOKEN_BYTES).toString('base64url')
   const browserAccess = options.browserAccess !== false
   const bindHost = options.host ?? '127.0.0.1'
-  if (bindHost !== '127.0.0.1') throw new Error('Web 服务只允许监听 127.0.0.1。')
+  if (bindHost !== '127.0.0.1') throw new Error('The Web carrier may only listen on 127.0.0.1.')
   const connections = new Map<number, WsConnection>()
   let port = -1
 
@@ -240,13 +240,13 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
     if (isWireCall(message)) {
       const decoded = decodeWire(message.params)
       if (!Array.isArray(decoded)) {
-        send({ kind: 'reply', id: message.id, ok: false, error: '参数必须是数组。' })
+        send({ kind: 'reply', id: message.id, ok: false, error: toWireError(new HostError('transport.params-not-array')) })
         return
       }
       options.dispatcher
         .call(message.method, decoded, clientId)
         .then((value) => send({ kind: 'reply', id: message.id, ok: true, value }))
-        .catch((error: unknown) => send({ kind: 'reply', id: message.id, ok: false, error: errorMessage(error) }))
+        .catch((error: unknown) => send({ kind: 'reply', id: message.id, ok: false, error: toWireError(error) }))
       return
     }
 
@@ -257,7 +257,7 @@ export async function createHttpCarrier(options: HttpCarrierOptions): Promise<Ht
       return
     }
 
-    connection.close(1003, '不认识的报文')
+    connection.close(1003, 'unknown frame')
   }
 
   // ── HTTP 静态资源 ──────────────────────────────────────────────

@@ -6,7 +6,7 @@ import { ClientTransport } from '../src/services/transport.js'
 
 import { VERSION } from '../src/lib/version.js'
 
-import type { SshApi, HostRecord, HostSaveRequest, KeyRecord, KeySaveRequest, MonitorSnapshot, MonitorStartRequest, MonitorStartResult, MonitorStopResult, MonitorUpdate, RendererReadyPayload, SessionFacts, SftpDir, TerminalOpenResult, TerminalOpenRequest } from '@pureterm/protocol'
+import { HostError, type SshApi, type HostRecord, type HostSaveRequest, type KeyRecord, type KeySaveRequest, type MonitorSnapshot, type MonitorStartRequest, type MonitorStartResult, type MonitorStopResult, type MonitorUpdate, type RendererReadyPayload, type SessionFacts, type SftpDir, type TerminalOpenResult, type TerminalOpenRequest } from '@pureterm/protocol'
 
 import type { TerminalView } from '../src/terminal-view.js'
 
@@ -35,6 +35,9 @@ const input = (id: string): HTMLInputElement => document.getElementById(id) as H
 const click = (id: string): void => input(id).click()
 
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
+
+/** 一个失败的线上形状。`message` 永远在，它是这个失败不依赖语言的那一面。 */
+const wire = (code: string, params?: Record<string, string | number>) => ({ code, ...(params ? { params } : {}), message: code })
 
 
 
@@ -68,11 +71,11 @@ function fixture() {
     holding: false,
 
     /** 非 null 时 start 直接失败，用来造 MONITOR_UNAVAILABLE。 */
-    rejection: null as string | null,
+    rejection: null as ReturnType<typeof wire> | null,
 
     async start(request: MonitorStartRequest): Promise<MonitorStartResult> {
       monitor.starts.push(request)
-      if (monitor.rejection) throw new Error(monitor.rejection)
+      if (monitor.rejection) throw Object.assign(new Error(monitor.rejection.message), monitor.rejection)
       monitor.active.add(request.subscriptionId)
       if (monitor.holding) await new Promise<void>((resolve, reject) => { monitor.held.push({ request, resolve, reject }) })
       return { subscriptionId: request.subscriptionId, intervalMs: 5000 }
@@ -110,7 +113,7 @@ function fixture() {
 
     open: async () => { const sessionId = `test-${++stats.opens}`; emit('opened', sessionId, 80, 24); return { sessionId, host: 'localhost', cols: 80, rows: 24 } },
 
-    close: id => { stats.closes++; emit('closed', id, 'closed') },
+    close: id => { stats.closes++; emit('closed', id, wire('host.session-closed')) },
 
     input: () => { stats.inputs++ }, resize: () => {}, pickPrivateKey: async () => undefined,
 
@@ -383,7 +386,7 @@ async function runChecks() {
         return { content: input('keychain-private').value, label: input('keychain-label').value }
       }
       const status = input('keychain-status').textContent ?? ''
-      if (status.includes('一次导入一个')) throw new Error(`drop delivered no file: ${status}`)
+      if (status.includes('Import one private key file at a time')) throw new Error(`drop delivered no file: ${status}`)
       return null
     }, 'dropped private key')
 
@@ -959,7 +962,7 @@ async function runChecks() {
 
     concurrent.api.open = request => { const result = deferred<TerminalOpenResult>(); pendingOpens.push({ request, result }); return result.promise }
 
-    concurrent.api.close = id => { released.push(id); concurrent.emit('closed', id, 'closed') }
+    concurrent.api.close = id => { released.push(id); concurrent.emit('closed', id, wire('host.session-closed')) }
 
     client = createClient({ api: concurrent.api, terminalFactory: concurrent.terminalFactory })
 
@@ -1001,7 +1004,7 @@ async function runChecks() {
 
     assert(released.includes('cancelled') && client.context.clientTerminal.tabs.length === 2, 'closing a pending tab left a late SSH connection alive')
 
-    concurrent.emit('closed', 'earlier-request', 'remote ended')
+    concurrent.emit('closed', 'earlier-request', wire('ssh.connection-closed'))
 
     assert(client.context.clientTerminal.tabs[0]!.state === 'disconnected' && concurrent.terminals[0]!.disposed === 0, 'remote disconnect must retain scrollback until the tab is closed')
 
@@ -1042,9 +1045,10 @@ async function runChecks() {
 
     const attempts: TerminalOpenRequest[] = []
 
-    // 照抄 ssh2 真正的措辞：这一句要能分诊到 TCP，而不是靠兜底路径显示。
+    // 分诊这一步现在归宿主：ssh2 的措辞由它读成码，客户端只认码。这里给的就是它
+    // 会把 ECONNREFUSED 转成的那一份，所以路线画得出来，而不是走兜底。
 
-    failures.api.open = async request => { attempts.push({ ...request }); throw new Error('connect ECONNREFUSED ::1:22') }
+    failures.api.open = async request => { attempts.push({ ...request }); throw new HostError('ssh.connection-refused', { host: 'localhost', port: 22 }, 'connect ECONNREFUSED ::1:22') }
 
     client = createClient({ api: failures.api, terminalFactory: failures.terminalFactory })
 
@@ -1072,7 +1076,7 @@ async function runChecks() {
 
     assert(!failPage.classList.contains('route-collapsed'), 'a classified failure must draw the route')
 
-    assert(nodes.filter(n => n.classList.contains('is-failed')).map(n => n.dataset.stage).join() === 'tcp', 'ECONNREFUSED must fail the TCP node')
+    assert(nodes.filter(n => n.classList.contains('is-failed')).map(n => n.dataset.stage).join() === 'tcp', 'ssh.connection-refused must fail the TCP node')
 
     assert(nodes[0]!.classList.contains('is-passed') && !nodes[2]!.classList.contains('is-passed'), 'what got through is marked through, what never ran is not')
 
@@ -1646,7 +1650,7 @@ async function runChecks() {
     // 宿主里没有监控插件：可预期，不是坏了。
     const absent = fixture()
 
-    absent.monitor.rejection = 'MONITOR_UNAVAILABLE'
+    absent.monitor.rejection = wire('host.monitor-unavailable')
 
     client = createClient({ api: absent.api, terminalFactory: absent.terminalFactory })
 
@@ -1677,7 +1681,7 @@ async function runChecks() {
 
     const nonLinuxSubscription = nonLinux.monitor.starts.at(-1)!
 
-    nonLinux.monitor.update({ sessionId: nonLinuxSessions[0]!, subscriptionId: nonLinuxSubscription.subscriptionId, sequence: 1, status: 'unsupported', snapshot: null, message: '这台主机的操作系统是 Windows，暂不支持资源监控。' })
+    nonLinux.monitor.update({ sessionId: nonLinuxSessions[0]!, subscriptionId: nonLinuxSubscription.subscriptionId, sequence: 1, status: 'unsupported', snapshot: null, error: wire('monitor.unsupported-os', { os: 'Windows' }) })
 
     await tick()
 
@@ -1690,13 +1694,13 @@ async function runChecks() {
 
     await tick()
 
-    nonLinux.monitor.update({ sessionId: nonLinuxSessions[0]!, subscriptionId: nonLinuxSubscription.subscriptionId, sequence: 3, status: 'error', message: '远端采集命令超时。' })
+    nonLinux.monitor.update({ sessionId: nonLinuxSessions[0]!, subscriptionId: nonLinuxSubscription.subscriptionId, sequence: 3, status: 'error', error: wire('monitor.no-metrics') })
 
     await tick()
 
     assert(monitorStatus() === 'error', 'a failed probe is an error')
 
-    assert(monitorText('monitor-detail') === '远端采集命令超时。', 'and it shows the reason the host gave')
+    assert(monitorText('monitor-detail') === 'The remote returned no usable metrics.', 'and it shows the sentence the code maps to')
 
     assert(monitorValue('cpu') === '12.5%', 'an error keeps the last sample rather than blanking the row')
 
@@ -1756,9 +1760,9 @@ async function runChecks() {
     // 当前订阅的重复序号和更早的序号同样被忽略。
     switching.monitor.update({ sessionId: switched[0]!, subscriptionId: firstTab.subscriptionId, sequence: 2, status: 'ready', snapshot: fullSnapshot() })
 
-    switching.monitor.update({ sessionId: switched[0]!, subscriptionId: firstTab.subscriptionId, sequence: 2, status: 'error', message: '重复的序号' })
+    switching.monitor.update({ sessionId: switched[0]!, subscriptionId: firstTab.subscriptionId, sequence: 2, status: 'error', error: wire('monitor.no-metrics') })
 
-    switching.monitor.update({ sessionId: switched[0]!, subscriptionId: firstTab.subscriptionId, sequence: 1, status: 'error', message: '更早的序号' })
+    switching.monitor.update({ sessionId: switched[0]!, subscriptionId: firstTab.subscriptionId, sequence: 1, status: 'error', error: wire('monitor.no-metrics') })
 
     await tick()
 

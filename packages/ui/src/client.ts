@@ -1,7 +1,8 @@
 import { Context, type Fiber } from 'cordis'
 import { t } from '@pureterm/i18n'
 import type { RendererReadyPayload, SshApi } from '@pureterm/protocol'
-import { ClientView, cleanError } from './client-runtime.js'
+import { ClientView } from './client-runtime.js'
+import { errorText } from './failure-diagnostics.js'
 import { ClientTransport } from './services/transport.js'
 import { ClientTerminal } from './services/terminal.js'
 import { ClientHosts } from './features/hosts.js'
@@ -56,7 +57,7 @@ export function createClient(options: ClientOptions = {}): Client {
       if (disposed) return stopped
     }
     return context.clientApplication.ready
-  })().catch(error => ({ ok: false, hosts: 0, cols: 0, rows: 0, error: cleanError(error) }))
+  })().catch(error => ({ ok: false, hosts: 0, cols: 0, rows: 0, error: errorText(error) }))
   const ready = Promise.race([stopped, mounting])
   const client: Client = {
     context, scopes, ready,

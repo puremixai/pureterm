@@ -16,6 +16,12 @@ async function until(predicate, description, timeout = 3000) {
   assert.fail(`Timed out waiting for ${description}`)
 }
 
+/** `assert.rejects` 的判定器：失败带的是码，断言码而不是那句话。 */
+const rejectedWith = code => error => {
+  assert.equal(error.code, code, error.message)
+  return true
+}
+
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'pureterm-ssh-exec-'))
   const events = []
@@ -66,7 +72,7 @@ test('an abort before the request is sent never reaches the remote at all', asyn
   const { server, ssh, sessionId } = await connected(t)
   const controller = new AbortController()
   controller.abort()
-  await assert.rejects(ssh.exec(sessionId, 'never-runs', { signal: controller.signal }), /取消/)
+  await assert.rejects(ssh.exec(sessionId, 'never-runs', { signal: controller.signal }), rejectedWith('ssh.exec-cancelled'))
   assert.deepEqual(server.exec.commands, [])
   assert.equal(ssh.pendingExecs(sessionId), 0)
 })
@@ -82,7 +88,7 @@ test('an abort while the channel is opening rejects at once and closes the chann
   const running = ssh.exec(sessionId, 'slow-open', { signal: controller.signal })
   await until(() => server.exec.commands.length === 1, 'the exec request reaching the server')
   controller.abort()
-  await assert.rejects(running, /取消/)
+  await assert.rejects(running, rejectedWith('ssh.exec-cancelled'))
   // The point of moving the timer outside the ssh2 callback: the caller learns
   // immediately, instead of after however long the server takes to open a channel.
   assert.ok(Date.now() - started < 350, `the abort waited for the channel (${Date.now() - started}ms)`)
@@ -100,7 +106,7 @@ test('the timeout covers channel acquisition, and a channel that opens after it 
   })
   t.after(() => clearTimeout(accepted))
   const started = Date.now()
-  await assert.rejects(ssh.exec(sessionId, 'never-opens', { timeout: 120 }), /超时/)
+  await assert.rejects(ssh.exec(sessionId, 'never-opens', { timeout: 120 }), rejectedWith('ssh.exec-timeout'))
   assert.ok(Date.now() - started < 350, `the timeout did not include acquisition (${Date.now() - started}ms)`)
   assert.equal(ssh.pendingExecs(sessionId), 0)
   await until(() => server.exec.closed === 1, 'the channel that opened after the timeout being closed')
@@ -113,7 +119,7 @@ test('a hung command is rejected by its deadline rather than held open', async t
     // when a remote command blocks on something.
     onExec: ({ accept }) => { accept() },
   })
-  await assert.rejects(ssh.exec(sessionId, 'sleep 1000', { timeout: 150 }), /超时/)
+  await assert.rejects(ssh.exec(sessionId, 'sleep 1000', { timeout: 150 }), rejectedWith('ssh.exec-timeout'))
   assert.equal(ssh.pendingExecs(sessionId), 0)
 })
 
@@ -127,7 +133,7 @@ test('stdout and stderr are counted against one bound, and overflow rejects inst
       stream.end()
     },
   })
-  await assert.rejects(ssh.exec(sessionId, 'huge', { maxBytes: 65_536 }), /65536/)
+  await assert.rejects(ssh.exec(sessionId, 'huge', { maxBytes: 65_536 }), rejectedWith('ssh.exec-output-limit'))
   assert.equal(ssh.pendingExecs(sessionId), 0)
 })
 
@@ -142,7 +148,7 @@ test('stderr alone is bounded too, so a failing command cannot grow memory witho
       stream.end()
     },
   })
-  await assert.rejects(ssh.exec(sessionId, 'noisy', { maxBytes: 65_536 }), /65536/)
+  await assert.rejects(ssh.exec(sessionId, 'noisy', { maxBytes: 65_536 }), rejectedWith('ssh.exec-output-limit'))
   assert.equal(ssh.pendingExecs(sessionId), 0)
 })
 
@@ -192,11 +198,11 @@ test('a rejected command channel is reported as a command problem, not as a miss
     onExec: ({ reject }) => reject(),
   })
   await assert.rejects(ssh.exec(sessionId, 'forbidden'), error => {
-    // ssh2 uses `Channel open failure` for both, so the message has to follow the
-    // channel the caller asked for: telling a probe to check `Subsystem sftp` would
-    // point the user at a setting that has nothing to do with the failure.
-    assert.doesNotMatch(error.message, /SFTP/)
-    assert.match(error.message, /命令通道|通道/)
+    // ssh2 uses `Channel open failure` for both, so the code has to follow the channel
+    // the caller asked for: telling a probe to check `Subsystem sftp` would point the
+    // user at a setting that has nothing to do with the failure.
+    assert.equal(error.code, 'ssh.exec-channel-refused')
+    assert.notEqual(error.code, 'ssh.sftp-subsystem-unavailable')
     return true
   })
   assert.equal(ssh.pendingExecs(sessionId), 0)
@@ -209,7 +215,7 @@ test('disposing the session rejects a pending command promptly instead of waitin
   const running = ssh.exec(sessionId, 'sleep 1000', { timeout: 30_000 })
   const started = Date.now()
   host.close(sessionId)
-  await assert.rejects(running, /会话已关闭/)
+  await assert.rejects(running, rejectedWith('ssh.exec-session-closed'))
   // 30s of deadline left, so a prompt rejection is the whole point: a dropped connection
   // must not be reported as a slow command.
   assert.ok(Date.now() - started < 2000, `disposal waited for the deadline (${Date.now() - started}ms)`)
@@ -220,7 +226,7 @@ test('a command that fails leaves the terminal on the same connection usable', a
   const { host, ssh, server, events, sessionId } = await connected(t, {
     onExec: ({ reject }) => reject(),
   })
-  await assert.rejects(ssh.exec(sessionId, 'forbidden'), /通道/)
+  await assert.rejects(ssh.exec(sessionId, 'forbidden'), rejectedWith('ssh.exec-channel-refused'))
   // Cancelling or failing an exec closes only its own channel. The shell opened by
   // openTerminal shares the same SSH connection, and it has to keep working.
   assert.equal(server.connections, 1)

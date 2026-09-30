@@ -1,4 +1,5 @@
 import { Service, type Context } from 'cordis'
+import type { HostError } from '@pureterm/protocol'
 
 declare module 'cordis' {
   interface Context {
@@ -21,6 +22,11 @@ export interface HostLogOptions {
  *
  * 顺带把它做成一个示例：插件层该怎么消费事件。
  * 事件是**广播**语义（谁关心谁订阅），请求/响应一律走服务方法返回 Promise。
+ *
+ * 这些行是**给开发者的日志**，不是给用户看的文案：所以它们是英文、也不进目录。
+ * 会话结束的原因现在是一个 `HostError`，日志打的是 `code` 加它的诊断原文 ——
+ * 那句话不做本地化，正是为了能原样进日志。`message` 缺省时它就是 `code` 本身
+ * （见 `HostError` 的构造函数），所以那一份不再重复打一遍。
  */
 export class HostLog extends Service {
   constructor(ctx: Context, options: HostLogOptions = {}) {
@@ -30,13 +36,14 @@ export class HostLog extends Service {
     if (sink === false) return
 
     this.ctx.on('ssh/session-opened', (sessionId: string, target: string) => {
-      sink(`[host] ${sessionId} 已连接 ${target}`)
+      sink(`[host] ${sessionId} opened ${target}`)
     })
-    this.ctx.on('ssh/session-closed', (sessionId: string, reason: string) => {
-      sink(`[host] ${sessionId} 已结束：${reason}`)
+    this.ctx.on('ssh/session-closed', (sessionId: string, reason: HostError) => {
+      const detail = reason.message && reason.message !== reason.code ? ` (${reason.message})` : ''
+      sink(`[host] ${sessionId} closed: ${reason.code}${detail}`)
     })
     this.ctx.on('ssh/host-key-learned', (target: string, fingerprint: string) => {
-      sink(`[host] 首次记录 ${target} 的主机密钥指纹 ${fingerprint}`)
+      sink(`[host] ${target} host key learned: ${fingerprint}`)
     })
   }
 }

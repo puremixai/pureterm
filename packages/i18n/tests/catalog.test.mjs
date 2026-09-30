@@ -43,8 +43,10 @@ test('every declared host error code has a sentence in both languages', () => {
 
 test('t fills placeholders and leaves an unknown one standing', () => {
   setLocale('en')
-  assert.equal(t('error.ssh.connection-error', { detail: 'boom' }), 'Connection error: boom')
-  assert.equal(t('error.ssh.connection-error', { other: 'boom' }), 'Connection error: {detail}',
+  assert.equal(t('error.ssh.key-file-unreadable', { path: '/home/me/id_ed25519', reason: 'ENOENT' }),
+    'Cannot read the private key file: /home/me/id_ed25519 (ENOENT).')
+  assert.equal(t('error.ssh.key-file-unreadable', { path: '/home/me/id_ed25519' }),
+    'Cannot read the private key file: /home/me/id_ed25519 ({reason}).',
     'a missing param must stay visible rather than silently blanking the sentence')
   assert.equal(t('error.ssh.empty-host'), 'Enter a host address.')
 })
@@ -87,12 +89,14 @@ test('a locale tag narrows to one of the two catalogs', () => {
   assert.ok(!isLocale('fr') && !isLocale(undefined))
 })
 
-test('the sftp action phrases compose into the sentences that use them', () => {
+test('a per-code sentence reads with the path the host sent', () => {
+  // 每个码一句话，操作由码本身说 —— 句子只需要把宿主给的 path 填进去。
   setLocale('en')
-  const describe = t('sftp.action.remove', { path: '/srv/app' })
-  assert.equal(t('error.sftp.remove-failed', { describe }),
-    'Delete /srv/app failed: the directory may not be empty, or another process is using it. Only empty directories can be deleted.')
+  assert.equal(t('error.sftp.remove-failed', { path: '/srv/app' }),
+    'Cannot remove /srv/app: the directory may not be empty, or another process is using it. Only empty directories can be deleted.')
+  assert.equal(t('error.sftp.op-unsupported', { path: '/srv/app' }),
+    'The remote SFTP service does not support this operation on /srv/app.')
   setLocale('zh')
-  assert.equal(t('error.sftp.op-unsupported', { label: t('sftp.action-label.mkdir') }),
-    '远端 SFTP 服务不支持「建目录」这个操作。')
+  assert.equal(t('error.sftp.mkdir-failed', { path: '/srv/app' }),
+    '无法创建 /srv/app：这个名字可能已经存在了（同名文件或目录）。')
 })

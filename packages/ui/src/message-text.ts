@@ -26,8 +26,3 @@ export function resolveMessage(message: MessageText | null | undefined): string 
   if (!message) return ''
   return 'key' in message ? t(message.key, message.params) : message.text
 }
-
-/** `{ text }` 里是不是有真内容。用来判断「这一行要不要画」。 */
-export function hasMessage(message: MessageText | null | undefined): boolean {
-  return resolveMessage(message).length > 0
-}

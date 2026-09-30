@@ -169,24 +169,6 @@ export const en = {
   'window.close': 'Close',
   'window.control': '{label} window',
 
-  // ── sftp action phrases ───────────────────────────────────────────
-  //
-  // Two shapes on purpose: `sftp.action.*` opens a sentence ("Read directory
-  // /var — failed: …") and carries the path; `sftp.action-label.*` is a bare
-  // noun phrase for the "does not support X" sentence, which has no path.
-  'sftp.action.list': 'Read directory {path}',
-  'sftp.action.stat': 'Read the attributes of {path}',
-  'sftp.action.read': 'Read {path}',
-  'sftp.action.write': 'Write {path}',
-  'sftp.action.mkdir': 'Create directory {path}',
-  'sftp.action.remove': 'Delete {path}',
-  'sftp.action-label.list': 'read directory',
-  'sftp.action-label.stat': 'read attributes',
-  'sftp.action-label.read': 'read file',
-  'sftp.action-label.write': 'write file',
-  'sftp.action-label.mkdir': 'create directory',
-  'sftp.action-label.remove': 'delete',
-
   // ── browser UI: sentences the modules compose ─────────────────────
   //
   // Everything above is markup the static pass translates. Everything below
@@ -440,38 +422,38 @@ export const en = {
   'error.ssh.connection-refused': 'Cannot connect to {host}:{port}: the port refused the connection (no service listening, or blocked by a firewall).',
   'error.ssh.dns-failed': 'Cannot resolve the host name {host}.',
   'error.ssh.timeout': 'Connecting to {host}:{port} timed out: the network is unreachable, or the port is dropping packets.',
-  'error.ssh.host-key-changed': 'The host key changed, which could be a man-in-the-middle attack.\n  Recorded: {known}\n  Received: {actual}\nIf you are sure this is expected, delete this host from {file} and connect again.',
+  'error.ssh.host-key-changed': 'The host key for {host}:{port} changed, which could be a man-in-the-middle attack.\n  Recorded: {known}\n  Received: {received}\nIf you are sure this is expected, remove this host’s record from the known-hosts file and connect again.',
   'error.ssh.host-key-verification-failed': 'Host key verification failed: the key for {host}:{port} does not match the local record.',
   'error.ssh.first-connection': 'First connection to this host; its fingerprint is {fingerprint} (the current policy requires explicit confirmation).',
   'error.ssh.connection-reset': 'The connection to {host}:{port} was reset.',
   'error.ssh.handshake-closed': 'The SSH connection closed before the handshake completed.',
-  'error.ssh.connection-error': 'Connection error: {detail}',
+  'error.ssh.connection-error': 'The SSH connection reported an error.',
   'error.ssh.connection-closed': 'The connection closed',
   'error.ssh.server-disconnected': 'The server closed the connection',
   'error.ssh.session-closed': 'The session closed',
   'error.ssh.session-gone': 'That session does not exist or is already closed; connect again.',
   'error.ssh.exec-cancelled': 'Command execution was cancelled.',
-  'error.ssh.exec-output-limit': 'Command output exceeded the {maxBytes}-byte limit.',
+  'error.ssh.exec-output-limit': 'Command output exceeded the {limit}-byte limit.',
   'error.ssh.exec-timeout': 'Command execution timed out ({timeout}ms).',
   'error.ssh.exec-session-closed': 'The session closed, so the command was cancelled.',
   'error.ssh.failed': 'Connection to {host}:{port} failed: {detail}',
 
   // ── sftp ──────────────────────────────────────────────────────────
-  'error.sftp.bad-name': 'Invalid name: “{leaf}”. Enter a single name — no slashes, and not . or ..',
+  'error.sftp.bad-name': 'Invalid name: “{name}”. Enter a single name — no slashes, and not . or ..',
   'error.sftp.no-such-file': 'No such file at {path} on the remote — it may have been moved or deleted; press Refresh.',
   'error.sftp.no-such-directory': 'The remote directory does not exist: {path} is not a directory you can enter. Uploads and new folders can only land in a directory that already exists — create it in the terminal first, or pick another location.',
-  'error.sftp.permission-denied': '{describe} failed: the remote account has no permission for that location (wrong owner, or the directory is not writable).',
-  'error.sftp.permission-denied-plain': '{describe} failed: the remote account has no permission for that location.',
-  'error.sftp.op-unsupported': 'The remote SFTP service does not support “{label}”.',
-  'error.sftp.remove-failed': '{describe} failed: the directory may not be empty, or another process is using it. Only empty directories can be deleted.',
-  'error.sftp.mkdir-failed': '{describe} failed: that name may already exist (a file or directory with the same name).',
-  'error.sftp.write-failed': '{describe} failed: the remote may be out of space, or the directory is not writable.',
-  'error.sftp.failed-rejected': '{describe} failed: the remote rejected the operation ({detail}).',
+  'error.sftp.permission-denied': 'Cannot use {path}: the remote account has no permission for that location (wrong owner, or the directory is not writable).',
+  'error.sftp.permission-denied-plain': 'Cannot use {path}: the remote account has no permission for that location.',
+  'error.sftp.op-unsupported': 'The remote SFTP service does not support this operation on {path}.',
+  'error.sftp.remove-failed': 'Cannot remove {path}: the directory may not be empty, or another process is using it. Only empty directories can be deleted.',
+  'error.sftp.mkdir-failed': 'Cannot create {path}: that name may already exist (a file or directory with the same name).',
+  'error.sftp.write-failed': 'Cannot write {path}: the remote may be out of space, or the directory is not writable.',
+  'error.sftp.failed-rejected': 'The remote rejected the operation on {path} ({detail}).',
   'error.sftp.is-directory': '{path} is a directory and cannot be downloaded as a file.',
   'error.sftp.download-too-large': '{path} is {size} bytes, over the {limit}-byte single-transfer limit. The whole file has to cross as base64 + JSON (the Web carrier caps one message at 8 MiB) and chunked streaming is not built yet. Use scp or rsync in the terminal for this file.',
   'error.sftp.upload-too-large': 'The content to upload is {size} bytes, over the {limit}-byte single-transfer limit. Chunked streaming is not built yet — pick a smaller file.',
   'error.sftp.no-such-path': 'Invalid path: {path} is a directory itself, so there is nothing to delete.',
-  'error.sftp.failed': '{describe} failed: {detail}',
+  'error.sftp.failed': 'The operation on {path} failed: {detail}',
 
   // ── keychain ──────────────────────────────────────────────────────
   'error.keychain.desktop-store-in-web': 'This directory holds a Desktop keychain. Use a separate data directory for the Web.',
@@ -532,9 +514,9 @@ export const en = {
   // keeps `params` a flat map and reads better in both languages.
   'error.monitor.frame.no-header': 'The monitor output was not a recognizable data frame: no start marker was found.',
   'error.monitor.frame.duplicate': 'The monitor output was not a recognizable data frame: the frame appeared twice.',
-  'error.monitor.frame.expected-section': 'The monitor output was not a recognizable data frame: expected the {name} section, read “{actual}”.',
-  'error.monitor.frame.missing-status': 'The monitor output was not a recognizable data frame: the {name} section has no closing status line.',
-  'error.monitor.frame.status-range': 'The monitor output was not a recognizable data frame: the {name} section’s exit status is out of range.',
+  'error.monitor.frame.expected-section': 'The monitor output was not a recognizable data frame: expected the {section} section, read “{found}”.',
+  'error.monitor.frame.missing-status': 'The monitor output was not a recognizable data frame: the {section} section has no closing status line.',
+  'error.monitor.frame.status-range': 'The monitor output was not a recognizable data frame: the {section} section’s exit status {status} is out of range.',
   'error.monitor.frame.os-unavailable': 'The monitor output was not a recognizable data frame: the OS section is unusable.',
   'error.monitor.frame.no-end-marker': 'The monitor output was not a recognizable data frame: no end marker was found.',
   'error.monitor.frame.trailing-content': 'The monitor output was not a recognizable data frame: there is content after the end marker.',
@@ -542,11 +524,12 @@ export const en = {
 
   // ── carrier and dispatcher validation ─────────────────────────────
   'error.transport.params-not-array': 'Parameters must be an array.',
-  'error.dispatch.arg-not-object': '{where} expects an object as its first argument.',
-  'error.dispatch.arg-not-string': '{where} expects a string argument, received {got}.',
-  'error.dispatch.arg-not-number': '{where} expects a number argument, received {got}.',
-  'error.dispatch.arg-not-bytes': '{where} expects bytes (Uint8Array), received {got}.',
-  'error.dispatch.extra-field': '{where} does not accept the field “{key}”.',
+  'error.transport.disconnected': 'The connection to the backend was lost before this operation finished.',
+  'error.dispatch.arg-not-object': '{where} expects an object as its first argument, received {received}.',
+  'error.dispatch.arg-not-string': '{where} expects a string argument, received {received}.',
+  'error.dispatch.arg-not-number': '{where} expects a number argument, received {received}.',
+  'error.dispatch.arg-not-bytes': '{where} expects bytes (Uint8Array), received {received}.',
+  'error.dispatch.extra-field': '{where} does not accept the field “{field}”.',
   'error.dispatch.bad-session-id': 'The session ID for {where} is invalid.',
   'error.dispatch.bad-subscription-id': 'The subscription ID for {where} is invalid.',
   'error.dispatch.unknown-request': 'Unknown request: {method}',

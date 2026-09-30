@@ -1,6 +1,7 @@
 import { Service, type Context } from 'cordis'
 import type { MonitorSnapshot, MonitorUpdate } from '@pureterm/protocol'
-import { ClientScope, cleanError } from '../client-runtime.js'
+import { ClientScope } from '../client-runtime.js'
+import { errorCode, errorMessage } from '../failure-diagnostics.js'
 import { messageKey, messageText, resolveMessage, type MessageText } from '../message-text.js'
 import { createMonitorPanel, type MonitorPanel, type MonitorPanelState, type MonitorStatus, type NetSample } from '../monitor-panel.js'
 import type { TerminalTab } from '../services/terminal.js'
@@ -289,9 +290,9 @@ export class ClientMonitor extends Service {
          * 说清楚，而不是让用户对着一句内部错误码猜。远端不是 Linux 走的是另一条
          * 路（start 成功、随后来一条 unsupported 事件）。
          */
-        const unavailable = cleanError(error).includes('MONITOR_UNAVAILABLE')
+        const unavailable = errorCode(error) === 'host.monitor-unavailable'
         state.status = unavailable ? 'unsupported' : 'error'
-        state.message = unavailable ? messageKey('error.host.monitor-unavailable') : messageText(cleanError(error))
+        state.message = errorMessage(error)
         this.render(state, tab)
       },
     )
@@ -333,16 +334,18 @@ export class ClientMonitor extends Service {
     subscription.sequence = update.sequence
 
     const state = subscription.state
+    // 原因是一个错误码加它的参数，所以存的是 key —— 切一次语言，这一行跟着变。
+    const reason = update.error ? errorMessage(update.error) : undefined
     if (update.status === 'error') {
       // 一次失败不改写上一张快照：它带着自己的时间戳留着，由状态文字说明这一轮没读到。
       state.status = 'error'
-      state.message = update.message ? messageText(update.message) : messageKey('monitor.detail.error')
+      state.message = reason ?? messageKey('monitor.detail.error')
     } else if (update.status === 'unsupported') {
       state.status = 'unsupported'
       state.snapshot = null
       state.receivedAt = 0
       state.history = []
-      state.message = update.message ? messageText(update.message) : undefined
+      state.message = reason
     } else {
       state.status = update.status
       state.snapshot = update.snapshot

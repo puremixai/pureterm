@@ -21,6 +21,12 @@ async function until(predicate, description, timeout = 1500) {
   assert.fail(`Timed out waiting for ${description}`)
 }
 
+/** `assert.rejects` 的判定器：失败带的是码，断言码而不是那句话。 */
+const rejectedWith = code => error => {
+  assert.equal(error.code, code, error.message)
+  return true
+}
+
 function testCredentials() {
   const key = randomBytes(32)
   return {
@@ -104,7 +110,7 @@ test('session-only Host refuses an existing credential file without changing it'
   const f = await fixture(t)
   const ciphertext = '{"legacy-host":"desktop-encrypted-value"}\n'
   await writeFile(f.options.secretsFile, ciphertext)
-  await assert.rejects(f.create(), /凭据|密文|credential/i)
+  await assert.rejects(f.create(), rejectedWith('host.store-has-credentials'))
   assert.equal(await readFile(f.options.secretsFile, 'utf8'), ciphertext)
   assert.equal(existsSync(f.options.hostStoreFile), false)
 })
@@ -113,7 +119,7 @@ test('session-only Host refuses inline legacy ciphertext without migration', asy
   const f = await fixture(t)
   const metadata = '[{"id":"old","host":"old.test","username":"demo","sealedSecret":"legacy-ciphertext"}]\n'
   await writeFile(f.options.hostStoreFile, metadata)
-  await assert.rejects(f.create(), /凭据|密文|credential/i)
+  await assert.rejects(f.create(), rejectedWith('host.store-has-legacy-credentials'))
   assert.equal(await readFile(f.options.hostStoreFile, 'utf8'), metadata)
   assert.equal(existsSync(f.options.secretsFile), false)
 })
@@ -172,7 +178,7 @@ test('a renderer that disappears before the opened event cannot leave an orphane
     getRenderer: (id) => ({ id, isAlive: () => true, send: () => false }),
   } })
   const host = await f.create()
-  await assert.rejects(host.openTerminal(connection(server)), /客户端|断开/)
+  await assert.rejects(host.openTerminal(connection(server)), rejectedWith('host.client-disconnected'))
   await until(() => server.connections === 0, 'undeliverable opened-event cleanup')
   assert.equal(host.internals.ctx.ssh.size, 0)
   assert.equal(host.internals.ctx.terminal.size, 0)
@@ -223,7 +229,7 @@ test('Host disposal cancels a handshake and rejects later opens', { timeout: 100
   await opening
   assert.ok(outcome.error)
   await until(() => server.sockets.size === 0, 'disposed handshake socket cleanup')
-  await assert.rejects(host.openTerminal(connection(server)), /关闭|disposed/i)
+  await assert.rejects(host.openTerminal(connection(server)), rejectedWith('host.closed'))
 })
 
 async function halfOpenProxy(t) {
@@ -280,14 +286,14 @@ test('owned socket connection errors reject without leaving a session or unhandl
     process.nextTick(callback, Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' }))
   })
   await assert.rejects(host.openTerminal({ host: 'unresolvable.test', port: 22,
-    username: 'demo', password: 'test', clientId: 'first' }), /无法解析/)
+    username: 'demo', password: 'test', clientId: 'first' }), rejectedWith('ssh.dns-failed'))
   lookup.mock.restore()
   const listener = createServer()
   await new Promise((resolve) => listener.listen(0, '127.0.0.1', resolve))
   const port = listener.address().port
   await new Promise((resolve) => listener.close(resolve))
   await assert.rejects(host.openTerminal({ host: '127.0.0.1', port,
-    username: 'demo', password: 'test', clientId: 'first' }), /拒绝连接/)
+    username: 'demo', password: 'test', clientId: 'first' }), rejectedWith('ssh.connection-refused'))
   assert.equal(host.internals.ctx.ssh.size, 0)
   assert.equal(host.internals.ctx.terminal.size, 0)
 })

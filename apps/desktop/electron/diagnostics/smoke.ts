@@ -153,7 +153,7 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           const beforeExpand = visible();
           document.getElementById('monitor-toggle').click();
           const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, '第一张快照');
-          const ready = await wait(() => visible() === '已更新'
+          const ready = await wait(() => visible() === 'Updated'
             ? { cpu: value('cpu'), memory: value('memory'), load: value('load'), disk: value('disk'), net: value('net'), uptime: value('uptime') } : null, '第二轮快照');
           /*
            * 同一条连接：终端仍然收发。
@@ -197,7 +197,7 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
         first: string; ready: Record<string, string>; path: string; files: number
       }
       // 便宜的完整性检查留在这里，好让失败能落到这一块；定值断言在启动器里。
-      if (!monitor.collapsed || monitor.beforeExpand !== '已暂停') throw new Error('Monitor panel must be collapsed by default')
+      if (!monitor.collapsed || monitor.beforeExpand !== 'Paused') throw new Error('Monitor panel must be collapsed by default')
       if (!monitor.ready?.cpu || !monitor.ready?.net || !monitor.ready?.uptime) throw new Error('Monitor panel did not render a complete snapshot')
       if (monitor.files < 1 || !monitor.path.startsWith('/')) throw new Error('SFTP listing failed on the monitored session')
       console.log('[MONITOR-SMOKE] ' + JSON.stringify(monitor))

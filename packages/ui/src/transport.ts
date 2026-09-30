@@ -4,6 +4,8 @@ import {
   NOTICES,
   decodeWire,
   encodeWire,
+  fromWireError,
+  isWireError,
   parseMonitorUpdate,
   parseSessionFacts,
   type HostRecord,
@@ -22,6 +24,7 @@ import {
   type SftpWriteResult,
   type TerminalOpenResult,
   type WireCall,
+  type WireError,
   type WireNotice,
 } from '@pureterm/protocol'
 import { t } from '@pureterm/i18n'
@@ -77,7 +80,7 @@ export function createWebSocketTransport(): SshApi {
   if (cleanedUrl) window.history.replaceState(window.history.state, '', cleanedUrl)
   const openedListeners = new Set<(sessionId: string, cols: number, rows: number) => void>()
   const dataListeners = new Set<(sessionId: string, chunk: Uint8Array) => void>()
-  const closedListeners = new Set<(sessionId: string, reason: string) => void>()
+  const closedListeners = new Set<(sessionId: string, reason: WireError) => void>()
   const disconnectedListeners = new Set<(reason: string) => void>()
   const updateListeners = new Set<(update: MonitorUpdate) => void>()
   const factsListeners = new Set<(facts: SessionFacts) => void>()
@@ -96,7 +99,7 @@ export function createWebSocketTransport(): SshApi {
     ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null
   }
 
-  const emitClosed = (sessionId: string, reason: string): void => {
+  const emitClosed = (sessionId: string, reason: WireError): void => {
     for (const listener of closedListeners) listener(sessionId, reason)
   }
 
@@ -175,7 +178,9 @@ export function createWebSocketTransport(): SshApi {
             for (const listener of disconnectedListeners) listener(reason)
             const sessions = [...currentSessions]
             currentSessions.clear()
-            for (const session of sessions) emitClosed(session, reason)
+            // socket 掉了：没有后端能说清原因，所以由客户端给出这个身份，
+            // 那句话本身只进诊断（渲染层按 code 出译文，界面另有 onDisconnected 说明）。
+            for (const session of sessions) emitClosed(session, { code: 'transport.disconnected', message: reason })
           }
         }
 
@@ -223,7 +228,7 @@ export function createWebSocketTransport(): SshApi {
       if (!entry) return
       pending.delete(candidate.id)
       if (candidate.ok === true) entry.resolve(decodeWire(candidate.value))
-      else entry.reject(new Error(typeof candidate.error === 'string' ? candidate.error : t('transport.error.unspecified')))
+      else entry.reject(isWireError(candidate.error) ? fromWireError(candidate.error) : new Error(t('transport.error.unspecified')))
       return
     }
     if (candidate.kind !== 'event' || typeof candidate.name !== 'string') return
@@ -243,7 +248,9 @@ export function createWebSocketTransport(): SshApi {
     if (candidate.name === EVENTS.terminalClosed) {
       const sessionId = String(params[0] ?? '')
       currentSessions.delete(sessionId)
-      for (const listener of closedListeners) listener(sessionId, String(params[1] ?? ''))
+      for (const listener of closedListeners) {
+        listener(sessionId, isWireError(params[1]) ? params[1] : { code: 'internal', message: '' })
+      }
       return
     }
     /*

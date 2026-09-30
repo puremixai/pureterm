@@ -65,11 +65,6 @@ export class ClientView extends Service {
   }
 }
 
-export function cleanError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error)
-  return raw.replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '')
-}
-
 /** A view can replace row nodes repeatedly without retaining their listeners until app exit. */
 export class DomListeners {
   private cleanups: Array<() => void> = []

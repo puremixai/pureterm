@@ -113,6 +113,12 @@ async function wireClient(t, url) {
 }
 
 const connection = ssh => ({ host: ssh.host, port: ssh.port, username: ssh.username, password: ssh.password, cols: 100, rows: 30 })
+/**
+ * 被拒绝的回复带的是**错误码**，不是一句话。
+ *
+ * 断言码而不是原文：原文不参与本地化、随时可以改；码才是跨线的契约。
+ */
+const rejectedCode = async (client, method, params) => (await client.rejected(method, params)).code
 /** 每次探测都前进一格计数器，这样第二轮才真的能算出速率。 */
 function serveFrames() {
   let step = 0
@@ -140,7 +146,7 @@ test('only the owning client receives updates, and a foreign client cannot start
   assert.equal(first.snapshot.uptimeSeconds, 86400.5)
 
   // 别人的会话：开始和停止都不该被允许，而且回答里不能透露出这个订阅属于谁。
-  assert.match(await foreign.rejected('monitor:start', [{ sessionId, subscriptionId: 'sub-foreign' }]), /不属于|不存在/)
+  assert.equal(await rejectedCode(foreign, 'monitor:start', [{ sessionId, subscriptionId: 'sub-foreign' }]), 'host.session-not-owned')
   assert.deepEqual(await foreign.call('monitor:stop', ['sub-owner']), { stopped: false })
   assert.deepEqual(await foreign.call('monitor:stop', ['sub-foreign']), { stopped: false })
 
@@ -167,19 +173,19 @@ test('malformed monitor requests are rejected and cannot disturb a live subscrip
    * 每一个都曾经是「顺手加上去很方便」的字段。clientId 尤其是：收下它就等于让
    * 客户端自称身份，而这套载体存在的意义就是身份由载体认定。
    */
-  assert.match(await client.rejected('monitor:start', [{ sessionId, subscriptionId: 'x', clientId: 'foreign' }]), /不接受字段/)
-  assert.match(await client.rejected('monitor:start', [{ sessionId, subscriptionId: 'x', command: 'rm -rf /' }]), /不接受字段/)
-  assert.match(await client.rejected('monitor:start', [{ sessionId, subscriptionId: 'x', intervalMs: 1 }]), /不接受字段/)
-  assert.match(await client.rejected('monitor:start', [{ sessionId, subscriptionId: 'x', path: '/etc/passwd' }]), /不接受字段/)
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId, subscriptionId: 'x', clientId: 'foreign' }]), 'dispatch.extra-field')
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId, subscriptionId: 'x', command: 'rm -rf /' }]), 'dispatch.extra-field')
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId, subscriptionId: 'x', intervalMs: 1 }]), 'dispatch.extra-field')
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId, subscriptionId: 'x', path: '/etc/passwd' }]), 'dispatch.extra-field')
   // 订阅 ID 的字符集与长度由协议定：UI 每次激活新建一个 UUID。
-  assert.match(await client.rejected('monitor:start', [{ sessionId, subscriptionId: 'has space' }]), /订阅 ID/)
-  assert.match(await client.rejected('monitor:start', [{ sessionId, subscriptionId: 'x'.repeat(65) }]), /订阅 ID/)
-  assert.match(await client.rejected('monitor:start', [{ sessionId, subscriptionId: '' }]), /订阅 ID/)
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId, subscriptionId: 'has space' }]), 'dispatch.bad-subscription-id')
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId, subscriptionId: 'x'.repeat(65) }]), 'dispatch.bad-subscription-id')
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId, subscriptionId: '' }]), 'dispatch.bad-subscription-id')
   // 会话 ID 非空且不超过 128 个字符。
-  assert.match(await client.rejected('monitor:start', [{ sessionId: '', subscriptionId: 'x' }]), /会话 ID/)
-  assert.match(await client.rejected('monitor:start', [{ sessionId: 'x'.repeat(129), subscriptionId: 'x' }]), /会话 ID/)
-  assert.match(await client.rejected('monitor:start', ['not-an-object']), /对象/)
-  assert.match(await client.rejected('monitor:stop', ['has space']), /订阅 ID/)
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId: '', subscriptionId: 'x' }]), 'dispatch.bad-session-id')
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId: 'x'.repeat(129), subscriptionId: 'x' }]), 'dispatch.bad-session-id')
+  assert.equal(await rejectedCode(client, 'monitor:start', ['not-an-object']), 'dispatch.arg-not-object')
+  assert.equal(await rejectedCode(client, 'monitor:stop', ['has space']), 'dispatch.bad-subscription-id')
 
   // 全部被拒之后，原来的订阅必须还在跑，序号接着往下走。
   await until(() => client.payloads('monitor:update')[1], 'the live subscription surviving invalid requests', 15000)
@@ -199,7 +205,7 @@ test('a server that closes the channel without an exit status still yields a sna
   assert.deepEqual(update.snapshot.issues, { cpu: 'warming-up', net: 'warming-up' })
   assert.equal(update.snapshot.memory.usedPercent, 60)
   assert.equal(update.snapshot.uptimeSeconds, 86400.5)
-  assert.equal(update.message, undefined)
+  assert.equal(update.error, undefined)
 })
 
 test('session facts reach the owner before any monitoring is started', { timeout: 20000 }, async t => {
@@ -232,7 +238,7 @@ test('a monitor timeout leaves the terminal and SFTP working', { timeout: 30000 
   const update = await until(() => client.payloads('monitor:update')[0], 'the timeout update', 12000)
   assert.equal(update.status, 'error')
   assert.equal(update.snapshot, null)
-  assert.match(update.message, /超时/)
+  assert.equal(update.error.code, 'ssh.exec-timeout')
 
   // 终端仍然能打字。
   client.notice('ssh:input', [sessionId, 'still-alive\n'])
@@ -265,7 +271,7 @@ test('unloading the monitor plugin leaves the facts path and the terminal runnin
   assert.ok(runtime, 'the monitor plugin must be part of the assembled Host')
   for (const fiber of [...runtime.fibers]) await fiber.dispose()
 
-  assert.match(await client.rejected('monitor:start', [{ sessionId: first.sessionId, subscriptionId: 'after-unload' }]), /MONITOR_UNAVAILABLE/)
+  assert.equal(await rejectedCode(client, 'monitor:start', [{ sessionId: first.sessionId, subscriptionId: 'after-unload' }]), 'host.monitor-unavailable')
   assert.deepEqual(await client.call('monitor:stop', ['after-unload']), { stopped: false })
 
   // 终端照常。

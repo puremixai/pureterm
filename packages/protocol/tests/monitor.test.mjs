@@ -30,7 +30,7 @@ test('a complete ready sample keeps every field and reports no issue', () => {
   assert.equal(parsed.snapshot.uptimeSeconds, 86_400.5)
   assert.deepEqual(parsed.snapshot.net, { receivedBytesPerSecond: 4096, transmittedBytesPerSecond: 2048 })
   assert.deepEqual(parsed.snapshot.issues, {})
-  assert.equal(parsed.message, undefined)
+  assert.equal(parsed.error, undefined)
 })
 
 test('a first probe is partial with exactly the two delta metrics warming up', () => {
@@ -84,29 +84,44 @@ test('zero available metrics is an error, never an all-null partial', () => {
     issues: { cpu: 'unavailable', memory: 'unavailable', load: 'unavailable', disk: 'unavailable', net: 'unavailable', uptime: 'unavailable' },
   })
   assert.throws(() => parseMonitorUpdate(update({ status: 'partial', snapshot: empty })), /partial/)
-  const parsed = parseMonitorUpdate({ ...identity, status: 'error', snapshot: null, message: '远端没有可用的 /proc。' })
+  const parsed = parseMonitorUpdate({
+    ...identity,
+    status: 'error',
+    snapshot: null,
+    error: { code: 'monitor.no-metrics', message: 'no usable /proc on the remote' },
+  })
   assert.equal(parsed.snapshot, null)
   assert.equal(parsed.status, 'error')
 })
 
-test('error and unsupported carry no snapshot and require a message', () => {
+test('error and unsupported carry no snapshot and require an error', () => {
   for (const status of ['error', 'unsupported']) {
-    const parsed = parseMonitorUpdate({ ...identity, status, snapshot: null, message: '不是 Linux。' })
+    const parsed = parseMonitorUpdate({
+      ...identity,
+      status,
+      snapshot: null,
+      error: { code: 'monitor.unsupported-os', params: { os: 'Darwin' }, message: 'not Linux' },
+    })
     assert.equal(parsed.status, status)
     assert.equal(parsed.snapshot, null)
-    assert.equal(parsed.message, '不是 Linux。')
-    assert.throws(() => parseMonitorUpdate({ ...identity, status, snapshot: null }), /message/)
-    assert.throws(() => parseMonitorUpdate({ ...identity, status, snapshot: null, message: '' }), /message/)
+    assert.equal(parsed.error.code, 'monitor.unsupported-os')
+    assert.deepEqual(parsed.error.params, { os: 'Darwin' })
+    assert.throws(() => parseMonitorUpdate({ ...identity, status, snapshot: null }), /error/)
+    assert.throws(() => parseMonitorUpdate({ ...identity, status, snapshot: null, error: {} }), /error/)
     assert.throws(() => parseMonitorUpdate({ ...identity, status, snapshot: snapshot() }), /snapshot/)
   }
   // A ready or partial event with no snapshot is not a state either.
   assert.throws(() => parseMonitorUpdate({ ...identity, status: 'ready', snapshot: null }), /snapshot/)
 })
 
-test('a message is bounded and never required for a successful sample', () => {
-  assert.equal(parseMonitorUpdate(update({ message: 'ok' })).message, 'ok')
-  assert.throws(() => parseMonitorUpdate(update({ message: 'x'.repeat(513) })), /message/)
-  assert.throws(() => parseMonitorUpdate(update({ message: 42 })), /message/)
+test('the diagnostic message is bounded and never required for a successful sample', () => {
+  const carried = parseMonitorUpdate(update({ error: { code: 'monitor.no-metrics', message: 'ok' } }))
+  assert.equal(carried.error.message, 'ok')
+  // The message is capped rather than refused: it is a diagnostic, not a contract.
+  const capped = parseMonitorUpdate(update({ error: { code: 'monitor.no-metrics', message: 'x'.repeat(600) } }))
+  assert.equal(capped.error.message.length, 512)
+  assert.throws(() => parseMonitorUpdate(update({ error: { code: 'monitor.no-metrics', message: 42 } })), /error/)
+  assert.equal(parseMonitorUpdate(update()).error, undefined)
 })
 
 test('identity, sequence and time are validated before anything else', () => {

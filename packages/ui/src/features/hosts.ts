@@ -1,7 +1,8 @@
 import { Service, type Context } from 'cordis'
 import type { AuthMethod, HostRecord, HostSaveRequest, RuntimeCapabilities, TerminalOpenRequest } from '@pureterm/protocol'
 import { t, tPlural } from '@pureterm/i18n'
-import { ClientScope, cleanError } from '../client-runtime.js'
+import { ClientScope } from '../client-runtime.js'
+import { errorText } from '../failure-diagnostics.js'
 import { createHostList, type HostListView } from '../host-list.js'
 import { BrowserPrivateKeySelection, connectionCredentials, savedCredentials, readBrowserPrivateKey } from '../credentials.js'
 
@@ -88,7 +89,7 @@ export class ClientHosts extends Service {
         if (!this.scope.alive) return
         if (record) { view.status('', 'ok'); this.ctx.clientToasts.notify({ title: t('hosts.toast.saved'), detail: record.label }) }
         else { view.status(t('hosts.error.need-address'), 'err'); this.input(this.input('host').value.trim() ? 'user' : 'host').focus() }
-      }).catch(error => { if (this.scope.alive) view.status(cleanError(error), 'err') })
+      }).catch(error => { if (this.scope.alive) view.status(errorText(error), 'err') })
     })
     this.scope.listen(view.element('host-delete'), 'click', () => { if (this.editingId) void this.remove(this.editingId) })
     this.scope.listen(view.element('auth'), 'change', () => { this.formRevision++; this.clearBrowserKey(); this.syncAuth(); this.updateButtons() })
@@ -362,7 +363,7 @@ export class ClientHosts extends Service {
     } catch (error) {
       // 「后端不可用」和「这一次操作失败了」是两件事：前者要求重连或重启，后者
       // 只要再试一次。混成一句红字，用户两种都无从下手。
-      this.setListError(t('hosts.error.list-unavailable'), cleanError(error))
+      this.setListError(t('hosts.error.list-unavailable'), errorText(error))
       throw error
     }
     if (!this.scope.alive || listRevision !== this.listRevision) return
@@ -478,7 +479,7 @@ export class ClientHosts extends Service {
       if (this.selectedId === id) this.selectedId = null
       await this.refresh(this.editingId)
       if (this.scope.alive) this.ctx.clientToasts.notify({ title: t('hosts.toast.deleted'), detail: label })
-    } catch (error) { if (this.scope.alive) view.status(cleanError(error), 'err') }
+    } catch (error) { if (this.scope.alive) view.status(errorText(error), 'err') }
   }
 
   private async connect(): Promise<void> {
@@ -505,8 +506,8 @@ export class ClientHosts extends Service {
     try { await this.save(saveRequest, revision) } catch (error) {
       if (!this.scope.alive) return
       // 两轨都要：内联那行说明「这次没存上」，通知保证离开表单之后仍然看得见。
-      this.ctx.clientView.status(t('hosts.status.save-after-connect-failed', { error: cleanError(error) }), 'err')
-      this.ctx.clientToasts.notify({ title: t('hosts.toast.save-after-connect-failed'), detail: cleanError(error), kind: 'err' })
+      this.ctx.clientView.status(t('hosts.status.save-after-connect-failed', { error: errorText(error) }), 'err')
+      this.ctx.clientToasts.notify({ title: t('hosts.toast.save-after-connect-failed'), detail: errorText(error), kind: 'err' })
     }
   }
 
@@ -532,7 +533,7 @@ export class ClientHosts extends Service {
       if (picked.error) { view.status(picked.error, 'err'); return }
       if (picked.encrypted) { this.input('key-pass').focus(); view.status(t('error.ssh.key-passphrase-needed'), 'pending') }
       else { this.input('key-pass').value = ''; view.status(t('hosts.status.key-picked-plain'), 'ok') }
-    }).catch(error => { if (this.scope.alive) view.status(cleanError(error), 'err') })
+    }).catch(error => { if (this.scope.alive) view.status(errorText(error), 'err') })
   }
 
   private readKey(): void {
@@ -549,6 +550,6 @@ export class ClientHosts extends Service {
       this.input('key-path').value = selected.name
       this.input('key-pass').focus()
       view.status(t('hosts.status.key-read'), 'ok')
-    }).catch(error => { if (this.scope.alive && this.browserKey.isCurrent(revision)) view.status(cleanError(error), 'err') })
+    }).catch(error => { if (this.scope.alive && this.browserKey.isCurrent(revision)) view.status(errorText(error), 'err') })
   }
 }

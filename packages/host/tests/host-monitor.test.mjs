@@ -12,9 +12,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { Context, Service } from 'cordis'
-import { MONITOR_METRICS } from '@pureterm/protocol'
+import { MONITOR_METRICS, HostError } from '@pureterm/protocol'
 import { createHost } from '../dist/host.js'
 import { HostMonitor } from '../dist/plugins/host-monitor.js'
+
+/**
+ * `assert.rejects` 的判定器：失败现在带的是码，不是一句话。
+ *
+ * 断言码而不是原文，是因为原文不参与本地化、可以随时改；码是跨线的契约。
+ */
+const rejectedWith = code => error => {
+  assert.equal(error.code, code)
+  return true
+}
 
 /** setTimeout 被 mock 之后，这是唯一还能把微任务续作推到底的办法。 */
 const settle = () => new Promise(resolve => setImmediate(resolve))
@@ -269,7 +279,8 @@ test('a non-Linux target is unsupported once, and probing stops there', async t 
   const [update] = renderer.updates()
   assert.equal(update.status, 'unsupported')
   assert.equal(update.snapshot, null)
-  assert.match(update.message, /Darwin/)
+  assert.equal(update.error.code, 'monitor.unsupported-os')
+  assert.equal(update.error.params.os, 'Darwin')
 
   // 不再自动探测：手动重试会开一个新的订阅。
   t.mock.timers.tick(60_000)
@@ -293,7 +304,9 @@ test('a failed probe is error, retried, and it resets both baselines', async t =
   await settle()
   assert.equal(renderer.updates()[0].status, 'error')
   assert.equal(renderer.updates()[0].snapshot, null)
-  assert.match(renderer.updates()[0].message, /超时/)
+  assert.equal(renderer.updates()[0].error.code, 'monitor.probe-failed')
+  // 认不出来的失败只保留诊断原文，不猜一个更具体的码。
+  assert.match(renderer.updates()[0].error.message, /超时/)
 
   // 失败之后照常重试。
   t.mock.timers.tick(5000)
@@ -331,12 +344,14 @@ test('a nonzero exit status or a signal fails the probe even with a complete fra
   t.mock.timers.tick(5000)
   await settle()
   assert.equal(renderer.updates()[1].status, 'error')
-  assert.match(renderer.updates()[1].message, /退出码 3/)
+  assert.equal(renderer.updates()[1].error.code, 'monitor.probe-exit-code')
+  assert.equal(renderer.updates()[1].error.params.code, 3)
 
   t.mock.timers.tick(5000)
   await settle()
   assert.equal(renderer.updates()[2].status, 'error')
-  assert.match(renderer.updates()[2].message, /信号 TERM/)
+  assert.equal(renderer.updates()[2].error.code, 'monitor.probe-signalled')
+  assert.equal(renderer.updates()[2].error.params.signal, 'TERM')
 
   // 每一次失败都清掉基线，所以恢复之后的第一轮又是预热，而不是拿两次失败之间的增量当速率。
   t.mock.timers.tick(5000)
@@ -405,7 +420,7 @@ test('reusing a live subscription ID for another session is rejected', async t =
   await monitor.start(START, 'first')
   await settle()
 
-  await assert.rejects(monitor.start({ sessionId: 'ssh-2', subscriptionId: 'sub-1' }, 'first'), /订阅 ID/)
+  await assert.rejects(monitor.start({ sessionId: 'ssh-2', subscriptionId: 'sub-1' }, 'first'), rejectedWith('host.subscription-in-use'))
   // 被拒绝的请求不能动到已经生效的那条订阅。
   assert.equal(ssh.calls[0].options.signal.aborted, false)
   t.mock.timers.tick(5000)
@@ -419,7 +434,7 @@ test('a session the client does not own is rejected without disturbing the live 
   await monitor.start(START, 'first')
   await settle()
 
-  await assert.rejects(monitor.start({ sessionId: 'ssh-2', subscriptionId: 'sub-9' }, 'first'), /不属于/)
+  await assert.rejects(monitor.start({ sessionId: 'ssh-2', subscriptionId: 'sub-9' }, 'first'), rejectedWith('host.session-not-owned'))
   // 归属检查发生在替换之前：非法请求不能顶掉有效订阅。
   assert.equal(ssh.calls[0].options.signal.aborted, false)
   t.mock.timers.tick(5000)
@@ -432,7 +447,7 @@ test('a client that has gone away cannot start monitoring', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 })
   const { monitor, alive } = await fixture(t)
   alive.delete('first')
-  await assert.rejects(monitor.start(START, 'first'), /断开/)
+  await assert.rejects(monitor.start(START, 'first'), rejectedWith('host.client-disconnected'))
   assert.equal(monitor.size, 0)
 })
 
@@ -504,7 +519,7 @@ test('a session that closes retires its subscription without waiting for the dea
   await monitor.start(START, 'first')
   await settle()
 
-  root.emit('ssh/session-closed', 'ssh-1', '连接已关闭')
+  root.emit('ssh/session-closed', 'ssh-1', new HostError('ssh.session-closed'))
   await settle()
   assert.equal(aborted, 1)
   assert.equal(monitor.size, 0)
@@ -563,7 +578,7 @@ test('shutdown is idempotent and leaves no pending probe or timer', async t => {
   await settle()
   assert.equal(renderer.updates().length, 0)
   assert.equal(ssh.calls.length, 1)
-  await assert.rejects(monitor.start(START, 'first'), /MONITOR_UNAVAILABLE/)
+  await assert.rejects(monitor.start(START, 'first'), rejectedWith('host.monitor-unavailable'))
 })
 
 test('releasing a client clears only that client', async t => {
@@ -616,7 +631,7 @@ test('without the monitor plugin the public contract still answers', async t => 
   assert.equal(host.internals.ctx.hostMonitor, undefined)
 
   // 缺插件是一种**可预期的**状态：给稳定的错误码，不抛类型错误，也不影响其它能力。
-  await assert.rejects(host.startMonitor(START, 'first'), /MONITOR_UNAVAILABLE/)
+  await assert.rejects(host.startMonitor(START, 'first'), rejectedWith('host.monitor-unavailable'))
   assert.deepEqual(await host.stopMonitor('sub-1', 'first'), { stopped: false })
   assert.equal(typeof host.openTerminal, 'function')
   assert.deepEqual(host.listHosts('first'), [])

@@ -221,7 +221,7 @@ async function main() {
       document.getElementById('key-pass').value = 'browser-key-passphrase-never-persist';
       document.getElementById('host-save').click();
     })()`)
-    await savedToast('已保存主机', 'Browser key host')
+    await savedToast('Host saved', 'Browser key host')
     assert.equal(await evaluate('document.querySelectorAll(".tag.saved").length'), 0)
     await window.loadURL(url.href)
     await until(() => evaluate('document.getElementById("status").textContent === "Ready"'), 'page reload readiness')
@@ -234,7 +234,7 @@ async function main() {
     await evaluate(`document.getElementById('nav-keychain').click(); document.getElementById('keychain-new').click()`)
     await pickBrowserFile(process.env.PURETERM_TEST_PRIVATE_KEY, 'keychain-import', 'keychain-label')
     await evaluate(`document.getElementById('keychain-save').click()`)
-    await savedToast('密钥已保存', '可在主机的认证设置里选用')
+    await savedToast('Key saved', 'It can be selected in a host’s authentication settings')
     assert.equal(await evaluate(`document.getElementById('keychain-private').value`), '')
     assert.match(await evaluate(`document.getElementById('keychain-public').value`), /^ssh-rsa /)
     assert.match(await evaluate(`document.getElementById('keychain-fingerprint').textContent`), /^SHA256:/)
@@ -244,7 +244,7 @@ async function main() {
       const key = document.getElementById('host-keychain'); key.selectedIndex = 1; key.dispatchEvent(new Event('change'));
       document.getElementById('host-save').click();
     })()`)
-    await savedToast('已保存主机', 'Browser key host')
+    await savedToast('Host saved', 'Browser key host')
     assert.equal(await evaluate(`document.getElementById('host-direct-key').hidden`), true)
     await evaluate(`document.getElementById('connect').click()`)
     await until(() => evaluate(`document.getElementById('session-state').className === 'connected'`), 'SSH authentication using Keychain ID')

@@ -1,7 +1,11 @@
 import { Service, type Context } from 'cordis'
 import {
   EVENTS,
+  HostError,
   MONITOR_METRICS,
+  asHostError,
+  toWireError,
+  type WireError,
   type MonitorStartRequest,
   type MonitorStartResult,
   type MonitorStopResult,
@@ -22,7 +26,7 @@ const PROBE_TIMEOUT = 3000
 const PROBE_MAX_BYTES = 65536
 /** 探测**完成**之后到下一次探测的间隔，不是两次开始之间的间隔。 */
 const INTERVAL_MS = 5000
-/** 协议对 message 的上限。 */
+/** 诊断原文的上限：它只进日志和兜底，不该让一条远端 stderr 撑大事件。 */
 const MAX_MESSAGE = 512
 
 type Draft = Omit<MonitorUpdate, 'sessionId' | 'subscriptionId' | 'sequence'>
@@ -50,11 +54,17 @@ interface Subscription {
   finished: boolean
 }
 
-function describe(error: unknown): string {
-  const text = (error instanceof Error ? error.message : String(error)).trim()
-  // 协议要求 error/unsupported 带非空 message：一个空字符串会让界面无从解释。
-  const message = text || '监控探测失败。'
-  return message.length > MAX_MESSAGE ? message.slice(0, MAX_MESSAGE) : message
+/**
+ * 一次探测失败 → 线上形状。
+ *
+ * 认得 `HostError` 就保留身份（探测被信号杀掉、退出码非零、帧读不懂，各有各的码），
+ * 认不得就归到 `monitor.probe-failed` 并把原文截断 —— 协议要求 error/unsupported
+ * 一定带东西，一个空的诊断会让界面无从解释，而原文可能是一条很长的远端 stderr。
+ */
+function describe(error: unknown): WireError {
+  const host = asHostError(error)
+  const code = host.code === 'internal' ? 'monitor.probe-failed' : host.code
+  return { ...toWireError(new HostError(code, host.params, host.message)), message: host.message.slice(0, MAX_MESSAGE) || code }
 }
 
 /**
@@ -95,7 +105,7 @@ export class HostMonitor extends Service {
    * WebSocket 上的请求不可能互相插队。
    */
   async start(request: MonitorStartRequest, clientId: string): Promise<MonitorStartResult> {
-    if (this.stopped) throw new Error('MONITOR_UNAVAILABLE')
+    if (this.stopped) throw new HostError('host.monitor-unavailable')
     const { sessionId, subscriptionId } = request
     const current = this.subscriptions.get(clientId)
 
@@ -105,14 +115,14 @@ export class HostMonitor extends Service {
     }
     // 一个 ID 挂在两个会话上会让「按 ID 停止」有歧义。
     if (current && current.subscriptionId === subscriptionId) {
-      throw new Error('这个订阅 ID 已经用在另一个会话上了。')
+      throw new HostError('host.subscription-in-use')
     }
     /*
      * 归属检查在替换任何东西**之前**：一个非法请求不能把已经生效的订阅顶掉。
      * 两个问题都要问——会话还活着并且属于这个客户端，以及客户端自己还在。
      */
-    if (!this.ctx.terminal.ownsSession(sessionId, clientId)) throw new Error('这个会话不存在，或不属于当前客户端。')
-    if (!this.ctx.renderer.isAlive(clientId)) throw new Error('客户端已断开连接。')
+    if (!this.ctx.terminal.ownsSession(sessionId, clientId)) throw new HostError('host.session-not-owned')
+    if (!this.ctx.renderer.isAlive(clientId)) throw new HostError('host.client-disconnected')
 
     this.retire(clientId)
     const record: Subscription = {
@@ -211,7 +221,7 @@ export class HostMonitor extends Service {
        * 时间，用它算出来的速率是错的。
        */
       record.baseline = null
-      draft = { status: 'error', snapshot: null, message: describe(error) }
+      draft = { status: 'error', snapshot: null, error: describe(error) }
     }
     if (!this.publish(record, draft)) return
     if (record.finished) return
@@ -221,16 +231,16 @@ export class HostMonitor extends Service {
   /** 把一次 exec 的结果翻译成要发出去的事件。抛错表示这一轮整体失败。 */
   private interpret(record: Subscription, result: ExecResult): Draft {
     // 被信号杀掉说明命令没有跑完，帧再完整也是残缺的。
-    if (result.signal) throw new Error(`远端采集命令被信号 ${result.signal} 终止。`)
+    if (result.signal) throw new HostError('monitor.probe-signalled', { signal: result.signal })
     // 没有退出状态是可以接受的（有些服务器不发），但一个非零状态不行：
     // 脚本最后一条就是打印 END，非零意味着它没走到那里。
-    if (result.code !== null && result.code !== 0) throw new Error(`远端采集命令以退出码 ${result.code} 结束。`)
+    if (result.code !== null && result.code !== 0) throw new HostError('monitor.probe-exit-code', { code: result.code })
 
     const probe = parseLinuxProbe(result.stdout)
     if (probe.os !== 'Linux') {
       // 说清楚是哪一种系统，然后停手。手动重试会开一个新的订阅。
       record.finished = true
-      return { status: 'unsupported', snapshot: null, message: `这台主机的操作系统是 ${probe.os}，暂不支持资源监控。` }
+      return { status: 'unsupported', snapshot: null, error: describe(new HostError('monitor.unsupported-os', { os: probe.os })) }
     }
 
     const snapshot = toMonitorSnapshot(probe, record.baseline, Date.now())
@@ -238,7 +248,7 @@ export class HostMonitor extends Service {
     if (available === 0) {
       // 六个指标一个都没读到：这不是一张空表，而是这次探测整体失败。
       record.baseline = null
-      return { status: 'error', snapshot: null, message: '远端没有给出任何可用的指标。' }
+      return { status: 'error', snapshot: null, error: describe(new HostError('monitor.no-metrics')) }
     }
     // 只有两个计数器都在时才留基线：它们共用一个时间戳，缺一个就整对作废。
     record.baseline = probe.cpu && probe.net
