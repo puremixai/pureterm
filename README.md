@@ -59,7 +59,7 @@ The interface is bilingual. A switch in the top bar, beside the theme and row-de
 
 ## Architecture and upstream reference
 
-The Desktop architecture follows [deepseek-harness's Desktop implementation at `00102833`](https://github.com/deepseek-ai/deepseek-harness/tree/00102833dfaee1da9f48a3a8eae9d34005a75218/apps/desktop), the reference snapshot synchronized on 2026-09-23. PureTerm adapts the shared Web Host and Electron shell pattern to its SSH/SFTP client.
+The September 23 Desktop migration used [deepseek-harness's Desktop implementation at `00102833`](https://github.com/deepseek-ai/deepseek-harness/tree/00102833dfaee1da9f48a3a8eae9d34005a75218/apps/desktop) as its adaptation baseline; the reference checkout was updated on September 30 to `639ed015` (`dsh-v0.2.0-rc.2`). PureTerm adapts the shared Web Host and Electron shell pattern to its SSH/SFTP client. The [dated architecture comparison](docs/reports/2026-09-30-desktop-architecture-comparison.md) records what is shared, adapted, or absent.
 
 - `@pureterm/transport/web-host` assembles the Cordis Host, dispatcher, and loopback HTTP/WebSocket carrier for both entry points.
 - Electron serves the shared UI at `pureterm-app://app/` while its Node-mode child starts. The minimal `window.puretermDesktop` bridge provides the WebSocket address after Host readiness and accepts the renderer's readiness and language reports. SSH/SFTP, hosts, and Keychain operations use WebSocket.

@@ -59,7 +59,7 @@ Desktop 默认启用附带浏览器入口。设置 `SSH_CORDIS_NO_WEB_CARRIER=1`
 
 ## 架构与上游参考
 
-Desktop 架构参考 [deepseek-harness 在 `00102833` 提交中的桌面实现](https://github.com/deepseek-ai/deepseek-harness/tree/00102833dfaee1da9f48a3a8eae9d34005a75218/apps/desktop)，参考副本于 2026-09-23 同步。PureTerm 将其共享 Web Host 与 Electron 壳模式用于 SSH/SFTP 客户端。
+9 月 23 日的 Desktop 改造以 [deepseek-harness 在 `00102833` 提交中的桌面实现](https://github.com/deepseek-ai/deepseek-harness/tree/00102833dfaee1da9f48a3a8eae9d34005a75218/apps/desktop) 为依据；参考副本于 9 月 30 日更新到 `639ed015`（`dsh-v0.2.0-rc.2`）。PureTerm 将其共享 Web Host 与 Electron 壳模式用于 SSH/SFTP 客户端；[当日架构对比报告](docs/reports/2026-09-30-desktop-architecture-comparison_zh.md) 记录了一致、经过适配与尚未实现的部分。
 
 - `@pureterm/transport/web-host` 为两个入口统一装配 Cordis Host、dispatcher 和回环 HTTP/WebSocket 载体。
 - Electron 在 Node 模式子进程启动期间，通过 `pureterm-app://app/` 提供共享界面。最小 `window.puretermDesktop` 桥在 Host 就绪后提供 WebSocket 地址，并接收渲染层的就绪上报与语言上报。SSH/SFTP、主机和 Keychain 操作统一走 WebSocket。

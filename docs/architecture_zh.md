@@ -2,7 +2,7 @@
 
 [English version](architecture.md)
 
-PureTerm 有 Electron Desktop 和独立本机 Web 两个运行入口，复用四个 npm workspace 包：Host、协议、传输和界面。SSH/SFTP 始终由用户电脑发起，HTTP 服务只监听 `127.0.0.1`。无需用户账号、租户隔离或远程控制隧道。
+PureTerm 有 Electron Desktop 和独立本机 Web 两个运行入口，复用五个 npm workspace 包：Host、协议、i18n、传输和界面。SSH/SFTP 始终由用户电脑发起，HTTP 服务只监听 `127.0.0.1`。无需用户账号、租户隔离或远程控制隧道。
 
 以下路径相对仓库根。命令见[仓库入口](../README_zh.md)，物理布局见[目录决策](../LAYOUT-PROPOSAL_zh.md)。
 
@@ -114,6 +114,6 @@ SFTP 复用已建立的 SSH 会话，支持目录浏览、单文件上传/下载
 
 Electron 检查使用隔离的用户目录、受控窗口和严格的成功/失败/退出/超时判定，并回收测试进程。验证禁用自动无沙箱回退，因此不覆盖两代真实 Electron 的自动回退。GUI 鼠标键盘验收不在上述命令内，本机 ssh2 夹具也不代表所有真实 sshd 的兼容性覆盖。
 
-上游参考锁定为 deepseek-harness 提交 `00102833dfaee1da9f48a3a8eae9d34005a75218`。PureTerm 参考其轻量 Desktop 壳及 Cordis 依赖/作用域模型，同时保留独立 Node 模式 Web Host、共享 Cordis Client、安装构建和自动更新协调。私有 Node IPC 只负责平台能力与生命周期；业务请求走 WebSocket。PureTerm 不引入上游 Agent 或动态插件管理。
+9 月 23 日的 Desktop 改造以 deepseek-harness 提交 `00102833dfaee1da9f48a3a8eae9d34005a75218` 为依据。9 月 30 日，本地参考副本更新到 `639ed015397290b3745d163aafe02ffee4aa3f84`（`dsh-v0.2.0-rc.2`）；[当日架构对比报告](reports/2026-09-30-desktop-architecture-comparison_zh.md) 记录一致点、实现差异与缺少的能力，不代表已跟随全部上游功能。PureTerm 参考其轻量 Desktop 壳及 Cordis 依赖/作用域模型，同时保留独立 Node 模式 Web Host、共享 Cordis Client、安装构建和自动更新协调。私有 Node IPC 只负责平台能力与生命周期；PureTerm 业务走 WebSocket，上游则使用 HTTP RPC 与 WebSocket 流。PureTerm 不引入上游 Agent 或动态插件管理。
 
 安装包从独立 staging 构建，复制物理生产依赖与共享资源，关闭 asar，避免子进程依赖工作区文件。Windows 使用 NSIS，macOS 使用 dmg+zip，Linux 使用 AppImage。打包版从 GitHub Releases 检查并下载更新，用户确认后先停止 Host，再重启安装。开发版不检查；本地/普通 CI 不发布；版本 tag 的发布 job 汇总为 draft。版本和用户可见变化记录在根目录 [CHANGELOG_zh.md](../CHANGELOG_zh.md)，`scripts/changelog.mjs` 校验所有 workspace 版本并提取 draft notes。签名、notarization、平台构建和验收边界见[发布说明](desktop-release_zh.md)。
