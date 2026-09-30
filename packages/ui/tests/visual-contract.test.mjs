@@ -227,6 +227,9 @@ test('the prototype\'s rearrangements are in the markup', () => {
   assert.match(css, /\.session-body\s*\{[^}]*display:\s*flex/, 'the terminal body is the content column plus the rail')
   assert.match(css, /\.session-tools\s*\{[^}]*width:\s*var\(--rail-w\)/, 'the rail is a column of the terminal workspace, drawn from --rail-w')
   assert.match(css, /\.session-tool\s*\{[^}]*min-height:\s*34px/, 'the rail buttons match the left navigation\'s 34px square')
+  assert.match(css, /\.session-tool\s*\{[^}]*font-size:\s*18px/, 'the icon-only button sizes its glyph, not a text label')
+  assert.match(css, /\.session-tool\.is-active\s*\{[^}]*color:\s*var\(--ac\)/, 'the open tool shows its selected state with the accent token')
+  assert.match(css, /\.session-tool:focus-visible\s*\{[^}]*box-shadow:\s*var\(--ring\)/, 'the rail buttons keep a visible keyboard focus ring')
   assert.match(css, /\.session-tool-panel\s*\{\s*display:\s*contents/, 'the shared slot adds no box of its own')
 
   // The top-left brand: mark, name and the area it is showing on one line, the

@@ -146,11 +146,20 @@ export class ClientSessionTools extends Service {
     this.sync()
   }
 
-  /** 面板上的「收起」：清掉当前标签的记忆选择，下次打开这个标签就是收起状态。 */
+  /**
+   * 面板上的「收起」：清掉当前标签的记忆选择，下次打开这个标签就是收起状态。
+   *
+   * 面板一藏，原来聚焦其中的控件就从可达树上消失了 —— 焦点不能凭空掉到 <body>。
+   * 只有确实是从面板里按的收起才把焦点还给对应图标按钮；程序化关闭不抢用户的焦点。
+   */
   close(): void {
+    const view = this.ctx.clientView
+    const id = this.active
+    const inside = !!view.document.activeElement && view.element('session-tool-panel').contains(view.document.activeElement)
     const tab = this.ctx.clientTerminal.active
     if (tab) this.remembered.delete(tab.id)
     this.sync()
+    if (id && inside) this.registrations.get(id)?.button.focus()
   }
 
   private effective(tab: TerminalTab | undefined): SessionToolId | null {

@@ -874,21 +874,36 @@ async function runChecks() {
 
     assert(!!grip, 'an open file table must come with a grip')
 
-    assert(grip.getAttribute('role') === 'separator' && grip.getAttribute('aria-orientation') === 'vertical', 'the grip must announce itself as a separator')
+    assert(grip.getAttribute('role') === 'separator', 'the grip must announce itself as a separator')
 
     assert(grip.tabIndex === 0, 'a grip nobody can focus is a border')
+
+    // 整个工作区只有一根分隔条。两个功能各造一根的话，键盘用户会摸到两根互相打架的
+    // 把手，而屏幕上也只会有一根真的在动。
+    assert(document.querySelectorAll('.session-grip').length === 1, 'both tools share one splitter, not one each')
+
+    // 分隔条的朝向跟着当前生效的那条网格轴走：宽屏竖着分栏，窄屏横着分栏。同一个断点
+    // 也决定内联模板写在 columns 还是 rows 上。
+    assert(grip.getAttribute('aria-orientation') === (window.innerWidth > 820 ? 'vertical' : 'horizontal'),
+      'separator follows the active grid axis')
+
+    grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+
+    assert(grip.getAttribute('aria-valuenow') === '57', 'Home restores the default ratio')
+
+    const clampMin = Number(grip.getAttribute('aria-valuemin'))
+
+    const clampMax = Number(grip.getAttribute('aria-valuemax'))
+
+    assert(57 > clampMin && 57 < clampMax, 'the default ratio must sit inside the announced clamp')
+
+    grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+
+    assert(grip.getAttribute('aria-valuenow') === '59', 'one arrow changes the ratio by two points')
 
     // 分栏模板写在 #session-content 上，而不是任何一格面板的父元素：图标栏和分隔条
     // 都不属于那两块内容，比例只描述它们两个。
     const template = () => input('session-content').getAttribute('style') ?? ''
-
-    const firstValue = Number(grip.getAttribute('aria-valuenow'))
-
-    assert(firstValue > 20 && firstValue < 80, `the default ratio must sit inside the clamp, got ${firstValue}`)
-
-    grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
-
-    assert(Number(grip.getAttribute('aria-valuenow')) === firstValue + 2, 'ArrowRight moves the split by two points')
 
     assert(/--grip-w/.test(template()), 'the moved ratio is written back as a track, not a width')
 
@@ -1075,6 +1090,22 @@ async function runChecks() {
     const failedId = client.context.clientTerminal.active!.id
 
     assert(!input('connection-failure').hidden, 'connection error did not appear in its tab')
+
+    // 失败详情只能占终端那一列。它以前相对整个工作区定位，会盖住右上角的工具图标栏；
+    // 现在它的祖先里必须有 #session-primary，而图标栏是它的兄弟而不是后代 —— 所以
+    // 无论失败界面多高，都盖不到图标栏上。
+    const failure = input('connection-failure')
+
+    assert(document.getElementById('session-primary')!.contains(failure),
+      'the failure view belongs to the terminal column, not the whole workspace')
+
+    assert(!input('session-primary').contains(input('session-tools')),
+      'the rail is a sibling of the terminal column, so a failure cannot cover it')
+
+    assert(!input('session-tools').hidden && input('sftp-toggle').disabled && input('monitor-toggle').disabled,
+      'a failed tab still shows the rail, with both tools disabled')
+
+    assert(input('session-tool-panel').hidden, 'and a failed tab keeps the panel collapsed')
 
     click('host-new'); fill(); input('host').value = 'unrelated.example'
 
@@ -1555,11 +1586,39 @@ async function runChecks() {
 
     assert(!input('session-grip').hidden, 'the splitter arrives with the panel')
 
+    // 图标栏是终端工作区的一列，不是面板的一部分：开关、换工具都不许把它一起藏起来，
+    // 也不许换掉它的节点 —— 换节点会让正在键盘操作的用户失去焦点。
+    assert(!rail.hidden && rail === document.getElementById('session-tools'),
+      'the rail keeps its node and its place while a panel is open')
+
+    // 从面板里按「收起」，焦点要落回对应图标：面板一藏，原来聚焦的那个按钮就从可达树
+    // 上消失了，焦点不能凭空掉到 <body>。
+    const sftpClose = document.getElementById('sftp-close')!
+
+    sftpClose.focus()
+
+    assert(document.activeElement === sftpClose, 'the close button can hold focus')
+
+    sftpClose.click(); await tick()
+
+    assert(input('session-tool-panel').hidden, 'the close button collapses the panel')
+
+    assert(document.activeElement === input('sftp-toggle'), 'closing returns focus to the tool icon, not to <body>')
+
+    assert(!rail.hidden, 'and the rail is still there to hold that focus')
+
+    click('sftp-toggle'); await tick()
+
+    assert(!input('sftp').hidden, 'the tool reopens after a focus-returning close')
+
     click('monitor-toggle'); await tick()
 
     assert(input('sftp').hidden && !input('session-monitor').hidden, 'Monitor replaces Files')
 
     assert(tools.monitor.starts.length === 1, 'switching to Monitor starts its subscription')
+
+    assert(!rail.hidden && [...rail.children].map(node => node.id).join(',') === 'sftp-toggle,monitor-toggle',
+      'switching tools leaves the rail in place with both buttons')
 
     click('monitor-toggle'); await tick()
 
