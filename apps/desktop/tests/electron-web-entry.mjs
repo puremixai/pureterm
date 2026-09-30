@@ -18,12 +18,16 @@ let readyTimer
 async function main() {
 try {
   await app.whenReady()
+  // 一处判据，三处引用：上报的能力、seal，以及下面断言 UI 该长成哪一副样子。
+  // 三者各算一次就会各说各话，headless Linux 上没有 keyring 时正是这样暴露出来的。
+  const encryptionAvailable = safeStorage.isEncryptionAvailable()
   hostProcess = await startHostProcess({
     entry: fileURLToPath(new URL('../dist/electron/host/entry.js', import.meta.url)),
     dataDir,
     credentials: { persistent: true,
-      seal: plain => safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(plain).toString('base64') : undefined,
-      unseal: sealed => safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(sealed, 'base64')) : undefined },
+      credentialPersistence: encryptionAvailable ? 'encrypted' : 'session',
+      seal: plain => encryptionAvailable ? safeStorage.encryptString(plain).toString('base64') : undefined,
+      unseal: sealed => encryptionAvailable ? safeStorage.decryptString(Buffer.from(sealed, 'base64')) : undefined },
     pickPrivateKey: async () => undefined,
   })
   assert.ok(hostProcess.pid > 0 && hostProcess.pid !== process.pid)
@@ -48,8 +52,14 @@ try {
   console.log('[WEB-READY] ' + JSON.stringify(ready))
   assert.equal(await window.webContents.executeJavaScript('typeof window.puretermDesktop'), 'undefined', 'attached browser unexpectedly received Desktop preload')
   assert.equal(await window.webContents.executeJavaScript('typeof window.sshAPI'), 'undefined', 'attached browser unexpectedly received SSH IPC')
-  assert.equal(await window.webContents.executeJavaScript('document.getElementById("remember").checked && !document.getElementById("remember").disabled'), true)
-  assert.equal(await window.webContents.executeJavaScript('document.getElementById("credential-hint").hidden'), true)
+  /*
+   * 「记住凭据」反映的是这台机器能不能加密，不是界面愿不愿意给。没有系统加密时 UI
+   * 必须把它关掉并说明只在当前页面有效，而不是给一个存不住的承诺。两种结果都断言，
+   * 谁也不跳过——放行才是缺陷。
+   */
+  assert.equal(await window.webContents.executeJavaScript('document.getElementById("remember").checked'), encryptionAvailable)
+  assert.equal(await window.webContents.executeJavaScript('document.getElementById("remember").disabled'), !encryptionAvailable)
+  assert.equal(await window.webContents.executeJavaScript('document.getElementById("credential-hint").hidden'), encryptionAvailable)
   const config = { host: process.env.SSH_CORDIS_SMOKE_HOST, port: Number(process.env.SSH_CORDIS_SMOKE_PORT),
     username: process.env.SSH_CORDIS_SMOKE_USER, password: process.env.SSH_CORDIS_SMOKE_PASS }
   const report = await window.webContents.executeJavaScript(`window.__smoke.run(${JSON.stringify(config)})`)

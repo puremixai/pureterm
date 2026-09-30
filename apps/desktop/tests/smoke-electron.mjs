@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { createFakeSshServer } from './fake-ssh-server.mjs'
@@ -19,7 +19,9 @@ try {
     env: { SSH_CORDIS_SMOKE: '1', SSH_CORDIS_SMOKE_MONITOR: '1',
       SSH_CORDIS_SMOKE_HOST: server.host, SSH_CORDIS_SMOKE_PORT: String(server.port),
       SSH_CORDIS_SMOKE_USER: server.username, SSH_CORDIS_SMOKE_PASS: server.password, SSH_CORDIS_SMOKE_KEYCHAIN: server.hostKey.toString() },
-    requiredMarkers: ['[main] gate open', 'launch profile updated', '[WINDOW-CHROME-OK]', '[DESKTOP-BOUNDARY-OK]', '[KEYCHAIN-WEB-OK]', '[MONITOR-SMOKE-OK]'],
+    // 密钥库那一步的标记取决于这台机器能不能加密，所以不放进 requiredMarkers，
+    // 改在 inspect 里断言「两者恰好出现一个」——见下面。
+    requiredMarkers: ['[main] gate open', 'launch profile updated', '[WINDOW-CHROME-OK]', '[DESKTOP-BOUNDARY-OK]', '[MONITOR-SMOKE-OK]'],
     // 监控验收要在一条连接上等两轮探测（第二轮补齐 CPU 与网络），比原来的流程长。
     timeoutMs: 90_000,
     inspect: ({ dataDir, output }) => {
@@ -68,12 +70,33 @@ try {
        */
       assert.ok(server.terminal.inputs.some(chunk => chunk.includes('monitor-alive')),
         'the paste dispatched through the real terminal must reach the SSH fixture')
-      const keychain = readFileSync(join(dataDir, 'keychain.json'), 'utf8')
-      assert.ok(!keychain.includes('PRIVATE KEY'))
-      assert.ok(!keychain.includes(server.hostKey.toString().split('\n')[1]))
-      assert.equal(JSON.parse(keychain).entries.length, 1)
-      assert.ok(JSON.parse(keychain).entries[0].sealed)
-      assert.ok(server.authentications.includes('publickey'))
+      /*
+       * 密钥库那一半的断言取决于这台机器能不能加密，而这一点由 Host 上报，冒烟据此
+       * 只打印两个标记之一。两者必须**恰好**出现一个：都出现说明两条路径都跑了，
+       * 都不出现说明那一步根本没执行——两种都是缺陷，不是「跳过」。
+       */
+      const encrypted = output.includes('[KEYCHAIN-WEB-OK]')
+      const sessionOnly = output.includes('[KEYCHAIN-SESSION-OK]')
+      assert.ok(encrypted !== sessionOnly,
+        `exactly one keychain outcome must be reported (encrypted=${encrypted}, session=${sessionOnly})`)
+      if (encrypted) {
+        const keychain = readFileSync(join(dataDir, 'keychain.json'), 'utf8')
+        assert.ok(!keychain.includes('PRIVATE KEY'))
+        assert.ok(!keychain.includes(server.hostKey.toString().split('\n')[1]))
+        assert.equal(JSON.parse(keychain).entries.length, 1)
+        assert.ok(JSON.parse(keychain).entries[0].sealed)
+        assert.ok(server.authentications.includes('publickey'))
+      } else {
+        // 没有系统加密：一个密钥都不许存下来，明文更不许出现。
+        const path = join(dataDir, 'keychain.json')
+        if (existsSync(path)) {
+          const raw = readFileSync(path, 'utf8')
+          assert.ok(!raw.includes('PRIVATE KEY'), 'a refused save must not write the private key')
+          assert.equal(JSON.parse(raw).entries.length, 0, 'a refused save must not add a keychain entry')
+        }
+        assert.ok(!server.authentications.includes('publickey'),
+          'no private-key authentication may happen without a stored key')
+      }
     },
   })
   reportElectronResult('electron-desktop', result)

@@ -259,6 +259,10 @@ function fallbackToNoSandbox(reason: string): void {
  * 加解密归**这台机器**（Windows DPAPI / macOS Keychain），不归哪条通道，
  * 所以它是壳层注入给所有载体的共用实现：拿不到系统密钥就返回 undefined，
  * 由上层决定「不保存」，绝不退化成明文落盘。
+ *
+ * `credentialPersistence` 报的是实测结果而不是平台名。没有 keyring 的 Linux
+ * 上 `safeStorage` 会退到 `basic_text` 后端，那是明文，等于没有加密；此时上报
+ * `'session'` 才对——否则界面会照常给出「记住凭据」，而写入必然失败。
  */
 function createCredentials(): CredentialProvider {
   const encryptionAvailable = (): boolean => {
@@ -272,6 +276,9 @@ function createCredentials(): CredentialProvider {
 
   return {
     persistent: true,
+    // 惰性求值：系统密钥可能在进程活着的期间才变得可用（例如 keyring 稍后解锁），
+    // 所以这里报的是「此刻」，不是构造那一刻。
+    get credentialPersistence() { return encryptionAvailable() ? 'encrypted' : 'session' },
     seal: (plain) => (encryptionAvailable() ? safeStorage.encryptString(plain).toString('base64') : undefined),
     unseal: (sealed) => {
       if (!encryptionAvailable()) return undefined

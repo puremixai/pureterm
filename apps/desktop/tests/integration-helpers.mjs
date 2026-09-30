@@ -64,7 +64,8 @@ export async function hostFixture(t, bridge = rendererFixture().bridge) {
   const hosts = []
   const options = {
     bridge,
-    credentials: { persistent: true, seal: bridge.seal ?? (() => undefined), unseal: bridge.unseal ?? (() => undefined) },
+    credentials: { persistent: true, credentialPersistence: bridge.seal ? 'encrypted' : 'session',
+      seal: bridge.seal ?? (() => undefined), unseal: bridge.unseal ?? (() => undefined) },
     hostStoreFile: join(directory, 'hosts.json'),
     secretsFile: join(directory, 'secrets.json'),
     knownHostsFile: join(directory, 'known-hosts.json'),

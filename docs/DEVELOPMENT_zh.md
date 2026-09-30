@@ -4,7 +4,7 @@
 
 本文说明 PureTerm 的本机开发流程。PureTerm 是基于 TypeScript 和 Cordis 的 SSH/SFTP 客户端，提供 Electron Desktop 和独立本机 Web 两个入口。两个入口都从用户电脑发起 SSH；Web 服务只绑定 `127.0.0.1`，不提供公网服务。
 
-[架构说明](architecture_zh.md)是运行时行为的权威文档，[目录决策](../LAYOUT-PROPOSAL_zh.md)是包边界的权威文档，[发布说明](desktop-release_zh.md)是安装包和 GitHub Releases 的权威文档。 [`docs/superpowers/`](superpowers/) 下带日期的记录只保留历史决策，不是当前任务清单。
+[架构说明](architecture_zh.md)是运行时行为的权威文档，[目录决策](../LAYOUT-PROPOSAL_zh.md)是包边界的权威文档，[设计系统](design-system_zh.md)是界面 token 与样式表布局的权威文档，[发布说明](desktop-release_zh.md)是安装包和 GitHub Releases 的权威文档。 [`docs/superpowers/`](superpowers/) 下带日期的记录只保留历史决策，不是当前任务清单；根目录的 `design-qa_zh.md` 是带日期的设计评审，不是当前文档。
 
 ## 开发环境
 
@@ -40,7 +40,7 @@ npm run start:desktop
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | 禁止 Desktop 启动档案读写 |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | 禁止 Electron 自动无沙箱回退 |
 
-不要提交 `.env` 文件、密码、私钥、token、证书或真实主机记录。Desktop 凭据使用系统加密 provider。独立 Web 只保存主机元数据和已信任指纹；密码、口令和浏览器选中的私钥内容只存在当前页面。
+不要提交 `.env` 文件、密码、私钥、token、证书或真实主机记录。Desktop 凭据使用系统加密 provider；没有可用 provider 时它上报仅当前会话的凭据，并拒绝保存密钥，而不是退回明文。独立 Web 只保存主机元数据和已信任指纹；密码、口令和浏览器选中的私钥内容只存在当前页面。
 
 ## 仓库布局
 
@@ -103,7 +103,7 @@ npm run verify:electron
 
 该命令检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 行为、附带普通浏览器入口、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web 以及共享 Client 作用域生命周期。Desktop 与独立 Web 两条流程还会连上本机 SSH 夹具，在一条仍然承载终端与 SFTP 流量的连接上，断言通过真实界面渲染出的夹具资源快照与会话事实。Electron 显示环境不可用等已识别限制不算通过。
 
-文档-only 修改至少运行 `npm run release:check`、Markdown 相对链接检查和 `git diff --check`。在 PR 中报告实际运行的命令和结果。不要用旧 `dist/`、进程存在或历史通过次数代替成功证据。
+文档-only 修改至少运行 `npm run release:check` 和 `git diff --check`，并检查所改文档里的相对链接都能解析；这项链接检查靠人工，没有脚本会替你跑。在 PR 中报告实际运行的命令和结果。不要用旧 `dist/`、进程存在或历史通过次数代替成功证据。
 
 ## 入口定向检查
 

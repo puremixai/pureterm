@@ -33,7 +33,8 @@ pureterm/
     transport/src/                 shared Web Host, dispatcher, HTTP/WS, readiness validation
     ui/src/                        page, xterm, file panel, client transport, generated metadata
   docs/
-    architecture.md / DEVELOPMENT.md / desktop-release.md
+    architecture.md / DEVELOPMENT.md / design-system.md / desktop-release.md
+    bug-list.md                   open issues found while using the app
     superpowers/plans/ / specs/   dated historical records
 ```
 
@@ -76,6 +77,7 @@ Root build scripts build protocol, i18n, Host, transport, UI, and applications i
 | preload | `apps/desktop/dist/electron/carriers/preload.cjs` |
 | standalone Web entry | `apps/web/dist/main.js` |
 | shared page | `packages/ui/dist/index.html`, `app.js`, `app.css` |
+| desktop-only sheet | `packages/ui/dist/desktop.css` |
 | shared Node modules | the corresponding `packages/*/dist/` |
 
 Entry points locate the shared page through package exports. Desktop serves it through `pureterm-app://app/` and locates its compiled preload and Node Host by module paths rather than the current working directory. `npm run verify` covers build, types, boundaries, and Node/protocol tests; `npm run verify:electron` checks Desktop, standalone Web, update downloads, and Client plugin lifecycle. Package acceptance is covered by `npm run verify:package:windows`. Tests live in the repository and do not inherit pass counts from historical documents.

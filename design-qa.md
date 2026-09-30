@@ -2,6 +2,12 @@
 
 [中文版本](design-qa_zh.md)
 
+> **Historical record.** This is the design-review and acceptance log for the
+> Termius-inspired workspace work of 2026-09-17, kept as an archive of that
+> review rather than as current documentation. Where it disagrees with
+> [design-system.md](docs/design-system.md), [architecture.md](docs/architecture.md),
+> or the application READMEs, those are authoritative.
+
 ## Current functional acceptance — independent terminal tabs
 
 2026-09-17: This section supersedes the earlier visual-only assessment below. The earlier single-terminal implementation did **not** meet the independent-tab requirement. Old screenshots are historical design references, not proof of the current behavior or current viewport dimensions.
@@ -75,7 +81,7 @@ The references establish a dark desktop shell, a persistent left navigation rail
 
 - Typography: Segoe UI Variable/Segoe UI fallbacks preserve the compact Windows desktop feel; terminal output uses a monospace stack with distinct ANSI colors.
 - Spacing and layout: dashboard rhythm, drawer padding, card gaps, control heights, and session margins use the reference proportions while adapting to the current viewport.
-- Colors and tokens: top bar, navigation rail, dashboard, card, field, border, muted text, accent, success, error, and warning colors are centralized in `packages/ui/src/styles/legacy.css`, the pre-redesign palette kept as a debt register; the replacement neutral ramp lives in `packages/ui/src/styles/tokens.css`, as described in the [design system guide](docs/design-system.md).
+- Colors and tokens: top bar, navigation rail, dashboard, card, field, border, muted text, accent, success, error, and warning colors were centralized in `packages/ui/src/styles/legacy.css`, the pre-redesign palette kept as a debt register at the time of this review. The graphite flip has since deleted that file; every color now resolves through `packages/ui/src/styles/tokens.css`, as described in the [design system guide](docs/design-system.md).
 - Image quality and icons: Tabler Icons Webfont is bundled locally and used for navigation, search, terminal, view, window, drawer, failure, and utility icons; no remote asset is required.
 - Copy and content: structural labels follow the reference vocabulary where appropriate, while PureTerm-specific content remains bilingual/Chinese where the existing product uses it.
 - Interaction states: drawer open/close, connection retry, connection failure, successful session, SFTP drawer, keyboard focus, reduced motion, and session cleanup were checked in the live carrier.

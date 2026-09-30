@@ -31,6 +31,7 @@ function testCredentials() {
   const key = randomBytes(32)
   return {
     persistent: true,
+    credentialPersistence: 'encrypted',
     seal(plain) {
       const iv = randomBytes(12)
       const cipher = createCipheriv('aes-256-gcm', key, iv)
@@ -77,6 +78,7 @@ const connection = (server, clientId = 'first') => ({
 test('session-only Host ignores remember requests and never persists passwords, passphrases or key paths', async (t) => {
   const f = await fixture(t, { credentials: {
     persistent: false,
+    credentialPersistence: 'session',
     seal: () => { throw new Error('session-only credentials must not be sealed') },
     unseal: () => { throw new Error('session-only credentials must not be unsealed') },
   } })

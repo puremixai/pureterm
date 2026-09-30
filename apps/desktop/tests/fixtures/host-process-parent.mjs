@@ -4,7 +4,9 @@ import { startHostProcess } from '../../dist/electron/runtime/host-process.js'
 const child = await startHostProcess({
   entry: fileURLToPath(new URL('../../dist/electron/host/entry.js', import.meta.url)),
   dataDir: process.argv[2], execPath: process.execPath,
-  credentials: { persistent: true, seal: () => undefined, unseal: () => undefined },
+  // 这个父进程不实现加密（seal 恒返回 undefined），所以它必须如实上报 'session'：
+  // 子进程据此才知道不能承诺保存密钥。谎报 'encrypted' 会让子进程启动即失败。
+  credentials: { persistent: true, credentialPersistence: 'session', seal: () => undefined, unseal: () => undefined },
   pickPrivateKey: async () => undefined,
 })
 process.on('message', (message) => {
