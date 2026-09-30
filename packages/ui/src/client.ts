@@ -5,6 +5,7 @@ import { ClientView } from './client-runtime.js'
 import { errorText } from './failure-diagnostics.js'
 import { ClientTransport } from './services/transport.js'
 import { ClientTerminal } from './services/terminal.js'
+import { ClientSessionTools } from './services/session-tools.js'
 import { ClientHosts } from './features/hosts.js'
 import { ClientKeychain } from './features/keychain.js'
 import { ClientSftp } from './features/sftp.js'
@@ -17,7 +18,7 @@ import type { TerminalFactory } from './terminal-view.js'
 export interface ClientOptions { document?: Document; api?: SshApi; terminalFactory?: TerminalFactory }
 export interface Client {
   readonly context: Context
-  readonly scopes: Readonly<Record<'view' | 'toasts' | 'transport' | 'terminal' | 'keychain' | 'hosts' | 'sftp' | 'monitor' | 'chrome' | 'application', Fiber>>
+  readonly scopes: Readonly<Record<'view' | 'toasts' | 'transport' | 'terminal' | 'sessionTools' | 'keychain' | 'hosts' | 'sftp' | 'monitor' | 'chrome' | 'application', Fiber>>
   readonly ready: Promise<RendererReadyPayload>
   dispose(): Promise<void>
 }
@@ -39,6 +40,9 @@ export function createClient(options: ClientOptions = {}): Client {
     toasts: context.plugin(ClientToasts),
     transport: context.plugin(ClientTransport, { api: options.api }),
     terminal: context.plugin(ClientTerminal, { terminalFactory: options.terminalFactory }),
+    // 工具轨排在终端之后、两个功能之前：它注入 clientTerminal，而文件／监控／状态栏
+    // 都要注入它，所以它必须先把 rail、槽位和分隔条建起来。
+    sessionTools: context.plugin(ClientSessionTools),
     keychain: context.plugin(ClientKeychain),
     hosts: context.plugin(ClientHosts),
     sftp: context.plugin(ClientSftp),

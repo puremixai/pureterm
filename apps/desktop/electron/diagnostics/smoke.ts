@@ -180,7 +180,9 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           await wait(() => document.getElementById('session-state').className === 'connected' ? true : null, 'session to connect');
           const held = await wait(() => { const seen = facts(); return seen.cipher !== '—' && seen.key !== '—' ? seen : null; }, 'handshake facts');
           // 折叠是默认值：展开之前一次探测都不该发生，状态文字要说的是「暂停」而不是「读取中」。
-          const collapsed = document.getElementById('monitor-body').hidden;
+          // 外层面板的可见性归共享工具服务：收起时 #session-monitor 带着 hidden 属性，
+          // 面板主体因此也看不见。
+          const collapsed = document.getElementById('session-monitor').hidden;
           const beforeExpand = visible();
           document.getElementById('monitor-toggle').click();
           const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, 'the first snapshot');

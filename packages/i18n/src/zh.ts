@@ -124,6 +124,12 @@ export const zh: Record<MessageKey, string> = {
   'session.workspace': '终端会话',
   'session.reconnect': '重新连接',
   'session.disconnect': '断开连接',
+  'session.tools.label': '终端工具',
+  'session.tools.files': '文件',
+  'session.tools.monitor': '监控',
+  'session.tools.unavailable': '连接此终端后可使用工具。',
+  'session.tools.grip.label': '调整终端与工具面板的大小',
+  'session.tools.grip.value': '终端占 {percent}%',
   'failure.copy': '复制日志',
   'failure.close': '关闭',
   'failure.edit': '编辑主机',
@@ -323,10 +329,6 @@ export const zh: Record<MessageKey, string> = {
   'sftp.error.too-large': '文件超过单次传输上限 {limit}。',
   'sftp.confirm.delete-file': '删除远端文件「{path}」？此操作不可恢复。',
   'sftp.confirm.delete-dir': '删除远端目录「{path}」？此操作不可恢复。',
-  'sftp.grip.label': '调整终端与文件表的宽度',
-  'sftp.grip.value': '终端占 {percent}%',
-  'sftp.toggle.open': '收起文件',
-  'sftp.toggle.closed': '文件',
 
   // ── sftp panel ────────────────────────────────────────────────────
   'sftp.title': '远端文件',
@@ -348,10 +350,6 @@ export const zh: Record<MessageKey, string> = {
 
   // ── monitor ───────────────────────────────────────────────────────
   'monitor.title': '资源监控',
-  'monitor.toggle.show': '资源',
-  'monitor.toggle.hide': '收起资源',
-  'monitor.toggle.show-title': '展开资源监控',
-  'monitor.toggle.hide-title': '收起资源监控',
   'monitor.pause': '暂停',
   'monitor.resume': '继续',
   'monitor.pause.title': '暂停采集资源指标',

@@ -209,17 +209,25 @@ test('the prototype\'s rearrangements are in the markup', () => {
   assert.match(html, /class="page-head keychain-head"/,
     'the keychain header is the same row, not an 86px toolbar plus a second heading inside the content')
 
-  // 会话栏和内容之间现在只剩一段注释：资源抽屉的挂载点移进了 .session-content，和
-  // #sftp 并排。这条模式因此放宽到「只允许一段注释夹在中间」。它要证的仍然是同一件
-  // 事——会话栏就是内容上面那一块——而不是被删掉。挂载点本身也断言：它出厂是空的，
-  // 骨架归 monitor-panel.ts。
-  const toolbar = /<div class="session-toolbar">([\s\S]*?)<\/div>\s*\n\s*(?:<!--[\s\S]*?-->\s*\n\s*)?<div class="session-content">/.exec(html)
-  assert.ok(toolbar, 'the session toolbar is still one block above the session content')
+  // 会话栏和内容之间现在只剩一段注释：终端主体带着它的图标栏，排在这一栏下面。这条
+  // 模式因此放宽到「只允许一段注释夹在中间」。它要证的仍然是同一件事——会话栏就是内容
+  // 上面那一块——而不是被删掉。挂载点本身也断言：它出厂是空的，骨架归 monitor-panel.ts。
+  const toolbar = /<div class="session-toolbar">([\s\S]*?)<\/div>\s*\n(?:\s*<!--[\s\S]*?-->\s*\n)?\s*<div id="session-body" class="session-body">/.exec(html)
+  assert.ok(toolbar, 'the session toolbar is still one block above the session body')
   assert.match(toolbar[1], /id="failure-chip"/, 'the failure verdict lives in the session toolbar')
   assert.match(toolbar[1], /id="failure-raw"/, 'and so does the line it was read from')
+  // 文件／监控的入口按钮迁进了右侧图标栏：会话栏里留一颗，就等于同一件事有两个入口。
+  assert.doesNotMatch(toolbar[1], /id="(?:sftp|monitor)-toggle"/,
+    'the tool entries live in the rail, not in the session toolbar')
   assert.doesNotMatch(html, /class="failure-verdict"/, 'the failure page no longer carries its own verdict row')
-  assert.match(html, /<div class="session-content">[\s\S]*<section id="sftp"[\s\S]*<section id="session-monitor" class="monitor-drawer" hidden><\/section>/,
-    'the resource drawer is an empty mount beside the file table, and the two share the right slot')
+  // 工具轨严格属于终端工作区：图标栏、槽位、分隔条和失败界面都在 #session-workspace 里，
+  // 而 #session-tools 是最后那一列 —— 不是 #app / .app-body / #main 的全局右边缘。
+  assert.match(html, /<div id="session-content" class="session-content">[\s\S]*<div id="session-primary" class="session-primary">[\s\S]*<div id="terminal"[\s\S]*<section id="connection-failure"[\s\S]*<div id="session-grip"[\s\S]*<div id="session-tool-panel"[\s\S]*<section id="sftp"[\s\S]*<section id="session-monitor" class="monitor-drawer" hidden><\/section>[\s\S]*<div id="session-tools"/,
+    'the rail, the shared slot, the splitter and the failure view all belong to the terminal workspace')
+  assert.match(css, /\.session-body\s*\{[^}]*display:\s*flex/, 'the terminal body is the content column plus the rail')
+  assert.match(css, /\.session-tools\s*\{[^}]*width:\s*var\(--rail-w\)/, 'the rail is a column of the terminal workspace, drawn from --rail-w')
+  assert.match(css, /\.session-tool\s*\{[^}]*min-height:\s*34px/, 'the rail buttons match the left navigation\'s 34px square')
+  assert.match(css, /\.session-tool-panel\s*\{\s*display:\s*contents/, 'the shared slot adds no box of its own')
 
   // The top-left brand: mark, name and the area it is showing on one line, the
   // way the prototype's .brand draws it. Two traps are asserted here because
@@ -321,8 +329,8 @@ test('the monitor plugin is a leaf: only the workspace depends on it', async () 
     // 在列表缺失时红，因为它们比对的是确切内容。
     return match ? [...match[1].matchAll(/'([^']+)'/g)].map(found => found[1]) : []
   }
-  assert.deepEqual(injectOf('features/monitor.ts'), ['clientView', 'clientTransport', 'clientTerminal'],
-    'ClientMonitor injects exactly its three providers, in activation order')
+  assert.deepEqual(injectOf('features/monitor.ts'), ['clientView', 'clientTransport', 'clientTerminal', 'clientSessionTools'],
+    'ClientMonitor injects its three providers plus the shared tool service, in activation order')
   // 状态栏那两格归 ClientChrome，而它取事实的路径是 transport 本身，不是监控插件：
   // 卸载监控不能让已经协商好的 cipher 和 host key 一起消失。
   assert.ok(injectOf('services/chrome.ts').includes('clientTransport'),

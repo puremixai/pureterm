@@ -128,6 +128,12 @@ export const en = {
   'session.workspace': 'Terminal session',
   'session.reconnect': 'Reconnect',
   'session.disconnect': 'Disconnect',
+  'session.tools.label': 'Terminal tools',
+  'session.tools.files': 'Files',
+  'session.tools.monitor': 'Monitor',
+  'session.tools.unavailable': 'Connect this terminal to use tools.',
+  'session.tools.grip.label': 'Resize the terminal and tool panel',
+  'session.tools.grip.value': 'The terminal takes {percent}%',
   'failure.copy': 'Copy logs',
   'failure.close': 'Close',
   'failure.edit': 'Edit host',
@@ -328,10 +334,6 @@ export const en = {
   'sftp.error.too-large': 'The file is over the single-transfer limit of {limit}.',
   'sftp.confirm.delete-file': 'Delete the remote file “{path}”? This cannot be undone.',
   'sftp.confirm.delete-dir': 'Delete the remote directory “{path}”? This cannot be undone.',
-  'sftp.grip.label': 'Resize the terminal and the file table',
-  'sftp.grip.value': 'The terminal takes {percent}%',
-  'sftp.toggle.open': 'Hide files',
-  'sftp.toggle.closed': 'Files',
 
   // ── sftp panel ────────────────────────────────────────────────────
   'sftp.title': 'Remote files',
@@ -353,10 +355,6 @@ export const en = {
 
   // ── monitor ───────────────────────────────────────────────────────
   'monitor.title': 'Resource monitor',
-  'monitor.toggle.show': 'Resources',
-  'monitor.toggle.hide': 'Hide resources',
-  'monitor.toggle.show-title': 'Show the resource monitor',
-  'monitor.toggle.hide-title': 'Hide the resource monitor',
   'monitor.pause': 'Pause',
   'monitor.resume': 'Resume',
   'monitor.pause.title': 'Pause collecting resource metrics',

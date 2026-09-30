@@ -878,7 +878,9 @@ async function runChecks() {
 
     assert(grip.tabIndex === 0, 'a grip nobody can focus is a border')
 
-    const template = () => input('sftp').parentElement!.getAttribute('style') ?? ''
+    // 分栏模板写在 #session-content 上，而不是任何一格面板的父元素：图标栏和分隔条
+    // 都不属于那两块内容，比例只描述它们两个。
+    const template = () => input('session-content').getAttribute('style') ?? ''
 
     const firstValue = Number(grip.getAttribute('aria-valuenow'))
 
@@ -1502,6 +1504,86 @@ async function runChecks() {
 
     checks.push('cached page restoration waits for disposal, remounts once and releases entry listeners')
 
+    /*
+     * 终端工具轨。图标栏是终端工作区的一部分，文件与监控共用一个面板槽位，管理页面上
+     * 两者都不出现。这条检查读的是真实的 DOM id，不是插件内部状态。
+     */
+    const tools = fixture()
+
+    client = createClient({ api: tools.api, terminalFactory: tools.terminalFactory })
+
+    assert((await client.ready).ok, 'tools client failed readiness')
+
+    const rail = document.getElementById('session-tools')!
+
+    assert(!!rail && input('session-workspace').contains(rail), 'rail must belong to this terminal workspace')
+
+    assert(document.querySelectorAll('.session-toolbar #sftp-toggle, .session-toolbar #monitor-toggle').length === 0,
+      'tools must not have duplicate toolbar entries')
+
+    assert([...rail.children].map(node => node.id).join(',') === 'sftp-toggle,monitor-toggle',
+      'the rail keeps the fixed Files-then-Monitor order regardless of mount order')
+
+    assert(input('sftp-toggle').disabled && input('monitor-toggle').disabled, 'tools are disabled before a session connects')
+
+    assert(input('sftp-toggle').getAttribute('aria-label') === 'Files' && input('monitor-toggle').getAttribute('aria-label') === 'Monitor',
+      'an icon-only button still carries its localized accessible name')
+
+    assert(input('sftp-toggle').getAttribute('aria-controls') === 'sftp' && input('monitor-toggle').getAttribute('aria-controls') === 'session-monitor',
+      'each tool names the panel it controls')
+
+    click('sftp-toggle'); click('monitor-toggle'); await tick()
+
+    assert(tools.stats.lists === 0 && tools.monitor.starts.length === 0, 'unavailable tools issue no requests')
+
+    assert(input('sftp-toggle').getAttribute('aria-expanded') === 'false', 'a disabled tool is not expanded')
+
+    checks.push('unavailable tools issue no requests')
+
+    fill(); click('connect'); await tick()
+
+    assert(!input('sftp-toggle').disabled && !input('monitor-toggle').disabled, 'a connected session enables both tools')
+
+    assert(input('session-tool-panel').hidden && input('session-grip').hidden, 'a fresh tab starts with no panel and no splitter')
+
+    click('sftp-toggle'); await tick()
+
+    assert(!input('sftp').hidden && input('session-monitor').hidden, 'Files occupies the one panel slot')
+
+    assert(!input('session-tool-panel').hidden && input('sftp-toggle').getAttribute('aria-expanded') === 'true',
+      'the open tool reports itself expanded')
+
+    assert(!input('session-grip').hidden, 'the splitter arrives with the panel')
+
+    click('monitor-toggle'); await tick()
+
+    assert(input('sftp').hidden && !input('session-monitor').hidden, 'Monitor replaces Files')
+
+    assert(tools.monitor.starts.length === 1, 'switching to Monitor starts its subscription')
+
+    click('monitor-toggle'); await tick()
+
+    assert(input('session-tool-panel').hidden && !rail.hidden, 'collapse preserves the rail')
+
+    assert(input('session-grip').hidden, 'and the splitter leaves with the panel')
+
+    assert(tools.monitor.stopsOf(tools.monitor.starts[0]!.subscriptionId) === 1, 'collapsing retires the subscription exactly once')
+
+    checks.push('one panel opens and a repeated click closes it')
+
+    click('nav-keychain'); await tick()
+
+    assert(input('session-workspace').hidden && input('session-tool-panel').hidden,
+      'a management page shows neither the rail nor its panel')
+
+    assert(document.querySelector('.session-toolbar #sftp-toggle') === null, 'and no tool entry survives in the session toolbar')
+
+    click('nav-hosts'); await tick()
+
+    checks.push('terminal rail is scoped to the terminal page')
+
+    await client.dispose()
+
 
     /*
      * 监控：默认折叠、展开才采集、折叠就退订。
@@ -1527,7 +1609,8 @@ async function runChecks() {
 
     assert(monitorRoot().hidden && input('monitor-toggle').getAttribute('aria-expanded') === 'false', 'the monitor drawer is present and closed')
 
-    assert(input('monitor-body').hidden, 'closed means the figures are not drawn')
+    // 折叠 = 共享服务把外层面板收起，面板主体因此也看不见 —— 数字不再画出来。
+    assert(input('monitor-body').closest('[hidden]') === monitorRoot(), 'closed means the figures are not drawn')
 
     assert(monitorStatus() === 'paused', 'a collapsed panel says it is paused rather than pretending to read')
 

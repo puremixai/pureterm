@@ -32,10 +32,7 @@ export interface NetSample { received: number; transmitted: number }
 export interface MonitorPanelState {
   status: MonitorStatus
   snapshot: MonitorSnapshot | null
-  open: boolean
   paused: boolean
-  /** 有没有可用会话。没有时开关置灰，而不是让用户点开一个空抽屉。 */
-  available: boolean
   /** 最近若干帧的网络速率，用于画走势线。空数组表示还画不出线。 */
   history: readonly NetSample[]
   /**
@@ -47,7 +44,7 @@ export interface MonitorPanelState {
 }
 
 export interface MonitorPanelActions {
-  toggleOpen(): void
+  close(): void
   togglePaused(): void
   retry(): void
 }
@@ -188,20 +185,11 @@ function button(document: Document, id: string, text: string): HTMLButtonElement
 
 export function createMonitorPanel(
   root: HTMLElement,
-  toggle: HTMLButtonElement,
   actions: MonitorPanelActions,
 ): MonitorPanel {
   const listeners = new DomListeners()
   const document = root.ownerDocument
   root.replaceChildren()
-
-  // 开关住在会话栏里，但归这个面板管：字形和文字都由 render 按开合改写。
-  toggle.replaceChildren()
-  const glyph = document.createElement('i')
-  glyph.className = 'ti ti-activity'
-  glyph.setAttribute('aria-hidden', 'true')
-  const caption = document.createElement('span')
-  toggle.append(glyph, caption)
 
   const head = document.createElement('header')
   head.className = 'panel-head'
@@ -279,23 +267,15 @@ export function createMonitorPanel(
   body.append(detail)
   root.append(head, body)
 
-  listeners.add(toggle, 'click', () => actions.toggleOpen())
-  listeners.add(close, 'click', () => actions.toggleOpen())
+  listeners.add(close, 'click', () => actions.close())
   listeners.add(pause, 'click', () => actions.togglePaused())
   listeners.add(retry, 'click', () => actions.retry())
 
   return {
     render(next: MonitorPanelState): void {
       const live = next.status !== 'idle' && next.status !== 'disconnected'
+      // 外层面板与图标按钮的可见性归共享服务：面板只画自己的状态和数字。
       root.dataset.status = next.status
-      root.classList.toggle('is-open', next.open)
-      root.hidden = !next.open
-      toggle.disabled = !next.available
-      toggle.setAttribute('aria-expanded', String(next.open))
-      toggle.setAttribute('aria-controls', 'session-monitor')
-      toggle.title = t(next.open ? 'monitor.toggle.hide-title' : 'monitor.toggle.show-title')
-      caption.textContent = t(next.open ? 'monitor.toggle.hide' : 'monitor.toggle.show')
-      body.hidden = !next.open
       title.textContent = t('monitor.title')
       state.textContent = t(STATUS_KEY[next.status])
 
@@ -344,10 +324,7 @@ export function createMonitorPanel(
     },
     dispose(): void {
       listeners.clear()
-      toggle.replaceChildren()
       root.replaceChildren()
-      root.classList.remove('is-open')
-      root.hidden = true
       delete root.dataset.status
     },
   }

@@ -180,11 +180,6 @@
 .session-tab[data-state="failed"].is-active { background: var(--err-bg); border-color: var(--err-line); }
 .tab-close { flex: 0 0 auto; display: grid; place-items: center; min-width: 22px; min-height: 22px; margin-right: 3px; padding: 0; border: 0; border-radius: var(--r-1); color: var(--tx-3); background: transparent; font-size: 14px; }
 
-/* 失败页是会话的一个状态，所以它从会话栏下面开始 —— 那一栏要一直看得见，结论和
-   它的依据就住在里面。会话栏和顶栏是同一个 40px（原型里它们本来就是同一条横线），
-   所以这里取 --chrome-h 而不是再抄一个 40。 */
-.session-workspace > .connection-failure { top: var(--chrome-h); }
-
 @media (max-width: 820px) {
   /* 藏的是那两个应用开关，不是整个动作区：窗口按钮是桌面端的关窗入口，而它们本来也
      不在这个级联里，不会被这条规则碰到。 */

@@ -157,7 +157,7 @@ async function main() {
       return cipher !== '—' && key !== '—' ? { cipher, key } : null;
     })()`), 'session facts in the status bar')
     // 折叠是默认值：展开之前不该有任何探测。
-    const collapsed = await evaluate('document.getElementById("monitor-body").hidden')
+    const collapsed = await evaluate('document.getElementById("session-monitor").hidden')
     assert.equal(collapsed, true, 'the monitor row must start collapsed')
     assert.equal(await evaluate('document.getElementById("monitor-state").textContent'), 'Paused',
       'a collapsed row reports paused rather than loading')

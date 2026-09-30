@@ -51,7 +51,7 @@ function cipherText(cipher: SessionFacts['cipher']): string {
  * space, because the user has no way to tell which one they are reading.
  */
 export class ClientChrome extends Service {
-  static inject = ['clientView', 'clientTerminal', 'clientSftp', 'clientTransport']
+  static inject = ['clientView', 'clientTerminal', 'clientSessionTools', 'clientTransport']
   private readonly scope: ClientScope
   /**
    * 握手事实按 sessionId 存。**比 ClientMonitor 先活、比它后死**：它不属于监控，
@@ -152,8 +152,7 @@ export class ClientChrome extends Service {
     ctx.on('client/session-change', () => this.render())
     ctx.on('client/tab-closed', () => this.render())
     ctx.on('client/terminal-resize', () => this.render())
-    ctx.on('client/files-change', () => this.render())
-    ctx.on('client/drawer-change', () => this.render())
+    ctx.on('client/session-tools-change', () => this.render())
     // 状态栏那几格是拼出来的（「会话 1 / 2」「主机库」「Ctrl W 关闭标签」），所以
     // 换语言也得重画它 —— 静态 markup 由 apply() 自己翻译，这几格不在里面。
     ctx.on('client/locale-change', () => this.render())
@@ -263,9 +262,10 @@ export class ClientChrome extends Service {
     view.element('status-state').textContent = stateKey ? t(stateKey) : tab.state
     view.element('status-endpoint').textContent = `${tab.request.username}@${tab.request.host}:${tab.request.port ?? 22}`
     view.element('status-size').textContent = `${tab.terminal.cols}×${tab.terminal.rows}`
-    // 只有真成立的话才写：两格抽屉都没开就没有竖线，也就没有可拖的东西。
+    // 只有真成立的话才写：没有工具面板开着就没有那条可拖的分隔条。这一格读的是共享
+    // 服务，不是某一个功能 —— 卸载文件或监控都不该让状态栏少说一句它仍该说的话。
     const hints = [t('chrome.hint.close-tab')]
-    if (this.ctx.clientSftp.open || !view.element('session-monitor').hidden) hints.unshift(t('chrome.hint.drag-split'))
+    if (this.ctx.clientSessionTools.activeTool !== null) hints.unshift(t('chrome.hint.drag-split'))
     view.element('status-hint').textContent = hints.join(' · ')
   }
 }

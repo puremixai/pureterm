@@ -250,57 +250,71 @@
                    画布，而这一栏是它上面唯一一直在的东西，所以结论跟着会话走，不跟着
                    那张覆盖层走。原型 ④ 也把这两样画在顶栏。 -->
               <div class="session-context"><span id="session-state" role="status"></span><span id="session-address"></span><span id="failure-chip" class="chip err" hidden></span><span id="failure-raw" class="failure-raw"></span></div>
-              <!-- 资源开关插在 #sftp-toggle 之前，所以它由 features/monitor.ts 建、
-                   也由它拆 —— 卸载监控插件时这一颗按钮跟着走，而不是留在页面上按一个
-                   已经没有订阅的面板。 -->
+              <!-- 文件／监控的入口按钮不在这里：它们迁进了右侧图标栏，由各自的功能注册时
+                   建、注销时拆（见 #session-tools）。这一栏只留连接状态和连接操作。 -->
               <div class="session-actions">
-                <button type="button" id="sftp-toggle" class="ghost small" disabled>Files</button>
                 <button type="button" id="session-reconnect" class="ghost small" hidden data-i18n="session.reconnect">Reconnect</button>
                 <button type="button" id="disconnect" class="ghost small" disabled data-i18n="session.disconnect">Disconnect</button>
               </div>
             </div>
-            <!-- 资源面板和 #sftp 共用右侧那一格抽屉：同一时刻只开一个，所以它俩是
-                 .session-content 的两个兄弟，各由自己的插件建骨架。这里只留挂载点。 -->
-            <div class="session-content">
-              <div id="terminal" class="terminal-surface"></div>
-              <section id="sftp" class="sftp-drawer" hidden></section>
-              <section id="session-monitor" class="monitor-drawer" hidden></section>
-            </div>
-          <section id="connection-failure" class="connection-failure" hidden aria-labelledby="failure-title">
-            <div class="failure-shell">
-              <div class="failure-head">
-                <div class="failure-host">
-                  <span id="failure-avatar" class="host-avatar" aria-hidden="true">SSH</span>
-                  <div>
-                    <h1 id="failure-title">Connection failed</h1>
-                    <p id="failure-endpoint">SSH —</p>
-                  </div>
+            <!-- 终端工作区的主体：左边是内容列，右边是常驻的工具图标栏。图标栏是这一格
+                 布局里的一列，不是浮在视口上的覆盖层 —— 它属于终端工作区，进入主机／密钥
+                 页面时整块 #session-workspace 一起退场。 -->
+            <div id="session-body" class="session-body">
+              <div id="session-content" class="session-content">
+                <!-- 终端那一格。#connection-failure 是这一格里的覆盖层，所以失败详情盖住的
+                     是终端，不是图标栏；旧的那条 .session-workspace > .connection-failure
+                     顶部偏移假设随之作废。 -->
+                <div id="session-primary" class="session-primary">
+                  <div id="terminal" class="terminal-surface"></div>
+                  <section id="connection-failure" class="connection-failure" hidden aria-labelledby="failure-title">
+                    <div class="failure-shell">
+                      <div class="failure-head">
+                        <div class="failure-host">
+                          <span id="failure-avatar" class="host-avatar" aria-hidden="true">SSH</span>
+                          <div>
+                            <h1 id="failure-title">Connection failed</h1>
+                            <p id="failure-endpoint">SSH —</p>
+                          </div>
+                        </div>
+                        <button type="button" id="failure-copy" class="failure-copy"><i class="ti ti-copy" aria-hidden="true"></i> <span id="failure-copy-label" data-i18n="failure.copy">Copy logs</span></button>
+                      </div>
+
+                      <!-- 四个节点是画出来的静态骨架：阶段为空时整条收起，而不是留一排灰点。
+                           七步折到四格的那张表在 failure-diagnostics.ts 的 NODE_OF 里。 -->
+                      <div class="failure-route" aria-hidden="true">
+                        <span class="failure-route-node" data-stage="local"><i class="ti ti-device-laptop"></i></span>
+                        <span class="failure-route-line"></span>
+                        <span class="failure-route-node" data-stage="tcp"><i class="ti ti-plug"></i></span>
+                        <span class="failure-route-line"></span>
+                        <span class="failure-route-node" data-stage="keyexchange"><i class="ti ti-key"></i></span>
+                        <span class="failure-route-line"></span>
+                        <span class="failure-route-node" data-stage="auth"><i class="ti ti-login-2"></i></span>
+                      </div>
+                      <p id="failure-stage" class="failure-stage"></p>
+
+                      <div id="failure-log" class="failure-log" role="log" aria-live="polite"></div>
+                      <p id="failure-suggestion" class="failure-suggestion"></p>
+                      <div class="failure-actions">
+                        <button type="button" id="failure-close" class="failure-secondary" data-i18n="failure.close">Close</button>
+                        <button type="button" id="failure-edit" class="failure-secondary" data-i18n="failure.edit">Edit host</button>
+                        <button type="button" id="failure-retry" class="primary" data-i18n="failure.retry">Reconnect</button>
+                      </div>
+                    </div>
+                  </section>
                 </div>
-                <button type="button" id="failure-copy" class="failure-copy"><i class="ti ti-copy" aria-hidden="true"></i> <span id="failure-copy-label" data-i18n="failure.copy">Copy logs</span></button>
+                <!-- 分隔条和面板槽位都是共享的：同一时刻只开一个工具，谁开、开多大只有
+                     ClientSessionTools 知道，两个功能只负责往槽位里画自己的内容。 -->
+                <div id="session-grip" class="session-grip" role="separator" aria-orientation="vertical" tabindex="0" hidden></div>
+                <div id="session-tool-panel" class="session-tool-panel" hidden>
+                  <section id="sftp" class="sftp-drawer" hidden></section>
+                  <section id="session-monitor" class="monitor-drawer" hidden></section>
+                </div>
               </div>
-
-              <!-- 四个节点是画出来的静态骨架：阶段为空时整条收起，而不是留一排灰点。
-                   七步折到四格的那张表在 failure-diagnostics.ts 的 NODE_OF 里。 -->
-              <div class="failure-route" aria-hidden="true">
-                <span class="failure-route-node" data-stage="local"><i class="ti ti-device-laptop"></i></span>
-                <span class="failure-route-line"></span>
-                <span class="failure-route-node" data-stage="tcp"><i class="ti ti-plug"></i></span>
-                <span class="failure-route-line"></span>
-                <span class="failure-route-node" data-stage="keyexchange"><i class="ti ti-key"></i></span>
-                <span class="failure-route-line"></span>
-                <span class="failure-route-node" data-stage="auth"><i class="ti ti-login-2"></i></span>
-              </div>
-              <p id="failure-stage" class="failure-stage"></p>
-
-              <div id="failure-log" class="failure-log" role="log" aria-live="polite"></div>
-              <p id="failure-suggestion" class="failure-suggestion"></p>
-              <div class="failure-actions">
-                <button type="button" id="failure-close" class="failure-secondary" data-i18n="failure.close">Close</button>
-                <button type="button" id="failure-edit" class="failure-secondary" data-i18n="failure.edit">Edit host</button>
-                <button type="button" id="failure-retry" class="primary" data-i18n="failure.retry">Reconnect</button>
-              </div>
+              <!-- 图标栏本身是空的挂载点：按钮由每个功能注册时建、注销时拆，所以卸载一个
+                   功能就真的少一颗按钮，而不是留一颗按向空面板的。 -->
+              <div id="session-tools" class="session-tools" role="toolbar" aria-label="Terminal tools" data-i18n-attr="aria-label:session.tools.label"></div>
             </div>
-          </section>
           </section>
         </main>
       </div>
