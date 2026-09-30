@@ -250,7 +250,7 @@
 - `:root` 声明 `color-scheme: dark`，`[data-theme="light"]` 声明 `color-scheme: light`。`color-scheme` 才是告知用户代理用哪套表单控件与滚动条色板去绘制的那个属性，所以它是主题的一部分，不是装饰。
 - 解析顺序：两个选择器匹配同一个元素（`<html>`），特异度相同，浅色块在文件里更靠后，于是它恰好在自己重声明的颜色组、终端组和 `--shadow-pop` 上获胜。度量、字体与字号都从 `:root` 继承。因此浅色组只重声明颜色，而任何只在浅色组里出现的 token 都会触发 `no token is declared only in the light theme` 失败。
 - 终端跟随主题：浅色组声明自己的画布、前景色、光标与选区，而 `terminal-view.ts` 在开关被使用时重读这四个值 —— 以及它那一组的色板。
-- **开关已经存在。** 顶栏里的 `#theme-toggle` 与 `#density-toggle` 由 `packages/ui/src/services/chrome.ts` 写入，它在 `<html>` 上设 `data-theme` 与 `data-density`，并把两个选择记在 `localStorage` 里那一个 `pureterm.chrome` 键下 —— 这是本包第一次使用网页存储。首次运行不带任何 `data-theme`，因此解析到 `:root` 分组。因为 `script-src 'self'` 禁止了那段通常会在首字节前应用已存主题的内联预绘制脚本，已存的浅色主题会在 `app.js` 运行后一帧才落下：顶栏先画成深色，然后翻过去。这道闪烁是使用 CSP 的代价，我们接受它而不是绕开它。
+- **开关已经存在。** 顶栏里的 `#theme-toggle`、`#density-toggle` 与 `#locale-toggle` 由 `packages/ui/src/services/chrome.ts` 写入。前两个在 `<html>` 上设 `data-theme` 与 `data-density`；第三个调用 `@pureterm/i18n` 的 `setLocale()`，写 `<html lang>`（`en` 或 `zh-CN`）与 `data-locale`，并在 client 上广播这次变化，于是每一处会拼句子的表面都会重画，而不是把上一门语言留在屏幕上。三个选择都记在 `localStorage` 里那一个 `pureterm.chrome` 键下 —— 这是本包第一次使用网页存储 —— 默认是英文，也就是目录的源语言。首次运行不带任何 `data-theme`，因此解析到 `:root` 分组。因为 `script-src 'self'` 禁止了那段通常会在首字节前应用已存主题的内联预绘制脚本，已存的浅色主题会在 `app.js` 运行后一帧才落下：顶栏先画成深色，然后翻过去。这道闪烁是使用 CSP 的代价，我们接受它而不是绕开它；已存的语言同样要付这一帧，因为 `index.html` 出的是英文，静态文案带的是只有客户端才能替换的 `data-i18n` 属性。
 - 浅色分组在 `design-tokens.test.mjs` 的每条断言里都被测量 —— 它测的是两个块 —— 所以无论有没有人选过它，这些取值都不会悄悄漂移。
 - `[data-density="compact"]` 与主题无关，只重映射 `--row-h`。
 

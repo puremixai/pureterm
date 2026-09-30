@@ -30,6 +30,7 @@ pureterm/
   packages/
     host/src/                      public Host API, services, plugins, credential policy
     protocol/src/                  channels, data, events, and binary wire format
+    i18n/src/                      message catalog and t(); the only user-facing copy
     transport/src/                 shared Web Host, dispatcher, HTTP/WS, readiness validation
     ui/src/                        page, xterm, file panel, client transport, generated metadata
   docs/
@@ -59,6 +60,7 @@ Standalone Web neither reads credential files nor stores private-key paths. If t
 
 - `@pureterm/protocol` imports no other module.
 - `@pureterm/host` does not depend on Electron, the UI, or an application entry point.
+- `@pureterm/i18n` holds the catalog and `t()` and depends on no local package. `@pureterm/host` never imports it: a failure crosses as a code, and the side that knows the language turns it into a sentence.
 - `@pureterm/ui` depends only on the protocol and browser libraries; it does not import Node, Electron, or Host.
 - `@pureterm/transport` dispatches through the public Host API and never reads `Host.internals`.
 - Cross-package references use allowed public exports, never a relative path into another package’s source.

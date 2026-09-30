@@ -37,7 +37,7 @@ npm run start:desktop
 | `known_hosts.json` | 已信任 SSH 主机指纹；密钥改变时拒绝连接 |
 | `launch-profile.json` | renderer 就绪后提交的启动配置 |
 
-Desktop 内部 Web Host 始终只监听 `127.0.0.1`。Host 启动期间，应用窗口已通过 `pureterm-app://app/` 加载界面文件。最小的 `window.puretermDesktop` preload API 等待 Host 就绪后提供回环 WebSocket URL，并上报渲染层就绪；SSH、SFTP、主机和 Keychain 操作走 WebSocket，不走 Electron 业务 IPC。Electron 主进程仅向该窗口的准确 WebSocket 请求注入独立 bearer token，不向页面暴露。启用附带浏览器访问时，启动日志提供另一条带 token 的本机地址，浏览器可换取会话 cookie。附带浏览器和 Desktop 窗口共享 Host 进程、加密存储与原生选钥能力；各客户端分别拥有自己的 SSH 会话。
+Desktop 内部 Web Host 始终只监听 `127.0.0.1`。Host 启动期间，应用窗口已通过 `pureterm-app://app/` 加载界面文件。最小的 `window.puretermDesktop` preload API 等待 Host 就绪后提供回环 WebSocket URL，页面则回传两件事：渲染层已就绪，以及它当前显示的是哪门语言，应用菜单与原生对话框据此跟随语言开关。SSH、SFTP、主机和 Keychain 操作走 WebSocket，不走 Electron 业务 IPC。Electron 主进程仅向该窗口的准确 WebSocket 请求注入独立 bearer token，不向页面暴露。启用附带浏览器访问时，启动日志提供另一条带 token 的本机地址，浏览器可换取会话 cookie。附带浏览器和 Desktop 窗口共享 Host 进程、加密存储与原生选钥能力；各客户端分别拥有自己的 SSH 会话。
 
 独立 `npm run start:web` 使用另一套 Node Web Host，默认数据在 `~/.ssh-cordis/web/`，只保存主机和指纹记录，浏览器选钥不依赖 Electron，密码和私钥仅用于当前页面。它不共享 Desktop 会话或数据文件，`SSH_CORDIS_NO_WEB_CARRIER=1` 也不会关闭它。不要把两个独立进程指向同一份数据文件。
 
@@ -57,14 +57,14 @@ Desktop 内部 Web Host 始终只监听 `127.0.0.1`。Host 启动期间，应用
 | `electron/app/` | main、shell、平台 API、系统凭据和原生选钥 |
 | `electron/runtime/` | 平台策略、就绪、档案、重启及资源路径 |
 | `electron/host/` | 独立 Node 模式 Web Host 子进程入口 |
-| `electron/carriers/` | 最小 preload WebSocket 启动信息与就绪上报 |
+| `electron/carriers/` | 最小 preload WebSocket 启动信息，以及就绪与语言上报 |
 | `electron/diagnostics/` | 应用进程中的 boot/smoke 钩子 |
 | `scripts/`、`tests/` | Desktop 构建启动、诊断、测试与本机协议夹具 |
-| `../../packages/{host,protocol,transport,ui}/` | 共享业务、协议、传输与界面 |
+| `../../packages/{host,protocol,i18n,transport,ui}/` | 共享业务、协议、文案目录、传输与界面 |
 
 根 `npm run build:desktop` 构建共享包和 Desktop，生成 `dist/electron/app/main.js`、`dist/electron/host/entry.js` 与 `dist/electron/carriers/preload.cjs`。界面产物位于 `../../packages/ui/dist/`，通过包导出解析，不再复制到 Desktop dist。
 
-根 `npm run typecheck` 检查各 workspace，并运行 ESM 扩展名和依赖边界检查。Host 不依赖 Electron；UI 不导入 Node 或 Host；壳通过公共包导出访问业务，不读取 `Host.internals`。
+根 `npm run typecheck` 检查各 workspace，并运行 ESM 扩展名和依赖边界检查。Host 不依赖 Electron，也永不导入文案目录，而是用错误码代替；UI 不导入 Node 或 Host；壳通过公共包导出访问业务，不读取 `Host.internals`。
 
 ## 验证与诊断
 

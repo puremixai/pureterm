@@ -37,7 +37,7 @@ The default data directory is `~/.ssh-cordis/`, overridden by `SSH_CORDIS_DATA_D
 | `known_hosts.json` | trusted SSH host fingerprints; changed keys reject the connection |
 | `launch-profile.json` | launch configuration submitted after renderer readiness |
 
-Desktop’s internal Web Host always binds to `127.0.0.1`. The application window loads UI files through `pureterm-app://app/` while the Host starts. Its minimal `window.puretermDesktop` preload API waits for Host readiness to provide a loopback WebSocket URL and reports renderer readiness; SSH, SFTP, hosts, and Keychain operations use that WebSocket, not Electron business IPC. Electron main injects a separate bearer token only into the window’s exact WebSocket request; the token is never exposed to the page. When attached browser access is enabled, startup logs print a different tokenized local URL and issue browser session cookies. The attached browser and Desktop window share the Host process, encrypted storage, and native key picker; each client owns its SSH sessions.
+Desktop’s internal Web Host always binds to `127.0.0.1`. The application window loads UI files through `pureterm-app://app/` while the Host starts. Its minimal `window.puretermDesktop` preload API waits for Host readiness to provide a loopback WebSocket URL, and the page reports two facts back: that the renderer is ready, and which language it is showing, so the application menu and the native dialogs follow the language switch. SSH, SFTP, hosts, and Keychain operations use that WebSocket, not Electron business IPC. Electron main injects a separate bearer token only into the window’s exact WebSocket request; the token is never exposed to the page. When attached browser access is enabled, startup logs print a different tokenized local URL and issue browser session cookies. The attached browser and Desktop window share the Host process, encrypted storage, and native key picker; each client owns its SSH sessions.
 
 The standalone `npm run start:web` command uses a separate Node Web Host and defaults to `~/.ssh-cordis/web/`. It stores hosts and fingerprints only; browser key selection does not depend on Electron, and passwords/private keys live only in the current page. It does not share Desktop sessions or data files, and `SSH_CORDIS_NO_WEB_CARRIER=1` does not disable it. Do not point both independent processes at the same data files.
 
@@ -57,14 +57,14 @@ Sandbox, GPU, and startup fallback behavior remain as implemented. Profiles are 
 | `electron/app/` | main process, shell, platform APIs, system credentials, and native key picker |
 | `electron/runtime/` | platform policy, readiness, profiles, restart, and resource paths |
 | `electron/host/` | independent Node-mode Web Host child entry |
-| `electron/carriers/` | minimal preload WebSocket bootstrap and readiness report |
+| `electron/carriers/` | minimal preload WebSocket bootstrap plus the readiness and locale reports |
 | `electron/diagnostics/` | in-process boot/smoke hooks |
 | `scripts/`, `tests/` | Desktop build/launch, diagnostics, tests, and local protocol fixtures |
-| `../../packages/{host,protocol,transport,ui}/` | shared business logic, protocol, transport, and UI |
+| `../../packages/{host,protocol,i18n,transport,ui}/` | shared business logic, protocol, message catalog, transport, and UI |
 
 From the root, `npm run build:desktop` builds shared packages and Desktop, producing `dist/electron/app/main.js`, `dist/electron/host/entry.js`, and `dist/electron/carriers/preload.cjs`. UI artifacts stay in `../../packages/ui/dist/` and are located through package exports rather than copied into Desktop dist.
 
-Root `npm run typecheck` checks every workspace plus ESM extensions and dependency boundaries. Host has no Electron dependency; UI imports neither Node nor Host; the shell accesses business logic through public package exports and never reads `Host.internals`.
+Root `npm run typecheck` checks every workspace plus ESM extensions and dependency boundaries. Host has no Electron dependency and never imports the message catalog, which it replaces with a failure code; UI imports neither Node nor Host; the shell accesses business logic through public package exports and never reads `Host.internals`.
 
 ## Verification and diagnostics
 

@@ -48,6 +48,8 @@ Desktop 默认启用附带浏览器入口。设置 `SSH_CORDIS_NO_WEB_CARRIER=1`
 
 资源监控只探测 Linux，每 5 秒执行一条命令。CPU 和网络是速率，第二个样本到达之前显示 `—`；磁盘是根文件系统，不是所有挂载点；远端没有提供的计数器留空并把原因挂在悬停提示上，而不是画成 0。远端不是 Linux、或者宿主没有装监控插件时，报的是「不支持监控」而不是失败。数字来自远端自己的 `/proc`，本应用不拿它跟那台机器核对。
 
+界面是双语的。顶栏里主题与行高密度开关旁边的那个开关，把每一个屏幕在英文与中文之间切换，并记住选择；默认是英文。它同时设置文档语言；在 Desktop 应用里，应用菜单与原生对话框也会跟随。开发者日志行与独立 Web 命令自己的输出保持英文，因为它们没有可以触及它们的开关。
+
 ## 使用 Keychain
 
 - 打开 **Keychain → 新建密钥**，填写名称，然后粘贴、选择或拖入私钥文件（OpenSSH、PEM 或支持的 PPK，最大 256 KiB）。加密私钥需填写口令后保存。SSH 解析器验证密钥，自动生成类型、公钥和 SHA-256 指纹；如果额外提供公钥，则必须与私钥匹配。
@@ -60,7 +62,7 @@ Desktop 默认启用附带浏览器入口。设置 `SSH_CORDIS_NO_WEB_CARRIER=1`
 Desktop 架构参考 [deepseek-harness 在 `00102833` 提交中的桌面实现](https://github.com/deepseek-ai/deepseek-harness/tree/00102833dfaee1da9f48a3a8eae9d34005a75218/apps/desktop)，参考副本于 2026-09-23 同步。PureTerm 将其共享 Web Host 与 Electron 壳模式用于 SSH/SFTP 客户端。
 
 - `@pureterm/transport/web-host` 为两个入口统一装配 Cordis Host、dispatcher 和回环 HTTP/WebSocket 载体。
-- Electron 在 Node 模式子进程启动期间，通过 `pureterm-app://app/` 提供共享界面。最小 `window.puretermDesktop` 桥在 Host 就绪后提供 WebSocket 地址，并接收渲染层就绪上报。SSH/SFTP、主机和 Keychain 操作统一走 WebSocket。
+- Electron 在 Node 模式子进程启动期间，通过 `pureterm-app://app/` 提供共享界面。最小 `window.puretermDesktop` 桥在 Host 就绪后提供 WebSocket 地址，并接收渲染层的就绪上报与语言上报。SSH/SFTP、主机和 Keychain 操作统一走 WebSocket。
 - Electron 主进程负责窗口、系统加密、原生选钥和子进程生命周期。它向所属窗口的 WebSocket 请求注入 Desktop 认证 token，不向页面暴露该 token。父子私有 RPC 负责平台能力及启动、关停协调。
 
 内部集成需注意：旧 `window.sshAPI` 和 SSH 业务 IPC 已移除，既有 SSH 数据目录保持不变。进程边界与生命周期见[架构说明](docs/architecture_zh.md)，迁移说明见[变更日志](CHANGELOG_zh.md)。
@@ -85,6 +87,7 @@ npm run verify:electron
 | `apps/web/` | 独立本机 Node Web 入口与测试 |
 | `packages/host/` | Cordis Host、SSH/SFTP、主机存储及凭据接口 |
 | `packages/protocol/` | 通信协议与公共数据结构 |
+| `packages/i18n/` | 两个入口共用的文案目录与 `t()`；界面文案唯一存在的地方 |
 | `packages/transport/` | 共享 Web Host 装配、请求分派和 HTTP/WebSocket 载体 |
 | `packages/ui/` | 两个入口共用的终端、文件面板和浏览器传输 |
 | [VERSION.txt](VERSION.txt) | 所有 workspace 和发布 tag 使用的源码版本基准 |

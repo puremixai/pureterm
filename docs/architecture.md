@@ -30,7 +30,7 @@ flowchart LR
   C --> S[ssh2 / SSH / SFTP]
 ```
 
-`packages/protocol/src/protocol.ts` defines channels, capabilities, requests, results, events, and the binary wire format. `packages/transport/src/web-host.ts` assembles Host, dispatcher, and HTTP/WS carrier once for both entries. The dispatcher maps the protocol to public Host methods; each WebSocket supplies client identity. The transport restores binary payloads to bytes without converting terminal chunks to strings.
+`packages/protocol/src/protocol.ts` defines channels, capabilities, requests, results, events, and the binary wire format. A failure crosses as `{code, params, message}` — an identity plus its parameters rather than a pre-rendered sentence — so the interface can say it in the reader's language; `@pureterm/i18n` holds those sentences and is the only place user-facing copy lives. `packages/transport/src/web-host.ts` assembles Host, dispatcher, and HTTP/WS carrier once for both entries. The dispatcher maps the protocol to public Host methods; each WebSocket supplies client identity. The transport restores binary payloads to bytes without converting terminal chunks to strings.
 
 Events return through `RendererBridge` / `RendererHandle` to the corresponding client. IDs are opaque WebSocket client IDs; Host does not interpret Electron `webContents`. Client routing is separate from credential capabilities: an entry point injects `CredentialProvider` into `SessionStore`, while `RendererBridge` does not encrypt or decrypt data.
 
@@ -50,7 +50,7 @@ Resource monitoring is a request pair plus an event stream on that same dispatch
 | `apps/desktop/electron/app/` | Electron startup, windows, system encryption, native file picker, and update adapter |
 | `apps/desktop/electron/host/` | Node Host child entry with no Electron import |
 | `apps/desktop/electron/runtime/` | platform policy, readiness, profiles, child/RPC control, update coordination, and resource paths |
-| `apps/desktop/electron/carriers/` | minimal CommonJS preload bootstrap and readiness report |
+| `apps/desktop/electron/carriers/` | minimal CommonJS preload bootstrap plus the readiness and locale reports |
 | `apps/desktop/electron/diagnostics/` | in-process startup and smoke hooks |
 | `apps/web/src/` | Node CLI, data directory, and standalone policy injected into shared Web Host |
 
@@ -68,7 +68,7 @@ For the UI's own layout, [design tokens and stylesheet layout](design-system.md)
 
 ## Lifecycle
 
-Desktop applies platform policy, registers the custom scheme and scoped WebSocket authorization, starts the Node Web Host, and creates a shell generation while Host startup continues. The page loads immediately; its minimal preload waits for Host readiness before receiving the loopback WebSocket URL. Each window generation, listener, and watchdog has an idempotent release path; window operations read the current generation. The readiness gate accepts a launch profile only after the current main frame reports `renderer-ready`; loaded HTML alone does not mean the application is usable.
+Desktop applies platform policy, registers the custom scheme and scoped WebSocket authorization, starts the Node Web Host, and creates a shell generation while Host startup continues. The page loads immediately; its minimal preload waits for Host readiness before receiving the loopback WebSocket URL. Each window generation, listener, and watchdog has an idempotent release path; window operations read the current generation. The readiness gate accepts a launch profile only after the current main frame reports `renderer-ready`; loaded HTML alone does not mean the application is usable. The page reports a second, independent fact — which language it is showing — because the preference lives in the renderer and the shell's own menu and native dialogs sit outside the document; the main process narrows the value before believing it and rebuilds the menu, and until the first report that menu is English, the catalog's source language.
 
 Private parent/child IPC carries startup, shutdown, encryption, and native key-picker capabilities. The main process holds a separate Desktop bearer token and injects it only into the current application window’s exact Host WebSocket request, rewriting Origin to the loopback Host. The token never reaches page URLs, DOM, preload bootstrap, logs, or storage. An unexpected Host exit reports an error and ends the application. Application exit, startup failure, diagnostics, and updates wait for the child to close and terminate it after the deadline. Closing or crashing a renderer closes its WebSocket and releases its sessions; other browser clients continue while the Host remains running. Closing the last window exits the app on Windows/Linux, while macOS keeps the Host available for window reactivation.
 
