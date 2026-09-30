@@ -86,7 +86,7 @@ Desktop 子进程拥有共享 Web Host 及回环 HTTP/WS 载体。`pureterm-app:
 
 ## 上游参考与范围
 
-上游参考锁定为 deepseek-harness 提交 `00102833dfaee1da9f48a3a8eae9d34005a75218`。PureTerm 参考其轻量 Desktop 壳，采用子进程 Web Host、Client Cordis 插件树与安装更新机制。按本项目范围采用静态插件组合、WebSocket 业务通信、私有平台/生命周期 IPC 和 GitHub Releases 渠道，不引入上游 Agent、动态 npm 插件管理或多租户。具体发布和签名条件见[发布说明](docs/desktop-release_zh.md)。
+9 月 23 日的改造以 deepseek-harness 提交 `00102833dfaee1da9f48a3a8eae9d34005a75218` 为依据。9 月 30 日，本地参考副本更新到 `639ed015397290b3745d163aafe02ffee4aa3f84`（`dsh-v0.2.0-rc.2`）；哪些能力一致、经过适配或尚未实现，见[当日架构对比报告](docs/reports/2026-09-30-desktop-architecture-comparison_zh.md)。PureTerm 参考其轻量 Desktop 壳，采用子进程 Web Host、Client Cordis 插件树与安装更新机制。按本项目范围采用静态插件组合、WebSocket 业务通信、私有平台/生命周期 IPC 和 GitHub Releases 渠道，不引入上游 Agent、动态 npm 插件管理或多租户。具体发布和签名条件见[发布说明](docs/desktop-release_zh.md)。
 
 上游实际按 `packages/<group>/<package>` 组织，SSH 包位于 `packages/ssh/{ssh,fs-ssh,subprocess-ssh,sandbox-ssh}`；不能从 Service 导出形式推导本项目的 services/plugins 目录规则。上游 Web Client 本身是 Cordis 应用，“不另造 IPC 插件系统”不代表前端没有插件树。
 
