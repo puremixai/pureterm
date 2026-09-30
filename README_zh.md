@@ -6,7 +6,7 @@
 
 本项目采用 [MIT License](LICENSE)。
 
-当前源码版本为 `0.1.0-alpha.1`，基准文件是 [VERSION.txt](VERSION.txt)，版本维护规则见[开发说明](docs/DEVELOPMENT_zh.md)。
+当前源码版本为 `0.1.0-alpha.2`，基准文件是 [VERSION.txt](VERSION.txt)，版本维护规则见[开发说明](docs/DEVELOPMENT_zh.md)。
 
 两个入口复用 Host、协议、共享 Web Host 装配和 Cordis Client。Desktop 由 Electron 启动独立 Node 模式 Web Host 子进程；其 `pureterm-app://app/` 窗口通过本机 WebSocket 发送 SSH/SFTP、主机和 Keychain 请求。独立 Web 在普通 Node 进程中运行相同装配，无需启动 Electron。
 

@@ -8,6 +8,12 @@ PureTerm 的所有重要变更都记录在这里。本文件遵循 [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- 在 `0.1.0-alpha.2` 之后合并的工作中持续更新此区段。
+
+## [0.1.0-alpha.2] - 2026-09-30
+
 ### Added
 
 - 增加 `@pureterm/i18n`：浏览器界面与 Electron 外壳共用同一份文案目录和同一个 `t()`，以英文为准、中文为完整译文。测试会钉住两份目录的键集合、占位符集合一致，且没有未翻译的错误码，所以漏翻会在构建期失败，而不是渲染出一片空白。`@pureterm/protocol` 增加 `HOST_ERROR_CODES`、`WireError` 与 `HostError`，失败可以以「身份 + 参数」而不是拼好的句子跨线；Host 只发错误码，永不引入文案目录。本次只铺地基——生产端与界面的迁移另行提交。
@@ -55,8 +61,6 @@ PureTerm 的所有重要变更都记录在这里。本文件遵循 [Keep a Chang
 - 把维护中的文档拉回与代码一致的状态。文案目录落地后，`@pureterm/i18n` 从每一份包清单里都缺失 —— `AGENTS.md`、`README.md`、`LAYOUT-PROPOSAL.md`、开发指南和 Desktop README —— 也从「谁可以导入谁」的边界规则里缺失；`window.puretermDesktop` 仍被描述为只接收就绪上报，而它还接收外壳自己的菜单与原生对话框所需的语言上报；设计系统仍说顶栏只有两个开关，而语言开关是第三个；英文文档还按中文标签称呼两个会话控件，而英文界面已经不再那样显示。开发指南新增一节讲界面文案，把目录的规则 —— 英文是源语言、漏翻是编译错误、失败以错误码跨线、开发者日志与 CLI 保持英文且不进目录 —— 写在贡献者找得到的地方。
 - 把 Electron 钉到 43，让桌面端能在 macOS 12 上跑起来。Electron 44 声明 `LSMinimumSystemVersion = 13.0`，因此在 Monterey 上它的二进制在 `dyld` 阶段就停住 —— `Symbol not found: (_OBJC_CLASS_$_SMAppService)`，而 `SMAppService` 是 macOS 13 的 API —— 应用代码一行都没执行，`verify:electron` 与所有依赖 Electron 的冒烟套件也随之全部无法运行。每个大版本都自报自己的下限，分界很干净：38 及以下要 Big Sur，39 到 43 要 Monterey，44 要 Ventura。钉子改为 `^43.7.5`；仓库里没有任何东西要求 44，也没有代码用到 43 缺少的 API，而 43 仍在 Electron「最新三个大版本」的支持窗口内。`npm run verify:electron` 现在能跑完了 —— 在 Monterey 主机上它从来没跑完过 —— 七条流程全过，包括共享的 Client 生命周期套件与独立浏览器那条。代价是落后一个大版本：44 及以上都要求 macOS 13，因此仍在 macOS 12 上的贡献者也只能留在 43。
 - 如实上报凭据究竟能不能加密，而不是提供一个这台机器保护不了的存储承诺。凡是系统密钥库不存在的地方，`safeStorage` 都会退回明文后端 —— headless 的 Linux CI runner 如此，任何没有密钥库的桌面机也如此 —— 但桌面入口一概告诉 Host `credentialPersistence: 'encrypted'`。于是 Host 以为自己能封装密钥，`seal()` 却返回空，Host 便正确地拒绝了这次写入。现在这项能力是量出来的而不是假设的：`CredentialProvider` 带上 `credentialPersistence`，取 `'encrypted'` 或 `'session'` —— 它与 `persistent` 是两回事，后者说的是存储能不能跨重启，不是能不能加密 —— 父进程通过 `platform:capabilities` 上报，Host 子进程校验后转发。读到 `'session'` 时，**记住凭据**开关是关的，提示说明凭据只在当前页面有效，而不是给一个 Host 注定会拒绝的保存。两条冒烟路径各自断言自己那份能力承诺的结果 —— 封装并认证成功，或者被拒绝且什么都没落盘 —— 因此 Linux 的 Electron job 现在是跑完，而不是栽在那次拒绝上。
-- 在 `0.1.0-alpha.1` 之后合并的工作中持续更新此区段。
-
 ### Fixed
 
 - 两个库屏在卡片视图下隐藏列表头。那六个标签压在一张只有单轨的网格上，标注的是并不存在的列；现在表头跟随视图开关写入的 `.card-view` 类，与它早已跟随空状态元素的 `hidden` 属性是同一种读法。
@@ -88,5 +92,6 @@ PureTerm 的所有重要变更都记录在这里。本文件遵循 [Keep a Chang
 - Desktop 凭据继续由操作系统凭据存储保护，Host 进程通过私有 IPC 能力访问它们。
 - 发布构建排除可选的原生 SSH 加速模块，不包含 GitHub 凭据。
 
-[Unreleased]: https://github.com/puremixai/pureterm/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/puremixai/pureterm/compare/v0.1.0-alpha.2...HEAD
+[0.1.0-alpha.2]: https://github.com/puremixai/pureterm/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/puremixai/pureterm/releases/tag/v0.1.0-alpha.1

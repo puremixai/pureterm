@@ -167,7 +167,7 @@ staging 可以删除并重新生成，不得提交。安装包说明记录自包
 
 ## 版本与变更日志
 
-PureTerm 目前处于 `0.x` 开发周期。版本格式和排序遵循 [SemVer 2.0.0](https://semver.org/)。当前源码版本为 `0.1.0-alpha.1`，记录在 [VERSION.txt](../VERSION.txt)。功能、配置和数据结构仍可能调整，兼容性变化必须记录在变更日志中。
+PureTerm 目前处于 `0.x` 开发周期。版本格式和排序遵循 [SemVer 2.0.0](https://semver.org/)。当前源码版本为 `0.1.0-alpha.2`，记录在 [VERSION.txt](../VERSION.txt)。功能、配置和数据结构仍可能调整，兼容性变化必须记录在变更日志中。
 
 | 版本形式 | 用途 |
 | --- | --- |
@@ -195,8 +195,8 @@ npm run release:check
 用户可见变化先在 `[Unreleased]` 下记录，使用 `Added`、`Changed`、`Fixed`、`Security` 等分类。发布前将条目移到带日期的版本区段；只有 `npm run verify`、`npm run verify:electron` 和 Windows 安装包验收通过后，才创建对应 tag：
 
 ```powershell
-npm run release:check -- --version 0.1.0-alpha.1
-npm run release:notes -- --version 0.1.0-alpha.1 --output release-notes.md
+npm run release:check -- --version 0.1.0-alpha.2
+npm run release:notes -- --version 0.1.0-alpha.2 --output release-notes.md
 ```
 
 发布 workflow 构建 Windows NSIS、macOS DMG/ZIP 和 Linux AppImage，并创建 GitHub draft release；不会自动公开。详见[Desktop 安装包与 GitHub Releases](desktop-release_zh.md)。
