@@ -54,6 +54,15 @@ const tracks = (value: string): number => {
   return trimmed === '' || trimmed === 'none' ? 1 : trimmed.split(/\s+/).length
 }
 
+/**
+ * 这一支全是几何断言，只报「动了」而不报动到哪儿，等于没法诊断。把布局视口一起带上：
+ * client 比 inner 小就说明有滚动条挤进来了，scroll 超出 client 就是溢出。
+ */
+const layoutContext = (): string => {
+  const root = document.documentElement
+  return `inner=${window.innerWidth}x${window.innerHeight} client=${root.clientWidth}x${root.clientHeight} scroll=${root.scrollWidth}x${root.scrollHeight}`
+}
+
 export async function runSessionToolsLayoutChecks(options: SessionToolsLayoutOptions): Promise<string[]> {
   const checks: string[] = []
   const where = `${window.innerWidth}x${window.innerHeight} ${options.theme}/${options.locale}`
@@ -117,7 +126,7 @@ export async function runSessionToolsLayoutChecks(options: SessionToolsLayoutOpt
     assert(narrow ? columnTracks === 1 && rowTracks === 3 : columnTracks === 3 && rowTracks === 1,
       say(`the grid uses ${narrow ? 'rows' : 'columns'} (columns=${columnTracks}, rows=${rowTracks})`))
     assert(sameBox(collapsedRail, rail.getBoundingClientRect()),
-      say(`the rail does not move when Files opens (${formatBox(collapsedRail)} -> ${formatBox(rail.getBoundingClientRect())})`))
+      say(`the rail does not move when Files opens (${formatBox(collapsedRail)} -> ${formatBox(rail.getBoundingClientRect())}; ${layoutContext()})`))
     const filesPrimary = primary.getBoundingClientRect()
     if (narrow) assert(filesPrimary.height < collapsedPrimary.height - 1, say('a narrow panel takes height from the terminal'))
     else assert(filesPrimary.width < collapsedPrimary.width - 1, say('a wide panel takes width from the terminal'))
@@ -128,14 +137,16 @@ export async function runSessionToolsLayoutChecks(options: SessionToolsLayoutOpt
     element('monitor-toggle').click()
     await terminal.settleLayout()
     assert(!element('session-monitor').hidden && element('sftp').hidden, say('Monitor replaces Files in the one slot'))
-    assert(sameBox(collapsedRail, rail.getBoundingClientRect()), say('the rail does not move when the tool switches'))
+    assert(sameBox(collapsedRail, rail.getBoundingClientRect()),
+      say(`the rail does not move when the tool switches (${formatBox(collapsedRail)} -> ${formatBox(rail.getBoundingClientRect())}; ${layoutContext()})`))
     assert(getComputedStyle(element('monitor-body')).overflowY === 'auto', say('the monitor body owns its own scroll'))
     checks.push('switching to Monitor keeps the rail in place and scrolls inside its own body')
 
     element('monitor-toggle').click()
     await terminal.settleLayout()
     assert(element('session-tool-panel').hidden && grip.hidden, say('collapsing hides the slot and the grip'))
-    assert(sameBox(collapsedPrimary, primary.getBoundingClientRect()), say('collapsing restores the terminal box'))
+    assert(sameBox(collapsedPrimary, primary.getBoundingClientRect()),
+      say(`collapsing restores the terminal box (${formatBox(collapsedPrimary)} -> ${formatBox(primary.getBoundingClientRect())}; ${layoutContext()})`))
     checks.push('collapsing restores the terminal box and hides the slot and grip')
 
     // 展开／收起只是重新适配同一块 xterm，不能开第二条 SSH，也不能换终端对象。

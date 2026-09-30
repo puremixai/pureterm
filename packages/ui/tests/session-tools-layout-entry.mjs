@@ -42,9 +42,12 @@ async function main() {
     window = new BrowserWindow({ show: false, width: 1280, height: 800, focusable: false,
       webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } })
     window.webContents.on('console-message', event => console.log('[SESSION-TOOLS-RENDERER] ' + event.message))
-    await window.loadFile(process.env.PURETERM_LAYOUT_TEST_HTML)
     let total = 0
     for (const testCase of CASES) {
+      // 每个用例都重新加载一次页面。夹具是按 id 找元素的，一个文档里连着挂十一个客户端
+      // 会把上一个用例留下的类名、失败文案和焦点带进下一个用例 —— 本地字宽下看不出来，
+      // 换一套字体度量就会让几何断言在第二个用例上翻车。真实应用每次都是从空文档启动的。
+      await window.loadFile(process.env.PURETERM_LAYOUT_TEST_HTML)
       window.setContentSize(testCase.width, testCase.height)
       const sized = await window.webContents.executeJavaScript(`(async () => {
         for (let attempt = 0; attempt < 200; attempt += 1) {
