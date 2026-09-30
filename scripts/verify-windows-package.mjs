@@ -126,9 +126,9 @@ export async function verifyWindowsPackage() {
         SSH_CORDIS_SMOKE_HOST: server.host, SSH_CORDIS_SMOKE_PORT: String(server.port),
         SSH_CORDIS_SMOKE_USER: server.username, SSH_CORDIS_SMOKE_PASS: server.password,
       },
-      successMarker: '[SMOKE-OK]', requiredMarkers: ['[SFTP-SMOKE-OK]', '[CREDENTIAL-SMOKE-OK]', '[main] 闸门已打开'],
+      successMarker: '[SMOKE-OK]', requiredMarkers: ['[SFTP-SMOKE-OK]', '[CREDENTIAL-SMOKE-OK]', '[main] gate open'],
       inspect: async ({ output }) => {
-        const match = output.match(/Host 子进程已就绪 pid=(\d+) parent=(\d+)/)
+        const match = output.match(/Host child ready pid=(\d+) parent=(\d+)/)
         assert.ok(match, 'installed application did not report its Host child process')
         const hostPid = Number(match[1])
         assert.notEqual(hostPid, Number(match[2]), 'Host must run in a separate Node process')

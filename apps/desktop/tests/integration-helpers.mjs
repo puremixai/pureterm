@@ -16,6 +16,16 @@ export async function until(predicate, description, timeout = 5000) {
   assert.fail(`Timed out waiting for ${description}`)
 }
 
+/**
+ * `assert.rejects` 的判定器：失败带的是**码**，断言码而不是那句话。
+ *
+ * 断言码而不是原文，是因为原文不参与本地化、可以随时改；码才是跨线的契约。
+ */
+export const rejectedWith = code => error => {
+  assert.equal(error.code, code, error.message)
+  return true
+}
+
 export function rendererFixture() {
   const events = []
   let alive = true

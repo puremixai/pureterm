@@ -1,6 +1,6 @@
 import { Service, type Context } from 'cordis'
 import type { ClientChannel } from 'ssh2'
-import { EVENTS, type SessionFacts, type TerminalOpenRequest, type TerminalOpenResult } from '@pureterm/protocol'
+import { EVENTS, HostError, asHostError, toWireError, type SessionFacts, type TerminalOpenRequest, type TerminalOpenResult } from '@pureterm/protocol'
 
 declare module 'cordis' {
   interface Context {
@@ -34,15 +34,10 @@ const FLUSH_INTERVAL = 16
 const HIGH_WATER = 512 * 1024
 const LOW_WATER = 64 * 1024
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
-}
-
 /** Cancel the connection promptly even while its platform credential RPC is pending. */
 function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const abort = (): void => reject(new Error('客户端已断开连接或 Host 已关闭。'))
+    const abort = (): void => reject(new HostError('host.client-disconnected'))
     if (signal.aborted) abort()
     else signal.addEventListener('abort', abort, { once: true })
     operation.then(
@@ -72,7 +67,7 @@ export class TerminalBridge extends Service {
     super(ctx, 'terminal')
 
     // 只看一次：ssh2 侧的会话结束（断线/错误/主动关闭）统一在这里收尾
-    this.ctx.on('ssh/session-closed', (sessionId: string, reason: string) => {
+    this.ctx.on('ssh/session-closed', (sessionId: string, reason: HostError) => {
       this.close(sessionId, reason)
     })
 
@@ -127,7 +122,7 @@ export class TerminalBridge extends Service {
       if (owner === clientId) controller.abort()
     }
     for (const bridge of [...this.bridges.values()]) {
-      if (bridge.clientId === clientId) this.close(bridge.sessionId, '客户端已断开连接。')
+      if (bridge.clientId === clientId) this.close(bridge.sessionId, new HostError('host.client-disconnected'))
     }
   }
 
@@ -135,13 +130,13 @@ export class TerminalBridge extends Service {
     if (this.stopped) return
     this.stopped = true
     for (const controller of this.openings.keys()) controller.abort()
-    for (const bridge of [...this.bridges.values()]) this.close(bridge.sessionId, 'Host 已关闭。')
+    for (const bridge of [...this.bridges.values()]) this.close(bridge.sessionId, new HostError('host.shutdown'))
   }
 
   async open(payload: TerminalOpenPayload): Promise<TerminalOpenResult> {
     const clientId = payload.clientId
-    if (this.stopped) throw new Error('Host 已关闭，无法建立新连接。')
-    if (!this.ctx.renderer.isAlive(clientId)) throw new Error('渲染进程不可用。')
+    if (this.stopped) throw new HostError('host.closed')
+    if (!this.ctx.renderer.isAlive(clientId)) throw new HostError('host.renderer-gone')
 
     const cols = payload.cols ?? 100
     const rows = payload.rows ?? 30
@@ -152,11 +147,11 @@ export class TerminalBridge extends Service {
     const renderer = this.ctx.renderer
     const assertClientAvailable = (): void => {
       if (this.stopped || controller.signal.aborted || !renderer.isAlive(clientId)) {
-        throw new Error('客户端已断开连接或 Host 已关闭。')
+        throw new HostError('host.client-disconnected')
       }
     }
     const abortSession = (): void => {
-      if (createdSessionId) ssh.dispose(createdSessionId, '客户端已断开连接。')
+      if (createdSessionId) ssh.dispose(createdSessionId, new HostError('host.client-disconnected'))
     }
     controller.signal.addEventListener('abort', abortSession, { once: true })
 
@@ -186,9 +181,9 @@ export class TerminalBridge extends Service {
       const passphrase = authMethod === 'privateKey' ? key ? key.passphrase : payload.passphrase ?? saved : undefined
 
       if (authMethod === 'privateKey') {
-        if (!privateKey && !privateKeyPath) throw new Error('请选择密钥或私钥文件。')
+        if (!privateKey && !privateKeyPath) throw new HostError('host.key-required')
       } else if (!password && stored?.authMethod === 'password' && stored.hasSecret) {
-        throw new Error('已保存的密码无法解密（系统密钥可能已变更），请重新输入密码。')
+        throw new HostError('host.password-undecryptable')
       }
 
       const session = await ssh.connect({
@@ -212,12 +207,12 @@ export class TerminalBridge extends Service {
       this.bridges.set(sessionId, bridge)
 
       shell.on('data', (chunk: Buffer) => this.push(bridge, chunk))
-      shell.on('close', () => this.close(sessionId, '远端 shell 已关闭。'))
-      shell.on('error', (error: Error) => this.close(sessionId, `通道错误：${error.message}`))
+      shell.on('close', () => this.close(sessionId, new HostError('host.shell-closed')))
+      shell.on('error', (error: Error) => this.close(sessionId, new HostError('host.channel-error', { detail: error.message }, error.message)))
 
       if (!renderer.send(clientId, EVENTS.terminalOpened, sessionId, cols, rows)) {
-        this.close(sessionId, '客户端已断开连接。')
-        throw new Error('客户端已断开连接。')
+        this.close(sessionId, new HostError('host.client-disconnected'))
+        throw new HostError('host.client-disconnected')
       }
       /*
        * 握手事实紧跟在 terminal:opened 之后补发。
@@ -229,12 +224,16 @@ export class TerminalBridge extends Service {
       const facts = ssh.facts(sessionId)
       if (facts) renderer.send(clientId, EVENTS.sessionFacts, facts)
       return { sessionId, host: session.host, cols, rows }
-    } catch (error) {
-      const message = errorMessage(error)
-      if (createdSessionId) ssh.dispose(createdSessionId, message)
-      // 双通道报错：事件通知界面 + reject 让 invoke 也拿到（谁在等谁就收到）
-      renderer.send(clientId, EVENTS.terminalClosed, createdSessionId ?? '', message)
-      throw new Error(message)
+    } catch (caught) {
+      /*
+       * 双通道报错：事件通知界面 + reject 让 invoke 也拿到（谁在等谁就收到）。
+       * 两条路送的是**同一个失败**，所以先收成一个 HostError 再分发 —— 一条
+       * TypeError 也要以 `internal` 的身份过去，而不是让两条路各说一句话。
+       */
+      const error = asHostError(caught)
+      if (createdSessionId) ssh.dispose(createdSessionId, error)
+      renderer.send(clientId, EVENTS.terminalClosed, createdSessionId ?? '', toWireError(error))
+      throw error
     } finally {
       controller.signal.removeEventListener('abort', abortSession)
       this.openings.delete(controller)
@@ -247,7 +246,7 @@ export class TerminalBridge extends Service {
     try {
       bridge.shell.write(data)
     } catch (error) {
-      this.close(sessionId, `写入失败：${errorMessage(error)}`)
+      this.close(sessionId, new HostError('host.write-failed', { detail: asHostError(error).message }, asHostError(error).message))
     }
   }
 
@@ -258,11 +257,11 @@ export class TerminalBridge extends Service {
     try {
       bridge.shell.setWindow(Math.max(5, rows), Math.max(20, cols), 0, 0)
     } catch (error) {
-      this.close(sessionId, `调整窗口失败：${errorMessage(error)}`)
+      this.close(sessionId, new HostError('host.resize-failed', { detail: asHostError(error).message }, asHostError(error).message))
     }
   }
 
-  close(sessionId: string, reason = '会话已关闭。'): void {
+  close(sessionId: string, reason: HostError = new HostError('host.session-closed')): void {
     const bridge = this.bridges.get(sessionId)
     if (!bridge) return
     // 先删再收尾，避免 ssh/session-closed 回调重入
@@ -273,7 +272,7 @@ export class TerminalBridge extends Service {
     }
     this.flush(bridge)
     this.ctx.ssh.dispose(sessionId, reason)
-    this.ctx.renderer.send(bridge.clientId, EVENTS.terminalClosed, sessionId, reason)
+    this.ctx.renderer.send(bridge.clientId, EVENTS.terminalClosed, sessionId, toWireError(reason))
   }
 
   private push(bridge: Bridge, chunk: Buffer): void {
@@ -299,7 +298,7 @@ export class TerminalBridge extends Service {
       bridge.bytes = 0
       const delivered = this.ctx.renderer.send(bridge.clientId, EVENTS.terminalData, bridge.sessionId, payload)
       if (!delivered) {
-        this.close(bridge.sessionId, '渲染进程已关闭。')
+        this.close(bridge.sessionId, new HostError('host.renderer-closed'))
         return
       }
     }

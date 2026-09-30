@@ -1,3 +1,5 @@
+import type { MessageKey, MessageParams } from '@pureterm/i18n'
+
 export type UpdatePhase = 'disabled' | 'idle' | 'checking' | 'downloading' | 'downloaded' | 'installing' | 'error'
 export interface UpdateBackend {
   autoDownload: boolean
@@ -8,15 +10,23 @@ export interface UpdateBackend {
   quitAndInstall(isSilent: boolean, forceRunAfter: boolean): void
 }
 
-/** Electron-independent coordinator. Installing always waits for the Host to stop. */
+/** 异常 → 给人看的一句细节。只取 `message`：`String(new Error('x'))` 会多带一个 `Error: `。 */
+const detailOf = (error: unknown): string => error instanceof Error ? error.message : String(error)
+
+/**
+ * Electron 无关的更新协调器。安装永远等 Host 停稳。
+ *
+ * 它**不认语言**：每句要说的话都以目录键 + 参数交给 `message`，由桌面适配器
+ * 在弹框那一刻用当前语言说出来。协调器只管「什么时候该说哪一句」。
+ */
 export function createUpdateCoordinator(options: {
   backend: UpdateBackend
   enabled: boolean
-  unavailableReason?: string
+  unavailableReason?: MessageKey
   beforeInstall(): Promise<void>
   onInstallError?(): void | Promise<void>
   confirmInstall(version: string): Promise<boolean>
-  message(message: string): void | Promise<void>
+  message(key: MessageKey, params?: MessageParams): void | Promise<void>
   onState?(phase: UpdatePhase, detail?: string): void
   initialDelayMs?: number
   intervalMs?: number
@@ -42,12 +52,12 @@ export function createUpdateCoordinator(options: {
     backend.on(event, handler)
     subscriptions.push(() => { backend.removeListener(event, handler) })
   }
-  const message = (text: string) => Promise.resolve(options.message(text)).catch(error => console.error('[updates]', error))
+  const message = (key: MessageKey, params?: MessageParams) => Promise.resolve(options.message(key, params)).catch(error => console.error('[updates]', error))
   const installFailed = (error: unknown): Promise<void> => {
     if (recovering) return recovering
     setState('error', String(error))
     recovering = Promise.resolve().then(async () => {
-      await message(`安装更新失败：${error instanceof Error ? error.message : String(error)}`)
+      await message('desktop.update.install-failed', { detail: detailOf(error) })
       if (!disposed) await options.onInstallError?.()
     }).catch(error => console.error('[updates] Recovery failed:', error))
     return recovering
@@ -80,11 +90,11 @@ export function createUpdateCoordinator(options: {
   }
   function check(manual = false): Promise<void> {
     if (disposed) return Promise.resolve()
-    if (!options.enabled) return manual ? message(options.unavailableReason ?? '此运行方式不支持自动更新。') : Promise.resolve()
+    if (!options.enabled) return manual ? message(options.unavailableReason ?? 'desktop.update.unavailable') : Promise.resolve()
     if (phase === 'downloaded') return manual ? install() : Promise.resolve()
     if (phase === 'installing') return Promise.resolve()
     if (checking) { manualCheck ||= manual; return checking }
-    if (phase === 'downloading') return manual ? message(`正在下载 PureTerm ${version}，下载完成后会提示安装。`) : Promise.resolve()
+    if (phase === 'downloading') return manual ? message('desktop.update.downloading-then-install', { version }) : Promise.resolve()
     manualCheck = manual
     checking = Promise.resolve().then(async () => {
       setState('checking')
@@ -97,16 +107,16 @@ export function createUpdateCoordinator(options: {
         cancelDownload = () => result.cancellationToken?.cancel()
         void result.downloadPromise.catch(async error => {
           setState('error', String(error))
-          if (!disposed && requestedManually) await message(`下载更新失败：${error instanceof Error ? error.message : String(error)}`)
+          if (!disposed && requestedManually) await message('desktop.update.download-failed', { detail: detailOf(error) })
         }).finally(() => { cancelDownload = undefined })
         if (disposed) cancelDownload?.()
       }
       if (disposed || !manualCheck) return
-      if (phase === 'idle' || phase === 'checking') await message('当前已是最新版本。')
-      else if (phase === 'downloading') await message(`正在下载 PureTerm ${version}。`)
+      if (phase === 'idle' || phase === 'checking') await message('desktop.update.up-to-date')
+      else if (phase === 'downloading') await message('desktop.update.downloading', { version })
     }).catch(async error => {
       setState('error', String(error))
-      if (!disposed && manualCheck) await message(`检查更新失败：${error instanceof Error ? error.message : String(error)}`)
+      if (!disposed && manualCheck) await message('desktop.update.check-failed', { detail: detailOf(error) })
     }).finally(() => { checking = undefined; manualCheck = false })
     return checking
   }

@@ -6,7 +6,9 @@ test('the repository keeps workspace versions and a dated release section in syn
   const result = validateProject()
   assert.equal(result.version, '0.1.0-alpha.1')
   assert.equal(readSourceVersion(), '0.1.0-alpha.1')
-  assert.equal(result.versions.length, 7)
+  // The root manifest, five packages and two apps. The count is here so a new
+  // workspace cannot be added without a version that matches VERSION.txt.
+  assert.equal(result.versions.length, 8)
   assert.equal(result.entry.version, 'Unreleased')
   assert.match(result.entry.body, /Keep this section updated/)
   assert.equal(result.changelog.entries.find(entry => entry.version === '0.1.0-alpha.1')?.date, '2026-09-16')

@@ -19,8 +19,8 @@ const result = await runElectron({
   switches,
   timeoutMs: 60_000,
   successMarker: '[BOOT-OK]',
-  requiredMarkers: ['[main] 闸门已打开'],
-  inspect: ({ output }) => { screenshotCreated = output.includes(`[boot] 已截图窗口内容：${shotPath}`) },
+  requiredMarkers: ['[main] gate open'],
+  inspect: ({ output }) => { screenshotCreated = output.includes(`[boot] window captured to ${shotPath}`) },
 })
 reportElectronResult('boot', result)
 if (result.code === 0 && screenshotCreated && existsSync(shotPath)) console.log(`窗口截图：${shotPath}`)

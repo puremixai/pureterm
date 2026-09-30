@@ -1,4 +1,4 @@
-import type { MonitorSnapshot } from '@pureterm/protocol'
+import { HostError, type HostErrorCode, type MonitorSnapshot } from '@pureterm/protocol'
 
 /*
  * Linux 采集器：一帧文本进，一份快照出。
@@ -106,9 +106,15 @@ interface Section {
   ok: boolean
 }
 
-/** 帧结构本身不合法。这类错误不是「某个指标量不到」，而是整次探测没有可信输出。 */
-function invalidFrame(what: string): never {
-  throw new Error(`监控输出不是可识别的数据帧：${what}`)
+/**
+ * 帧结构本身不合法。这类错误不是「某个指标量不到」，而是整次探测没有可信输出。
+ *
+ * 每一格是一个**码**，不是一个句子：这些诊断会跨线（探测失败时作为
+ * `monitor.probe-failed` 的诊断原文，或者直接作为 `monitor.frame.*` 到达渲染层），
+ * 而跨线的句子没法翻译。真正读不懂帧的用户在界面上看到的是那一格的译文。
+ */
+function invalidFrame(code: HostErrorCode, params?: Record<string, string | number>): never {
+  throw new HostError(code, params)
 }
 
 /**
@@ -121,8 +127,8 @@ function invalidFrame(what: string): never {
 function readFrame(stdout: string): { os: string; sections: Map<string, Section> } {
   const lines = stdout.split('\n').map(line => (line.endsWith('\r') ? line.slice(0, -1) : line))
   const header = lines.indexOf(FRAME_HEADER)
-  if (header < 0) invalidFrame('没有找到起始标记')
-  if (lines.indexOf(FRAME_HEADER, header + 1) >= 0) invalidFrame('出现了重复的帧')
+  if (header < 0) invalidFrame('monitor.frame.no-header')
+  if (lines.indexOf(FRAME_HEADER, header + 1) >= 0) invalidFrame('monitor.frame.duplicate')
 
   const sections = new Map<string, Section>()
   let cursor = header + 1
@@ -130,7 +136,7 @@ function readFrame(stdout: string): { os: string; sections: Map<string, Section>
 
   for (const name of SECTION_NAMES) {
     if (lines[cursor] !== name) {
-      invalidFrame(`期望 ${name} 分节，实际读到「${lines[cursor] ?? '（输出已结束）'}」`)
+      invalidFrame('monitor.frame.expected-section', { section: name, found: lines[cursor] ?? '' })
     }
     cursor++
     const payload: string[] = []
@@ -148,23 +154,23 @@ function readFrame(stdout: string): { os: string; sections: Map<string, Section>
       payload.push(line)
       cursor++
     }
-    if (status === null) invalidFrame(`${name} 分节没有结束状态行`)
-    if (status > 255) invalidFrame(`${name} 分节的退出状态超出范围`)
+    if (status === null) invalidFrame('monitor.frame.missing-status', { section: name })
+    if (status > 255) invalidFrame('monitor.frame.status-range', { section: name, status })
     sections.set(name, { payload, ok: status === 0 })
 
     if (name === 'OS') {
       const named = payload.filter(line => line.trim() !== '')
-      if (status !== 0 || named.length !== 1) invalidFrame('OS 分节不可用')
+      if (status !== 0 || named.length !== 1) invalidFrame('monitor.frame.os-unavailable')
       os = named[0]!.trim()
       // 非 Linux：脚本在这一节之后就收尾了，后面的分节不该出现。
       if (os !== 'Linux') break
     }
   }
 
-  if (lines[cursor] !== 'END') invalidFrame('没有找到结束标记')
+  if (lines[cursor] !== 'END') invalidFrame('monitor.frame.no-end-marker')
   cursor++
-  if (lines.slice(cursor).some(line => line.trim() !== '')) invalidFrame('结束标记之后还有内容')
-  if (os === null) invalidFrame('缺少 OS 分节')
+  if (lines.slice(cursor).some(line => line.trim() !== '')) invalidFrame('monitor.frame.trailing-content')
+  if (os === null) invalidFrame('monitor.frame.missing-os')
   return { os, sections }
 }
 

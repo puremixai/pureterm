@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
-import { encodeWire, decodeWire } from '@pureterm/protocol'
+import { encodeWire, decodeWire, fromWireError } from '@pureterm/protocol'
 import { startHostProcess } from '../dist/electron/runtime/host-process.js'
 import { startFakeSshServer } from './fake-ssh-server.mjs'
 import { connection, rendererFixture, until } from './integration-helpers.mjs'
@@ -42,7 +42,8 @@ async function wireClient(url) {
         if (socket.readyState === WebSocket.CLOSED) throw new Error('WebSocket disconnected')
         return undefined
       }, `reply to ${method}`)
-      if (!reply.ok) throw new Error(reply.error)
+      // 失败跨线是一个 `{code, params, message}`，重建回 HostError 之后调用方读 `code`。
+      if (!reply.ok) throw fromWireError(reply.error)
       return reply.value
     },
     notice(name, params = []) {
@@ -201,7 +202,10 @@ test('Keychain encrypts through parent platform RPC and authenticates after chil
   client.notice('ssh:input', [session.sessionId, 'keychain-child\n'])
   await until(() => client.output(session.sessionId).includes(Buffer.from('echo:keychain-child\r\n')), 'keychain child terminal echo')
   assert.ok(server.authentications.includes('publickey'))
-  await assert.rejects(client.call('keys:remove', [key.id]), /使用/)
+  await assert.rejects(client.call('keys:remove', [key.id]), error => {
+    assert.equal(error.code, 'host.key-in-use')
+    return true
+  })
   await client.call('hosts:remove', [saved.id])
   assert.equal(await client.call('keys:remove', [key.id]), true)
 })
@@ -242,7 +246,11 @@ test('WebSocket disconnect cancels an opening waiting on parent credential servi
   const saved = await client.call('hosts:save', [{ ...connection(server), rememberPassword: true }])
   const { password: _password, ...request } = connection(server)
   const opening = client.call('ssh:open', [{ ...request, hostId: saved.id }])
-  const rejected = assert.rejects(opening, /disconnected|关闭|客户端/i)
+  // 要么是子进程认出的「客户端断开」，要么是 socket 先关了导致回复根本没到。
+  const rejected = assert.rejects(opening, error => {
+    assert.ok(error.code === 'host.client-disconnected' || /disconnected/i.test(error.message), error.message)
+    return true
+  })
   await entered.promise
   await client.close()
   await rejected

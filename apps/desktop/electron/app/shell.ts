@@ -120,12 +120,12 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
     const samePage = !!target && target.protocol === allowedUrl.protocol && target.host === allowedUrl.host && target.pathname === allowedUrl.pathname && !target.username && !target.password
     if (samePage) return
     event.preventDefault()
-    console.warn(`[shell#${id}] 已拦截窗口导航：${url}`)
+    console.warn(`[shell#${id}] blocked window navigation: ${url}`)
   })
 
   // 外部链接一律不放行：本应用没有任何合法的「新窗口」用途
   window.webContents.setWindowOpenHandler(({ url }) => {
-    console.warn(`[shell#${id}] 已拦截新窗口请求：${url}`)
+    console.warn(`[shell#${id}] blocked window.open request: ${url}`)
     return { action: 'deny' }
   })
 
@@ -141,26 +141,26 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
   // 有些环境不是崩溃而是直接挂死，下面两个事件都不来。兜一个超时。
   watchdog = setTimeout(() => {
     if (loaded || released) return
-    options.onLoadFailure(`页面在 ${LOAD_WATCHDOG_MS / 1000} 秒内没有加载完成`)
+    options.onLoadFailure(`the page did not finish loading within ${LOAD_WATCHDOG_MS / 1000}s`)
   }, LOAD_WATCHDOG_MS)
 
   on(window.webContents, 'did-finish-load', () => {
     loaded = true
     clearWatchdog()
-    console.log(`[shell#${id}] 渲染层已加载（HTML 解析完成，不代表应用可用）`)
+    console.log(`[shell#${id}] renderer loaded (HTML parsed; the app is not necessarily usable yet)`)
     options.onLoaded?.()
   })
 
   on(window.webContents, 'did-fail-load', (_event: Electron.Event, code: number, description: string, _url: string, isMainFrame: boolean) => {
     // -3 = ERR_ABORTED，正常的导航取消，不算失败
     if (!isMainFrame || code === -3) return
-    console.error(`[shell#${id}] 页面加载失败：${code} ${description}`)
+    console.error(`[shell#${id}] page load failed: ${code} ${description}`)
     if (!loaded) options.onLoadFailure(`${code} ${description}`)
   })
 
   on(window.webContents, 'render-process-gone', (_event: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
-    console.error(`[shell#${id}] 渲染进程退出：${details.reason}（exitCode=${details.exitCode}）`)
-    if (!loaded) options.onLoadFailure(`渲染进程退出：${details.reason}`)
+    console.error(`[shell#${id}] renderer process gone: ${details.reason} (exitCode=${details.exitCode})`)
+    if (!loaded) options.onLoadFailure(`renderer process gone: ${details.reason}`)
     else release()
   })
 
@@ -190,8 +190,8 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
   void window.loadURL(page.href).catch((error: unknown) => {
     // Route synchronous resource/protocol load failures through the same lifecycle.
     const message = error instanceof Error ? error.message : String(error)
-    console.error(`[shell#${id}] loadURL 失败：${message}`)
-    if (!loaded && !released) options.onLoadFailure(`loadURL 失败：${message}`)
+    console.error(`[shell#${id}] loadURL failed: ${message}`)
+    if (!loaded && !released) options.onLoadFailure(`loadURL failed: ${message}`)
   })
 
   return {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { startFakeSshServer } from './fake-ssh-server.mjs'
-import { connection, hostFixture } from './integration-helpers.mjs'
+import { connection, hostFixture, rejectedWith } from './integration-helpers.mjs'
 
 const allBytes = Buffer.from(Array.from({ length: 256 }, (_, index) => index))
 
@@ -68,16 +68,16 @@ test('SFTP writes only the supplied byte view, overwrites files, creates directo
 test('SFTP rejects traversal names, oversized transfers, missing files, and nonempty directory removal', { timeout: 15000 }, async (t) => {
   const { server, host, sessionId } = await fixture(t)
   for (const name of ['../escape', '/absolute', '.', '..', '']) {
-    await assert.rejects(host.sftpWrite(sessionId, '.', name, allBytes), /名字/)
-    await assert.rejects(host.sftpMkdir(sessionId, '.', name), /名字/)
+    await assert.rejects(host.sftpWrite(sessionId, '.', name, allBytes), rejectedWith('sftp.bad-name'))
+    await assert.rejects(host.sftpMkdir(sessionId, '.', name), rejectedWith('sftp.bad-name'))
   }
-  await assert.rejects(host.sftpRead(sessionId, './missing'), /远端没有/)
-  await assert.rejects(host.sftpRead(sessionId, './a-dir'), /目录/)
-  await assert.rejects(host.sftpRead(sessionId, './too-big.bin'), /超过单次传输上限/)
-  await assert.rejects(host.sftpWrite(sessionId, '.', 'too-big-upload', Buffer.alloc(4 * 1024 * 1024 + 1)), /超过单次传输上限/)
-  await assert.rejects(host.sftpWrite(sessionId, './missing', 'upload', allBytes), /目录不存在/)
-  await assert.rejects(host.sftpRemove(sessionId, './a-dir'), /空目录才能删/)
-  await assert.rejects(host.sftpRemove(sessionId, '/'), /路径不对/)
+  await assert.rejects(host.sftpRead(sessionId, './missing'), rejectedWith('sftp.no-such-file'))
+  await assert.rejects(host.sftpRead(sessionId, './a-dir'), rejectedWith('sftp.is-directory'))
+  await assert.rejects(host.sftpRead(sessionId, './too-big.bin'), rejectedWith('sftp.download-too-large'))
+  await assert.rejects(host.sftpWrite(sessionId, '.', 'too-big-upload', Buffer.alloc(4 * 1024 * 1024 + 1)), rejectedWith('sftp.upload-too-large'))
+  await assert.rejects(host.sftpWrite(sessionId, './missing', 'upload', allBytes), rejectedWith('sftp.no-such-directory'))
+  await assert.rejects(host.sftpRemove(sessionId, './a-dir'), rejectedWith('sftp.remove-failed'))
+  await assert.rejects(host.sftpRemove(sessionId, '/'), rejectedWith('sftp.no-such-path'))
   assert.equal(server.files.exists('/home/escape'), false)
   assert.equal(server.files.exists('/home/demo/too-big-upload'), false)
   assert.equal(server.files.dataOf('/home/demo/a-dir/nested.txt').toString(), 'keep me')
@@ -90,5 +90,5 @@ test('concurrent SFTP consumers share one subsystem and closed sessions reject f
   assert.deepEqual(Buffer.from(read.bytes), allBytes)
   assert.equal(server.sftp.channels, 1)
   host.close(sessionId)
-  await assert.rejects(host.sftpRead(sessionId, './a.bin'), /会话不存在或已关闭/)
+  await assert.rejects(host.sftpRead(sessionId, './a.bin'), rejectedWith('ssh.session-gone'))
 })

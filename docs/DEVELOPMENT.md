@@ -49,6 +49,7 @@ Do not commit `.env` files, passwords, private keys, tokens, certificates, or re
 | `apps/desktop/` | Electron shell, platform adapters, Node Host child entry, carriers, diagnostics, and Desktop tests |
 | `apps/web/` | Standalone local Web Node entry, HTTP/WS server, CLI, and tests |
 | `packages/protocol/` | Environment-neutral requests, capabilities, events, and binary wire format |
+| `packages/i18n/` | Message catalog and `t()`; the only place user-facing copy lives |
 | `packages/host/` | Cordis Host, SSH/SFTP services, host storage, fingerprints, and credential interfaces |
 | `packages/transport/` | Shared Web Host assembly, dispatcher, HTTP/WebSocket, client identity, and readiness validation |
 | `packages/ui/` | Browser Cordis Client, terminal, host list, SFTP panel, and browser key picker |
@@ -65,6 +66,7 @@ The allowed dependency direction is enforced by `npm run check:boundaries` and `
 
 - `@pureterm/protocol` imports no local package, Node, Electron, or UI code.
 - `@pureterm/host` owns SSH/SFTP and storage but does not depend on Electron, UI, or application entry points.
+- `@pureterm/i18n` holds the catalog and `t()` and depends on no local package. Only the UI and the application entries import it; `@pureterm/host` reports a failure as a code and never imports the catalog.
 - `@pureterm/ui` is browser-only and does not import Node, Electron, or Host.
 - `@pureterm/transport` calls the public Host API and never reads `Host.internals`.
 - Electron APIs stay in Desktop `electron/app/`, the preload, and diagnostics. `electron/runtime/`, `electron/host/`, and ordinary carriers have no Electron import.
@@ -73,6 +75,17 @@ The allowed dependency direction is enforced by `npm run check:boundaries` and `
 Desktop starts an independent Node-mode Web Host child process. The `pureterm-app://app/` window uses the child’s loopback WebSocket for SSH/SFTP, hosts, and Keychain; private parent/child RPC handles startup, shutdown, system encryption, and native key selection. The parent owns the window, safeStorage, update coordinator, and child lifecycle. Standalone Web assembles its own Web Host in an ordinary Node process. Shared code does not mean shared sessions or shared data files.
 
 Client, carrier, and Host must expose explicit disposal paths. WebSocket transport preserves terminal and SFTP bytes without converting them to strings prematurely. WebSocket disconnects and renderer failures must release the sessions owned by that client.
+
+## User-facing text
+
+Every string the interface can render lives in `@pureterm/i18n`. English is the source language and the default; Chinese is a complete translation, and the page's language switch is the only way to reach it — never the operating system locale.
+
+- `packages/i18n/src/en.ts` is the key source (`as const`, `MessageKey = keyof typeof en`). `zh.ts` is typed `Record<MessageKey, string>`, so a missing translation is a compile error rather than a blank on screen; a placeholder set that does not match is caught the same way.
+- Add a string by adding it to `en.ts` first, then to `zh.ts`. Never hard-code copy in a component, and never build a sentence by concatenating fragments — use parameters.
+- A failure crosses the wire as a code, not a sentence. Every entry in `HOST_ERROR_CODES` has one sentence per language, and a compile-time assertion refuses a code with no sentence in either catalog. `@pureterm/host` emits codes and never imports the catalog.
+- Text that JavaScript composes and then keeps on screen — a terminal tab's failure verdict, a file row's hint, the drawer's last message — is stored as a key plus its parameters, so switching the language re-renders it instead of leaving the previous language behind. Any plugin that composes text must listen for the change.
+- Developer invariants, developer log lines, and the standalone Web CLI's own text stay English and stay out of the catalog: none of them has a language switch, and the CLI prints once before any page exists.
+- Do not change a date or a unit format when adding a translation. Dates use `YYYY-MM-DD HH:mm` and units are unchanged by the switch.
 
 ## Quality checks
 

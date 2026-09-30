@@ -1,4 +1,5 @@
 import { app, Menu, type MenuItemConstructorOptions } from 'electron'
+import { t } from '@pureterm/i18n'
 import { collectSwitches, resolvePlatformPlan, type PlatformPlan } from '../runtime/platform-plan.js'
 
 export type { PlatformPlan } from '../runtime/platform-plan.js'
@@ -34,7 +35,7 @@ export function selectPlatformStrategy(): PlatformPlan {
 
 /** 读取已选定的策略。没选过就抛——静默返回默认值会让「策略没生效」变成一个查不出的 bug。 */
 export function platformStrategy(): PlatformPlan {
-  if (!cached) throw new Error('平台策略还没选：必须在启动最前面调用 selectPlatformStrategy()。')
+  if (!cached) throw new Error('Platform strategy not selected: selectPlatformStrategy() must run at the very start of startup.')
   return cached
 }
 
@@ -47,23 +48,27 @@ export function platformStrategy(): PlatformPlan {
  *     FitAddon 算出的 cols/rows 就不再等于真实可视区域，远端排版会错位。
  * 但 Edit 子菜单**必须留**：Windows/Linux 上终端的 Ctrl+C/Ctrl+V 是靠菜单加速键提供的，
  * 把菜单整个设成 null 会让复制粘贴一起失效（这在终端里是致命的）。
+ *
+ * 每一项都自己给 label，而不是靠 role 的默认值：默认值是**操作系统的**语言，而这一栏
+ * 要跟页面上的语言开关走。`t()` 读的是进程级的那一份语言（渲染层上报，见 main.ts 的
+ * applyLocale），所以重建菜单就是再调一次 applyApplicationMenu。
  */
 function menuTemplate(includeAppMenu: boolean, checkUpdates?: () => void): MenuItemConstructorOptions[] {
   const template: MenuItemConstructorOptions[] = []
   if (includeAppMenu) template.push({ role: 'appMenu' })
   template.push({
-    label: '编辑',
+    label: t('desktop.menu.edit'),
     submenu: [
-      { role: 'undo', label: '撤销' },
-      { role: 'redo', label: '重做' },
+      { role: 'undo', label: t('desktop.menu.undo') },
+      { role: 'redo', label: t('desktop.menu.redo') },
       { type: 'separator' },
-      { role: 'cut', label: '剪切' },
-      { role: 'copy', label: '复制' },
-      { role: 'paste', label: '粘贴' },
-      { role: 'selectAll', label: '全选' },
+      { role: 'cut', label: t('desktop.menu.cut') },
+      { role: 'copy', label: t('desktop.menu.copy') },
+      { role: 'paste', label: t('desktop.menu.paste') },
+      { role: 'selectAll', label: t('desktop.menu.select-all') },
     ],
   })
-  if (checkUpdates) template.push({ label: '帮助', submenu: [{ label: '检查更新…', click: checkUpdates }] })
+  if (checkUpdates) template.push({ label: t('desktop.menu.help'), submenu: [{ label: t('desktop.menu.check-updates'), click: checkUpdates }] })
   return template
 }
 

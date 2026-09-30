@@ -51,6 +51,7 @@ export const NOTICES = {
 export const DESKTOP_CHANNELS = {
   bootstrap: 'desktop:bootstrap',
   ready: 'desktop:renderer-ready',
+  locale: 'desktop:locale',
   windowMinimize: 'desktop:window-minimize',
   windowToggleMaximize: 'desktop:window-toggle-maximize',
   windowClose: 'desktop:window-close',
@@ -122,11 +123,17 @@ export interface RendererReadyPayload {
   error?: string
 }
 
-/** 选私钥文件的结果。error 存在时界面直接显示，path 仍然回填，方便用户自己看。 */
+/**
+ * 选私钥文件的结果。`error` 存在时界面显示它，`path` 仍然回填，方便用户自己看。
+ *
+ * `error` 是**身份**而不是一句话：这个失败产生在主进程（对话框归它），渲染的却是
+ * 渲染层，而只有渲染层知道当前是哪门语言。码复用的是 Host 在连接那一刻现读同一把
+ * 私钥时用的那两个，所以「读不到」和「不是私钥」在两处说的是同一句话。
+ */
 export interface PickedPrivateKey {
   path: string
   encrypted?: boolean
-  error?: string
+  error?: WireError
 }
 
 export interface HostSaveRequest {
@@ -286,8 +293,14 @@ export interface MonitorUpdate {
   sequence: number
   status: 'ready' | 'partial' | 'unsupported' | 'error'
   snapshot: MonitorSnapshot | null
-  /** 远端可控文本：按文本渲染，绝不当作标记语言。上限 512 字符 */
-  message?: string
+  /**
+   * 这一轮为什么没成（`error` / `unsupported` 状态必带）。
+   *
+   * 从前这里是一句**宿主写的话**，于是远端可控的部分（操作系统名、采集脚本的 stderr）
+   * 和宿主写的部分混在同一个字符串里，整句都没法翻译。现在拆开了：码说明发生了什么，
+   * `params` 带远端那部分数据，`message` 是只进日志的诊断原文。
+   */
+  error?: WireError
 }
 
 export interface SessionFacts {
@@ -446,21 +459,22 @@ export function parseMonitorUpdate(value: unknown): MonitorUpdate {
   if (!isPositiveSafeInteger(value.sequence)) fail('sequence')
   const status = value.status
   if (status !== 'ready' && status !== 'partial' && status !== 'unsupported' && status !== 'error') fail('status')
-  let message: string | undefined
-  if (value.message !== undefined) {
-    if (typeof value.message !== 'string' || value.message.length > MAX_MESSAGE_LENGTH) fail('message')
-    message = value.message
+  let error: WireError | undefined
+  if (value.error !== undefined) {
+    if (!isWireError(value.error)) fail('error')
+    // 诊断原文只进日志，所以在这里封顶就够：远端可控的是 params 里的数据，不是它。
+    error = { code: value.error.code, ...(value.error.params ? { params: value.error.params } : {}), message: value.error.message.slice(0, MAX_MESSAGE_LENGTH) }
   }
   if (status === 'error' || status === 'unsupported') {
     if (value.snapshot !== null) fail(`${status} 的 snapshot`)
-    if (!message) fail(`${status} 的 message`)
+    if (!error) fail(`${status} 的 error`)
     return {
       sessionId: value.sessionId as string,
       subscriptionId: value.subscriptionId as string,
       sequence: value.sequence,
       status,
       snapshot: null,
-      ...(message ? { message } : {}),
+      ...(error ? { error } : {}),
     }
   }
   if (value.snapshot === null || value.snapshot === undefined) fail(`${status} 的 snapshot`)
@@ -473,7 +487,7 @@ export function parseMonitorUpdate(value: unknown): MonitorUpdate {
     sequence: value.sequence,
     status,
     snapshot,
-    ...(message ? { message } : {}),
+    ...(error ? { error } : {}),
   }
 }
 
@@ -519,6 +533,21 @@ export interface DesktopBridge {
   bootstrap(): Promise<DesktopBootstrap>
   signalReady(payload: RendererReadyPayload): void
   /**
+   * The language the page is showing, so the main process can word its own
+   * surfaces — the application menu, the native file and update dialogs — the
+   * same way.
+   *
+   * The renderer owns this preference: it is the side with the control for it
+   * and the side that stores it, so it reports rather than asks. A report needs
+   * no answer, so this is a `send`; the menu is rebuilt synchronously.
+   *
+   * Typed as the two catalogues rather than as a string, so a third language
+   * added to `@pureterm/i18n` fails to compile at the call site instead of
+   * arriving here as a value the main process would have to guess at. The
+   * receiving end narrows it anyway, because it comes from outside the process.
+   */
+  reportLocale(locale: 'en' | 'zh'): void
+  /**
    * The top bar's three self-drawn window buttons, where the platform draws none.
    *
    * Optional, and absent for two different reasons that the renderer treats the
@@ -554,7 +583,7 @@ export interface SshApi {
   pickPrivateKey(): Promise<PickedPrivateKey | undefined>
   onOpened(listener: (sessionId: string, cols: number, rows: number) => void): () => void
   onData(listener: (sessionId: string, chunk: Uint8Array) => void): () => void
-  onClosed(listener: (sessionId: string, reason: string) => void): () => void
+  onClosed(listener: (sessionId: string, reason: WireError) => void): () => void
   /** Carrier connection loss, including when no SSH terminal is open. */
   onDisconnected(listener: (reason: string) => void): () => void
   /** Release this client's subscriptions and transport resources. */
@@ -607,6 +636,216 @@ export interface SshApi {
   signalReady(payload: RendererReadyPayload): void
 }
 
+// ── 错误身份 ──────────────────────────────────────────────────────
+//
+// 失败原本是一句中文散文，跨线之后渲染层只能原样显示，也没法翻译。现在拆成
+// 三件东西：`code` 说明**发生了什么**（跨线，渲染层据此选文案和分类），
+// `params` 是这句话里的语义值（主机名、路径、退出码），`message` 是
+// **不做本地化**的诊断原文——只进日志，以及渲染层遇到不认识的 code 时的兜底。
+//
+// 这个数组同时是运行时清单：测试拿它证明每个码都有译文、都被分类器认领。
+// 顺序按来源分组，便于对照。
+export const HOST_ERROR_CODES = [
+  // ssh —— 连接与认证
+  'ssh.empty-host',
+  'ssh.empty-username',
+  'ssh.missing-credential',
+  'ssh.client-disconnected',
+  'ssh.auth-failed',
+  'ssh.key-passphrase-needed',
+  'ssh.key-unrecognized',
+  'ssh.key-unparseable',
+  'ssh.key-file-unreadable',
+  'ssh.banner-before-handshake',
+  'ssh.exec-channel-refused',
+  'ssh.sftp-subsystem-unavailable',
+  'ssh.channel-refused',
+  'ssh.connection-refused',
+  'ssh.dns-failed',
+  'ssh.timeout',
+  'ssh.host-key-changed',
+  'ssh.host-key-verification-failed',
+  'ssh.first-connection',
+  'ssh.connection-reset',
+  'ssh.handshake-closed',
+  'ssh.connection-error',
+  'ssh.connection-closed',
+  'ssh.server-disconnected',
+  'ssh.session-closed',
+  'ssh.session-gone',
+  'ssh.exec-cancelled',
+  'ssh.exec-output-limit',
+  'ssh.exec-timeout',
+  'ssh.exec-session-closed',
+  'ssh.failed',
+  // sftp —— 远端文件操作
+  'sftp.bad-name',
+  'sftp.no-such-file',
+  'sftp.no-such-directory',
+  'sftp.permission-denied',
+  'sftp.permission-denied-plain',
+  'sftp.op-unsupported',
+  'sftp.remove-failed',
+  'sftp.mkdir-failed',
+  'sftp.write-failed',
+  'sftp.failed-rejected',
+  'sftp.is-directory',
+  'sftp.download-too-large',
+  'sftp.upload-too-large',
+  'sftp.no-such-path',
+  'sftp.failed',
+  // keychain —— 密钥库
+  'keychain.desktop-store-in-web',
+  'keychain.invalid-store',
+  'keychain.invalid-record',
+  'keychain.decrypt-failed',
+  'keychain.material-undecryptable',
+  'keychain.entry-missing',
+  'keychain.label-required',
+  'keychain.id-invalid',
+  'keychain.field-not-text',
+  'keychain.passphrase-too-long',
+  'keychain.content-too-large',
+  'keychain.not-found',
+  'keychain.limit-reached',
+  'keychain.material-required',
+  'keychain.private-key-too-large',
+  'keychain.parse-failed',
+  'keychain.public-only',
+  'keychain.public-mismatch',
+  'keychain.encryption-unavailable',
+  // host —— 门面、终端桥、会话库
+  'host.closed',
+  'host.closed-mutation',
+  'host.closed-monitor',
+  'host.shutdown',
+  'host.client-closed',
+  'host.client-gone',
+  'host.client-disconnected',
+  'host.renderer-gone',
+  'host.renderer-closed',
+  'host.password-undecryptable',
+  'host.key-required',
+  'host.key-id-invalid',
+  'host.key-missing',
+  'host.key-in-use',
+  'host.session-not-owned',
+  'host.subscription-in-use',
+  'host.shell-closed',
+  'host.channel-error',
+  'host.write-failed',
+  'host.resize-failed',
+  'host.session-closed',
+  'host.user-disconnected',
+  'host.monitor-unavailable',
+  'host.store-has-credentials',
+  'host.store-has-legacy-credentials',
+  // monitor —— 资源采集
+  'monitor.probe-signalled',
+  'monitor.probe-exit-code',
+  'monitor.unsupported-os',
+  'monitor.no-metrics',
+  'monitor.probe-failed',
+  'monitor.frame.no-header',
+  'monitor.frame.duplicate',
+  'monitor.frame.expected-section',
+  'monitor.frame.missing-status',
+  'monitor.frame.status-range',
+  'monitor.frame.os-unavailable',
+  'monitor.frame.no-end-marker',
+  'monitor.frame.trailing-content',
+  'monitor.frame.missing-os',
+  // 载体与派发层的校验
+  'transport.params-not-array',
+  /**
+   * 载体与后端之间的连接断了。
+   *
+   * 这是**客户端自己**认出来的失败，不是后端报的：socket 掉了之后没有人再能告诉
+   * 会话它为什么结束，而「界面停在已连接」比一个笼统的原因坏得多。所以它和后端
+   * 报的失败走同一个形状，由渲染层给同一套译文。
+   */
+  'transport.disconnected',
+  'dispatch.arg-not-object',
+  'dispatch.arg-not-string',
+  'dispatch.arg-not-number',
+  'dispatch.arg-not-bytes',
+  'dispatch.extra-field',
+  'dispatch.bad-session-id',
+  'dispatch.bad-subscription-id',
+  'dispatch.unknown-request',
+  'dispatch.unknown-notice',
+  // 兜底：不是 HostError 的东西跨线时落到这里
+  'internal',
+] as const
+
+export type HostErrorCode = (typeof HOST_ERROR_CODES)[number]
+
+/**
+ * 一个失败的线上形状。
+ *
+ * `message` 永远在：它是这个失败**不依赖语言**的那一面。渲染层认得出 `code`
+ * 就用目录里的句子，认不出（新旧版本错位）就退回它，界面至少还有一句话可读。
+ */
+export interface WireError {
+  code: HostErrorCode
+  params?: Readonly<Record<string, string | number>>
+  message: string
+}
+
+/**
+ * Host 侧抛出的结构化失败。
+ *
+ * 继承 `Error` 是为了让既有的 `throw` / `catch` / `reject` 路径不必改写：载体在
+ * 边界上把它拆成 `WireError`，Host 内部照旧当异常用。`message` 缺省时用
+ * code + params 拼一句，够日志用。
+ */
+export class HostError extends Error {
+  constructor(
+    readonly code: HostErrorCode,
+    readonly params?: Record<string, string | number>,
+    message?: string,
+  ) {
+    super(message ?? `${code}${params ? ` ${JSON.stringify(params)}` : ''}`)
+    this.name = 'HostError'
+  }
+}
+
+/**
+ * 任意异常 → `HostError`。
+ *
+ * Host 内部有几处把「不知道是什么的东西」当异常接住，而它之后要**当作失败继续传**
+ * （广播给渲染层、作为会话结束的原因）。那几处必须能拿到一个带 code 的东西，
+ * 否则一条 `TypeError` 会以「不认识的码」到达界面，而它的原文本该被保留下来。
+ */
+export function asHostError(error: unknown): HostError {
+  if (error instanceof HostError) return error
+  return new HostError('internal', undefined, error instanceof Error ? error.message : String(error))
+}
+
+/** 任意异常 → 线上形状。认得 HostError 就保留身份，否则归到 internal。 */
+export function toWireError(error: unknown): WireError {
+  const host = asHostError(error)
+  return { code: host.code, ...(host.params ? { params: host.params } : {}), message: host.message }
+}
+
+/** 判断一个值是不是线上形状的错误。渲染层重建它之前要用。 */
+export function isWireError(value: unknown): value is WireError {
+  const candidate = value as WireError | null
+  return !!candidate && typeof candidate === 'object' && typeof candidate.code === 'string' && typeof candidate.message === 'string'
+}
+
+/**
+ * 线上形状 → 渲染层手里的异常。
+ *
+ * 渲染层拿到的是同一个 `HostError` 类型，所以 `catch` 里 `instanceof` 和读 `code`
+ * 与 Host 内部写法一致。`code` 认不出来（新旧版本错位）时不抛：它照旧是个
+ * `HostError`，只是分类表里没有这一格，界面于是退回 `message` —— 那句话是
+ * **不做本地化**的诊断原文，可读但不漂亮，好过一片空白。
+ */
+export function fromWireError(wire: WireError): HostError {
+  return new HostError(wire.code, wire.params ? { ...wire.params } : undefined, wire.message)
+}
+
 // ── WebSocket 载体的线格式 ────────────────────────────────────────
 //
 // 载体只搬这些东西，不理解业务。请求/响应用 id 配对，事件与通知不分 id
@@ -625,7 +864,7 @@ export interface WireNotice {
   params: unknown[]
 }
 
-export type WireReply = { kind: 'reply'; id: number; ok: true; value: unknown } | { kind: 'reply'; id: number; ok: false; error: string }
+export type WireReply = { kind: 'reply'; id: number; ok: true; value: unknown } | { kind: 'reply'; id: number; ok: false; error: WireError }
 
 export interface WireEvent {
   kind: 'event'

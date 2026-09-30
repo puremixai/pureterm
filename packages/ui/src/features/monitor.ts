@@ -1,6 +1,8 @@
 import { Service, type Context } from 'cordis'
 import type { MonitorSnapshot, MonitorUpdate } from '@pureterm/protocol'
-import { ClientScope, cleanError } from '../client-runtime.js'
+import { ClientScope } from '../client-runtime.js'
+import { errorCode, errorMessage } from '../failure-diagnostics.js'
+import { messageKey, messageText, resolveMessage, type MessageText } from '../message-text.js'
 import { createMonitorPanel, type MonitorPanel, type MonitorPanelState, type MonitorStatus, type NetSample } from '../monitor-panel.js'
 import type { TerminalTab } from '../services/terminal.js'
 
@@ -33,7 +35,11 @@ interface TabMonitor {
   receivedAt: number
   /** 这一代订阅收到的网络速率序列，画走势用。换会话或换订阅都从头开始。 */
   history: NetSample[]
-  message: string | undefined
+  /**
+   * 面板底下那一行。存 key 或远端原文：它是常驻的（一次失败不改写上一张快照，
+   * 由这一行说明这一轮没读到），所以换语言之后得能重说一遍。
+   */
+  message: MessageText | undefined
 }
 
 /**
@@ -126,6 +132,9 @@ export class ClientMonitor extends Service {
      */
     ctx.on('client/session-change', () => this.sync())
     ctx.on('client/connection-change', () => this.sync())
+    // 换语言：sync() 是幂等的，而且以 render 收尾，所以重跑一遍就够了 —— 状态文字、
+    // 指标名、开关的字形说明、以及底下那一行（存的是 key）都会跟着变。
+    ctx.on('client/locale-change', () => this.sync())
     ctx.on('client/tab-closed', tabId => {
       if (this.current?.tabId === tabId) this.retire(this.current)
       this.tabs.delete(tabId)
@@ -281,9 +290,9 @@ export class ClientMonitor extends Service {
          * 说清楚，而不是让用户对着一句内部错误码猜。远端不是 Linux 走的是另一条
          * 路（start 成功、随后来一条 unsupported 事件）。
          */
-        const unavailable = cleanError(error).includes('MONITOR_UNAVAILABLE')
+        const unavailable = errorCode(error) === 'host.monitor-unavailable'
         state.status = unavailable ? 'unsupported' : 'error'
-        state.message = unavailable ? '当前环境不支持资源监控。' : cleanError(error)
+        state.message = errorMessage(error)
         this.render(state, tab)
       },
     )
@@ -325,16 +334,18 @@ export class ClientMonitor extends Service {
     subscription.sequence = update.sequence
 
     const state = subscription.state
+    // 原因是一个错误码加它的参数，所以存的是 key —— 切一次语言，这一行跟着变。
+    const reason = update.error ? errorMessage(update.error) : undefined
     if (update.status === 'error') {
       // 一次失败不改写上一张快照：它带着自己的时间戳留着，由状态文字说明这一轮没读到。
       state.status = 'error'
-      state.message = update.message ?? '读取失败。'
+      state.message = reason ?? messageKey('monitor.detail.error')
     } else if (update.status === 'unsupported') {
       state.status = 'unsupported'
       state.snapshot = null
       state.receivedAt = 0
       state.history = []
-      state.message = update.message
+      state.message = reason
     } else {
       state.status = update.status
       state.snapshot = update.snapshot
@@ -367,7 +378,8 @@ export class ClientMonitor extends Service {
       paused: state.paused,
       available: !!tab.sessionId,
       history: state.history,
-      message: state.message,
+      // 在这里解析：面板拿到的是一句现成的文本，而 render 在换语言时会被再叫一次。
+      message: resolveMessage(state.message),
     }
   }
 

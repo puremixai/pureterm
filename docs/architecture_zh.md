@@ -30,7 +30,7 @@ flowchart LR
   C --> S[ssh2 / SSH / SFTP]
 ```
 
-`packages/protocol/src/protocol.ts` 定义通道、能力声明、请求、结果、事件和二进制线格式。`packages/transport/src/web-host.ts` 为两个入口统一装配 Host、dispatcher 和 HTTP/WS 载体。dispatcher 将协议映射到 Host 公共方法；每条 WebSocket 确定客户端身份。传输层将二进制载荷恢复为字节，不把终端分包提前转成字符串。
+`packages/protocol/src/protocol.ts` 定义通道、能力声明、请求、结果、事件和二进制线格式。失败以 `{code, params, message}` 跨线 —— 是「身份 + 参数」而不是拼好的句子 —— 界面因此能用读者的语言把它说出来；`@pureterm/i18n` 持有这些句子，也是界面文案唯一存在的地方。`packages/transport/src/web-host.ts` 为两个入口统一装配 Host、dispatcher 和 HTTP/WS 载体。dispatcher 将协议映射到 Host 公共方法；每条 WebSocket 确定客户端身份。传输层将二进制载荷恢复为字节，不把终端分包提前转成字符串。
 
 事件通过 `RendererBridge` / `RendererHandle` 返回对应客户端。ID 是不透明的 WebSocket 客户端 ID；Host 无需解释 Electron webContents。客户端路由与凭据能力分离：`CredentialProvider` 由入口注入 SessionStore，RendererBridge 不承担加解密。
 
@@ -43,13 +43,14 @@ flowchart LR
 | `packages/host/src/host.ts` | 装配 Cordis Context、导出 Host、管理连接和插件树生命周期 |
 | `packages/host/src/services/`、`plugins/` | SSH、TOFU、主机存储、终端/SFTP 桥、有界 exec、Linux 资源监控与日志 |
 | `packages/host/src/credentials.ts` | 凭据提供器接口与默认本次会话策略 |
+| `packages/i18n/` | 文案目录与 `t()`；界面文案唯一存在的地方。Host 用 `@pureterm/protocol` 里的错误码报告失败，永不引入本包 |
 | `packages/protocol/` | 与运行环境无关的协议和公共数据结构 |
 | `packages/transport/` | 共享 Web Host 装配、dispatcher、HTTP/WS 与就绪报文校验 |
 | `packages/ui/` | Cordis Client、页面、终端、SFTP、客户端传输、浏览器私钥选择与会话资源抽屉 |
 | `apps/desktop/electron/app/` | Electron 启动、窗口、系统加密、原生文件选择和更新适配 |
 | `apps/desktop/electron/host/` | 不导入 Electron 的 Node Host 子进程入口 |
 | `apps/desktop/electron/runtime/` | 平台策略、就绪、档案、子进程/RPC、更新协调与资源定位 |
-| `apps/desktop/electron/carriers/` | 最小 CommonJS preload 启动信息与就绪上报 |
+| `apps/desktop/electron/carriers/` | 最小 CommonJS preload 启动信息，以及就绪与语言上报 |
 | `apps/desktop/electron/diagnostics/` | 应用进程内的启动与冒烟钩子 |
 | `apps/web/src/` | Node 命令行、数据目录及向共享 Web Host 注入独立 Web 策略 |
 
@@ -67,7 +68,7 @@ services/plugins 保留原有业务分类，并不等于 Service/function plugin
 
 ## 生命周期
 
-Desktop 先应用平台策略、注册自定义 scheme 与限定范围的 WebSocket 鉴权，再启动 Node Web Host；Host 启动的同时创建 shell generation。页面立即加载；最小 preload 等待 Host 就绪后才取得回环 WebSocket URL。每代窗口、监听器与看门狗由 shell 幂等释放；使用窗口时读取当前代。当前主框架报告 renderer-ready 后，就绪闸门才允许提交启动档案，HTML 已加载不等于应用已可用。
+Desktop 先应用平台策略、注册自定义 scheme 与限定范围的 WebSocket 鉴权，再启动 Node Web Host；Host 启动的同时创建 shell generation。页面立即加载；最小 preload 等待 Host 就绪后才取得回环 WebSocket URL。每代窗口、监听器与看门狗由 shell 幂等释放；使用窗口时读取当前代。当前主框架报告 renderer-ready 后，就绪闸门才允许提交启动档案，HTML 已加载不等于应用已可用。页面还会上报第二件独立的事实 —— 它当前显示的是哪门语言 —— 因为偏好存在渲染层，而外壳自己的菜单与原生对话框在文档之外；主进程先收窄再采信，并当场重建菜单，在第一次上报之前菜单是英文，也就是目录的源语言。
 
 私有父子 IPC 只负责启动、关闭、加解密和原生选钥。主进程持有独立的 Desktop bearer token，只在当前应用窗口的准确 Host WebSocket 请求中注入，并将 Origin 改写为回环 Host。该 token 不进入页面 URL、DOM、preload 启动信息、日志或存储。Host 意外退出会报告错误并结束应用。应用退出、启动失败、诊断结束与更新均等待子进程关闭；超过关停期限则终止进程。窗口关闭或渲染进程崩溃会关闭其 WebSocket 并释放会话；Host 仍运行时其他浏览器客户端继续使用。Windows/Linux 关闭最后一个窗口会退出应用，macOS 则保留 Host 供窗口重新激活。
 

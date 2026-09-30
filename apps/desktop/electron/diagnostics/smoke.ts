@@ -127,12 +127,13 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           try {
             await api.keychain.save({ label: 'Web Host Keychain check', privateKey: ${JSON.stringify(process.env.SSH_CORDIS_SMOKE_KEYCHAIN)} });
           } catch (error) {
-            return { message: String(error && error.message ? error.message : error), listed: (await api.keychain.list()).length };
+            return { code: error && error.code ? error.code : '', listed: (await api.keychain.list()).length };
           }
           return null;
-        })()`) as { message: string; listed: number } | null
+        })()`) as { code: string; listed: number } | null
         if (!refusal) throw new Error('Host stored a private key on a machine with no system encryption')
-        if (!refusal.message.includes('系统加密不可用')) throw new Error(`Keychain refused for the wrong reason: ${refusal.message}`)
+        // 断言**码**而不是那句话：句子跟着语言开关走，码才是跨线的契约（和 tests/integration-helpers.mjs 同一条理由）
+        if (refusal.code !== 'keychain.encryption-unavailable') throw new Error(`Keychain refused for the wrong reason: ${refusal.code || 'no code'}`)
         if (refusal.listed !== 0) throw new Error('Keychain listed a record after a refused save')
         console.log('[KEYCHAIN-SESSION-OK] no system encryption: the Host refused the key instead of storing it in plaintext')
       } else {
@@ -159,7 +160,7 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           for (;;) {
             const seen = read();
             if (seen) return seen;
-            if (Date.now() > deadline) throw new Error('监控验收等待超时：' + what);
+            if (Date.now() > deadline) throw new Error('monitor smoke timed out waiting for: ' + what);
             await new Promise(resolve => setTimeout(resolve, 50));
           }
         };
@@ -176,15 +177,15 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           document.getElementById('pass').value = config.password;
           document.getElementById('host-label').value = 'Monitor fixture';
           document.getElementById('connect').click();
-          await wait(() => document.getElementById('session-state').className === 'connected' ? true : null, '会话连接');
-          const held = await wait(() => { const seen = facts(); return seen.cipher !== '—' && seen.key !== '—' ? seen : null; }, '握手事实');
+          await wait(() => document.getElementById('session-state').className === 'connected' ? true : null, 'session to connect');
+          const held = await wait(() => { const seen = facts(); return seen.cipher !== '—' && seen.key !== '—' ? seen : null; }, 'handshake facts');
           // 折叠是默认值：展开之前一次探测都不该发生，状态文字要说的是「暂停」而不是「读取中」。
           const collapsed = document.getElementById('monitor-body').hidden;
           const beforeExpand = visible();
           document.getElementById('monitor-toggle').click();
-          const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, '第一张快照');
-          const ready = await wait(() => visible() === '已更新'
-            ? { cpu: value('cpu'), memory: value('memory'), load: value('load'), disk: value('disk'), net: value('net'), uptime: value('uptime') } : null, '第二轮快照');
+          const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, 'the first snapshot');
+          const ready = await wait(() => visible() === 'Updated'
+            ? { cpu: value('cpu'), memory: value('memory'), load: value('load'), disk: value('disk'), net: value('net'), uptime: value('uptime') } : null, 'the second snapshot');
           /*
            * 同一条连接：终端仍然收发。
            *
@@ -209,14 +210,14 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           try {
             document.querySelector('.terminal-pane:not([hidden]) .xterm-helper-textarea').dispatchEvent(
               new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
-            await wait(() => echoed.includes('echo:monitor-alive') ? true : null, '终端回声');
+            await wait(() => echoed.includes('echo:monitor-alive') ? true : null, 'terminal echo');
           } finally { stopListening() }
           // 同一条连接：SFTP 仍然列目录。走面板按钮，和用户点的是同一个入口。
           document.getElementById('sftp-toggle').click();
-          const path = await wait(() => document.getElementById('sftp-path').value || null, 'SFTP 列目录');
+          const path = await wait(() => document.getElementById('sftp-path').value || null, 'SFTP listing');
           const files = document.querySelectorAll('#sftp-list .file-row').length;
           document.getElementById('disconnect').click();
-          await wait(() => document.getElementById('disconnect').disabled ? true : null, '断开连接');
+          await wait(() => document.getElementById('disconnect').disabled ? true : null, 'disconnected');
           return { collapsed, beforeExpand, facts: held, first, ready, path, files };
         } finally {
           delete document.hidden;
@@ -227,7 +228,7 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
         first: string; ready: Record<string, string>; path: string; files: number
       }
       // 便宜的完整性检查留在这里，好让失败能落到这一块；定值断言在启动器里。
-      if (!monitor.collapsed || monitor.beforeExpand !== '已暂停') throw new Error('Monitor panel must be collapsed by default')
+      if (!monitor.collapsed || monitor.beforeExpand !== 'Paused') throw new Error('Monitor panel must be collapsed by default')
       if (!monitor.ready?.cpu || !monitor.ready?.net || !monitor.ready?.uptime) throw new Error('Monitor panel did not render a complete snapshot')
       if (monitor.files < 1 || !monitor.path.startsWith('/')) throw new Error('SFTP listing failed on the monitored session')
       console.log('[MONITOR-SMOKE] ' + JSON.stringify(monitor))

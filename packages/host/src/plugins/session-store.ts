@@ -1,4 +1,5 @@
 import { Service, type Context } from 'cordis'
+import { HostError } from '@pureterm/protocol'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -94,11 +95,11 @@ function readJson<T>(file: string, fallback: T): T {
 export function assertSessionStoreCompatible(config: SessionStoreConfig): void {
   if (config.credentials.persistent) return
   if (existsSync(config.secretsFile)) {
-    throw new Error('此数据目录含有已保存凭据，请为本机 Web 使用独立的数据目录。')
+    throw new HostError('host.store-has-credentials')
   }
   const hosts = readJson<unknown>(config.file, [])
   if (Array.isArray(hosts) && hosts.some((host) => host && typeof host === 'object' && 'sealedSecret' in host)) {
-    throw new Error('此数据目录含有旧版凭据密文，请使用 Desktop 读取，并为本机 Web 选择独立的数据目录。')
+    throw new HostError('host.store-has-legacy-credentials')
   }
 }
 
@@ -158,7 +159,7 @@ export class SessionStore extends Service {
     // 先写密文再写元数据：中途失败也只会出现「密文在、元数据还指着旧的」，不会丢密码
     this.persistSecrets()
     this.persistHosts()
-    console.log(`[sessionStore] 已把 ${moved} 条密文从 hosts.json 迁移到 secrets.json。`)
+    console.log(`[sessionStore] moved ${moved} sealed secrets from hosts.json to secrets.json.`)
   }
 
   private persistHosts(hosts = this.hosts): void {
@@ -180,7 +181,7 @@ export class SessionStore extends Service {
   }
 
   private mutate<T>(operation: () => T | Promise<T>): Promise<T> {
-    if (this.stopped) return Promise.reject(new Error('Host 已关闭，无法修改主机记录。'))
+    if (this.stopped) return Promise.reject(new HostError('host.closed-mutation'))
     const result = this.mutations.then(operation)
     // One rejected platform operation must not prevent later writes or disposal.
     this.mutations = result.then(() => undefined, () => undefined)
@@ -214,10 +215,10 @@ export class SessionStore extends Service {
 
   private async saveNow(input: HostInput): Promise<HostRecord> {
     const host = input.host?.trim()
-    if (!host) throw new Error('主机地址不能为空。')
+    if (!host) throw new HostError('ssh.empty-host')
     const port = input.port ?? 22
     const username = input.username?.trim()
-    if (!username) throw new Error('用户名不能为空。')
+    if (!username) throw new HostError('ssh.empty-username')
 
     const id = input.id ?? makeId(host, port, username)
     const now = new Date().toISOString()

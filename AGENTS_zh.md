@@ -12,7 +12,7 @@ PureTerm 是基于 Cordis、ssh2 和 xterm.js 的开源 SSH/SFTP 客户端，提
 
 ## 当前事实与历史资料
 
-- 当前入口是 `apps/desktop/` 和 `apps/web/`；共享能力位于 `packages/host/`、`packages/protocol/`、`packages/transport/` 和 `packages/ui/`。
+- 当前入口是 `apps/desktop/` 和 `apps/web/`；共享能力位于 `packages/host/`、`packages/protocol/`、`packages/i18n/`、`packages/transport/` 和 `packages/ui/`。
 - Desktop 由 Electron 主进程启动独立 Node 模式 Web Host 子进程；独立 Web 在自己的普通 Node 进程内装配同一套 Web Host。
 - 根 `package-lock.json` 是唯一锁文件。所有安装、构建和验证命令从仓库根运行。
 - 当前状态以根 `README_zh.md`、`LAYOUT-PROPOSAL_zh.md`、`VERSION.txt`、`docs/architecture_zh.md`、`docs/DEVELOPMENT_zh.md`、`docs/design-system_zh.md`、`docs/desktop-release_zh.md`、应用 README 和 `CHANGELOG_zh.md` 为准。根目录的 `design-qa_zh.md` 是带日期的设计评审记录，不是当前权威。
@@ -26,6 +26,7 @@ apps/desktop/       Electron 壳、运行时、Host 子进程入口、载体和 
 apps/web/           独立本机 Web 的 Node 入口、服务和测试
 packages/host/      Cordis Host、SSH/SFTP、主机存储和凭据接口
 packages/protocol/  环境无关的请求、事件、能力和二进制协议
+packages/i18n/      文案目录与 t()；界面文案唯一存在的地方
 packages/transport/ 共享 Web Host、dispatcher、HTTP/WebSocket 和就绪校验
 packages/ui/        Cordis Client、终端、主机列表、SFTP 和浏览器适配
 VERSION.txt         所有 workspace 共用的源码版本基准
@@ -40,6 +41,7 @@ docs/               当前架构/发布文档及带日期的历史记录
 
 - `@pureterm/protocol` 不依赖其他本地包、Electron、Node 或 UI。
 - `@pureterm/host` 不依赖 Electron、UI 或应用入口；Host 的公共接口从包入口导出。
+- `@pureterm/i18n` 持有界面文案目录与 `t()`，不依赖任何本地包，只被 UI 与应用入口导入。`@pureterm/host` 永不导入它：Host 用 `@pureterm/protocol` 里的错误码报告失败，由知道语言的那一侧把码说成句子。开发者日志行与独立 Web CLI 的文案保持英文且不进目录，因为两者都没有语言开关。
 - `@pureterm/ui` 只面向浏览器，不能导入 Node、Electron 或 Host；页面内部使用静态 Cordis Client 插件组合。
 - `@pureterm/transport` 通过 Host 公共接口分派请求，不能读取 `Host.internals`。
 - Electron API 只进入 Desktop 的 `electron/app/`、preload 和诊断适配；`electron/runtime/`、`electron/host/` 与普通载体不导入 Electron。

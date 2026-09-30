@@ -21,7 +21,7 @@ try {
       SSH_CORDIS_SMOKE_USER: server.username, SSH_CORDIS_SMOKE_PASS: server.password, SSH_CORDIS_SMOKE_KEYCHAIN: server.hostKey.toString() },
     // 密钥库那一步的标记取决于这台机器能不能加密，所以不放进 requiredMarkers，
     // 改在 inspect 里断言「两者恰好出现一个」——见下面。
-    requiredMarkers: ['[main] 闸门已打开', '启动档案已更新', '[WINDOW-CHROME-OK]', '[DESKTOP-BOUNDARY-OK]', '[MONITOR-SMOKE-OK]'],
+    requiredMarkers: ['[main] gate open', 'launch profile updated', '[WINDOW-CHROME-OK]', '[DESKTOP-BOUNDARY-OK]', '[MONITOR-SMOKE-OK]'],
     // 监控验收要在一条连接上等两轮探测（第二轮补齐 CPU 与网络），比原来的流程长。
     timeoutMs: 90_000,
     inspect: ({ dataDir, output }) => {
@@ -29,7 +29,7 @@ try {
       assert.equal(profile.version, 1)
       assert.ok(profile.renderer.cols > 0 && profile.renderer.rows > 0)
       assert.equal(profile.hosts, 0)
-      assert.ok(output.indexOf('渲染层就绪上报') < output.indexOf('启动档案已更新'), 'profile committed before renderer-ready')
+      assert.ok(output.indexOf('renderer-ready report') < output.indexOf('launch profile updated'), 'profile committed before renderer-ready')
       const line = output.split(/\r?\n/).find(item => item.startsWith('[SMOKE] '))
       assert.ok(line, 'missing structured SSH report')
       const report = JSON.parse(line.slice('[SMOKE] '.length))
@@ -47,7 +47,7 @@ try {
       assert.ok(monitorLine, 'missing structured monitor report')
       const monitor = JSON.parse(monitorLine.slice('[MONITOR-SMOKE] '.length))
       assert.equal(monitor.collapsed, true, 'the monitor row must start collapsed')
-      assert.equal(monitor.beforeExpand, '已暂停', 'a collapsed row reports paused, not loading')
+      assert.equal(monitor.beforeExpand, 'Paused', 'a collapsed row reports paused, not loading')
       assert.notEqual(monitor.facts.cipher, '—', 'the cipher cell must be filled from session facts')
       assert.notEqual(monitor.facts.key, '—', 'the host-key cell must be filled from session facts')
       assert.equal(monitor.first, READY_EXPECTATIONS.memory, 'the first snapshot is already partial')

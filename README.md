@@ -42,11 +42,13 @@ Desktop's attached browser entry is enabled by default. Set `SSH_CORDIS_NO_WEB_C
 - Tabs keep independent input, output, scrollback, connection state, and SFTP directories. Switching tabs or returning to Hosts leaves other connections running. The Files panel uses the selected SSH session and reserves space below its terminal.
 - Disconnect retains output for inspection. Reconnect retries in the same tab; failed connections provide logs, retry, and host editing. Closing a tab releases only that session. A tab closed during its handshake releases the connection if the handshake later succeeds.
 - Create hosts through **New Host** and double-click a host card to connect; use Ctrl+Tab / Ctrl+Shift+Tab to switch tabs and Ctrl/Cmd+W to close the current terminal tab. Tab buttons also support arrow keys, Home, and End. Browsers may reserve some shortcuts; the visible controls remain available.
-- Each session can report the remote host's resources. The **资源** button sits left of **文件** in the session toolbar and opens a resource drawer in the same right-hand slot as the file table, so opening one closes the other. The drawer starts **closed**; opening it begins collection and stacks CPU, memory, load, the root filesystem's usage, the network rate and the host's uptime as sections, with pause, retry and close controls in its header. Closing the drawer, pausing it, hiding the page, switching tabs, or disconnecting all stop collection — a closed session costs the remote nothing. The status bar's cipher and host-key cells are filled from the SSH handshake rather than from this drawer, so they stay filled even when it is closed.
+- Each session can report the remote host's resources. The **Resources** button sits left of **Files** in the session toolbar and opens a resource drawer in the same right-hand slot as the file table, so opening one closes the other. The drawer starts **closed**; opening it begins collection and stacks CPU, memory, load, the root filesystem's usage, the network rate and the host's uptime as sections, with pause, retry and close controls in its header. Closing the drawer, pausing it, hiding the page, switching tabs, or disconnecting all stop collection — a closed session costs the remote nothing. The status bar's cipher and host-key cells are filled from the SSH handshake rather than from this drawer, so they stay filled even when it is closed.
 
 Open sessions and retry credentials live only in the current client; they are not restored after a reload. SFTP currently supports directory navigation, upload/download (up to 4 MiB per file), folder creation, and deletion with confirmation. Serial connections, port forwarding, SSH certificate authentication, Windows Hello, FIDO2, and snippet management are not implemented and are not shown as working controls.
 
 Resource monitoring probes Linux only, with one command every five seconds. CPU and network are rates, so they read `—` until a second probe supplies a baseline; disk is the root filesystem, not every mount; and a counter the remote does not expose is left empty with its reason on hover instead of being shown as zero. A remote that is not Linux, or a Host without the monitoring plugin, is reported as unsupported rather than as a failure. The figures are whatever the remote's own `/proc` reports and are not verified against the machine by this application.
+
+The interface is bilingual. A switch in the top bar, beside the theme and row-density toggles, moves every screen between English and Chinese and remembers the choice; English is the default. It sets the document language too, and in the Desktop app the application menu and the native dialogs follow it. Developer log lines and the standalone Web command's own output stay English, because they have no switch to reach them.
 
 ## Working with Keychain
 
@@ -60,7 +62,7 @@ Resource monitoring probes Linux only, with one command every five seconds. CPU 
 The Desktop architecture follows [deepseek-harness's Desktop implementation at `00102833`](https://github.com/deepseek-ai/deepseek-harness/tree/00102833dfaee1da9f48a3a8eae9d34005a75218/apps/desktop), the reference snapshot synchronized on 2026-09-23. PureTerm adapts the shared Web Host and Electron shell pattern to its SSH/SFTP client.
 
 - `@pureterm/transport/web-host` assembles the Cordis Host, dispatcher, and loopback HTTP/WebSocket carrier for both entry points.
-- Electron serves the shared UI at `pureterm-app://app/` while its Node-mode child starts. The minimal `window.puretermDesktop` bridge provides the WebSocket address after Host readiness and accepts the renderer's readiness report. SSH/SFTP, hosts, and Keychain operations use WebSocket.
+- Electron serves the shared UI at `pureterm-app://app/` while its Node-mode child starts. The minimal `window.puretermDesktop` bridge provides the WebSocket address after Host readiness and accepts the renderer's readiness and language reports. SSH/SFTP, hosts, and Keychain operations use WebSocket.
 - Electron main owns the window, system encryption, native key picker, and child lifecycle. It injects the Desktop authentication token into the owned window's WebSocket request without exposing that token to the page. Private parent/child RPC carries platform capabilities and startup/shutdown coordination.
 
 For internal integrations, the old `window.sshAPI` and SSH business IPC have been removed. Existing SSH data directories remain unchanged. See the [architecture guide](docs/architecture.md) for process boundaries and lifecycle, and the [changelog](CHANGELOG.md) for migration details.
@@ -85,6 +87,7 @@ Tests use the repository’s local SSH/SFTP fixtures and temporary data director
 | `apps/web/` | Standalone local Node Web entry point and tests |
 | `packages/host/` | Cordis Host, SSH/SFTP, host storage, and credential interfaces |
 | `packages/protocol/` | Transport protocol and shared data structures |
+| `packages/i18n/` | Message catalog and `t()` for both entry points; the only place user-facing copy lives |
 | `packages/transport/` | Shared Web Host assembly, request dispatch, and HTTP/WebSocket carrier |
 | `packages/ui/` | Shared terminal, file panel, and browser transport for both entry points |
 | [VERSION.txt](VERSION.txt) | Source version baseline for all workspaces and release tags |

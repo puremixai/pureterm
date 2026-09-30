@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { startFakeSshServer } from './fake-ssh-server.mjs'
-import { connection, hostFixture, rendererFixture, until } from './integration-helpers.mjs'
+import { connection, hostFixture, rejectedWith, rendererFixture, until } from './integration-helpers.mjs'
 
 test('real SSH terminal preserves split UTF-8, maps PTY and resize, and closes once', { timeout: 15000 }, async (t) => {
   const server = await startFakeSshServer()
@@ -28,14 +28,15 @@ test('real SSH terminal preserves split UTF-8, maps PTY and resize, and closes o
   await until(() => server.connections === 0, 'SSH socket closing')
   const closed = renderer.events.filter((event) => event.name === 'terminal:closed' && event.params[0] === opened.sessionId)
   assert.equal(closed.length, 1)
-  assert.ok(closed[0].params[1].length > 0)
+  // 会话结束的原因现在是一个码，不是一句话。用户自己按的关闭是 host.user-disconnected。
+  assert.equal(closed[0].params[1].code, 'host.user-disconnected')
 })
 
 test('TOFU rejects unconfirmed keys, persists acceptance, and rejects changed keys at the same address', { timeout: 20000 }, async (t) => {
   const server = await startFakeSshServer({ greeting: false })
   t.after(() => server.close())
   const fixture = await hostFixture(t)
-  await assert.rejects(fixture.host.openTerminal({ ...connection(server), acceptUnknownHostKey: false }), /首次连接/)
+  await assert.rejects(fixture.host.openTerminal({ ...connection(server), acceptUnknownHostKey: false }), rejectedWith('ssh.first-connection'))
   assert.equal(existsSync(fixture.options.knownHostsFile), false)
   await fixture.host.openTerminal(connection(server))
   const known = JSON.parse(await readFile(fixture.options.knownHostsFile, 'utf8'))
@@ -50,7 +51,7 @@ test('TOFU rejects unconfirmed keys, persists acceptance, and rejects changed ke
   t.after(() => changed.close())
   assert.notEqual(changed.fingerprint, server.fingerprint)
   const afterChange = await fixture.create()
-  await assert.rejects(afterChange.openTerminal(connection(changed)), /主机密钥已改变/)
+  await assert.rejects(afterChange.openTerminal(connection(changed)), rejectedWith('ssh.host-key-changed'))
   const persisted = JSON.parse(await readFile(fixture.options.knownHostsFile, 'utf8'))
   assert.equal(persisted[0].fingerprint, server.fingerprint, 'rejection must not replace the trusted key')
 })
@@ -91,13 +92,13 @@ test('authentication and missing renderer failures leave no tracked SSH session'
   t.after(() => server.close())
   const renderer = rendererFixture()
   const { host } = await hostFixture(t, renderer.bridge)
-  await assert.rejects(host.openTerminal({ ...connection(server), password: 'incorrect-test-password' }), /认证失败/)
+  await assert.rejects(host.openTerminal({ ...connection(server), password: 'incorrect-test-password' }), rejectedWith('ssh.auth-failed'))
   assert.equal(host.internals.ctx.ssh.size, 0)
   assert.equal(host.internals.ctx.terminal.size, 0)
-  assert.ok(renderer.events.some((event) => event.name === 'terminal:closed' && /认证失败/.test(event.params[1])))
+  assert.ok(renderer.events.some((event) => event.name === 'terminal:closed' && event.params[1].code === 'ssh.auth-failed'))
   await until(() => server.connections === 0, 'failed authentication socket cleanup')
   renderer.disconnect()
-  await assert.rejects(host.openTerminal(connection(server)), /渲染进程不可用/)
+  await assert.rejects(host.openTerminal(connection(server)), rejectedWith('host.renderer-gone'))
   assert.equal(server.connections, 0)
 })
 

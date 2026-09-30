@@ -76,30 +76,30 @@ export function resolvePlatformPlan(input: PlatformPlanInput): PlatformPlan {
   const disableHardwareAcceleration = input.env.SSH_CORDIS_DISABLE_GPU === '1'
   if (disableHardwareAcceleration) {
     for (const name of GPU_SWITCHES) switches.push(name)
-    reasons.push('SSH_CORDIS_DISABLE_GPU=1 → 关掉硬件加速（终端渲染不依赖 GPU）')
+    reasons.push('SSH_CORDIS_DISABLE_GPU=1 -> disabling hardware acceleration (terminal rendering does not need the GPU)')
   } else if (existing.has('disable-gpu')) {
-    reasons.push('命令行已带 --disable-gpu，沿用它并关掉硬件加速')
+    reasons.push('the command line already carries --disable-gpu; keeping it and disabling hardware acceleration')
   }
 
   if (input.env.SSH_CORDIS_DISABLE_SANDBOX === '1') {
     if (existing.has('no-sandbox')) {
-      reasons.push('SSH_CORDIS_DISABLE_SANDBOX=1，但命令行已带 --no-sandbox')
+      reasons.push('SSH_CORDIS_DISABLE_SANDBOX=1, but the command line already carries --no-sandbox')
     } else {
       switches.push('no-sandbox')
-      reasons.push('SSH_CORDIS_DISABLE_SANDBOX=1 → 关掉 Chromium 进程沙箱')
+      reasons.push('SSH_CORDIS_DISABLE_SANDBOX=1 -> disabling the Chromium process sandbox')
     }
   }
 
   const isMac = input.platform === 'darwin'
   reasons.push(
     isMac
-      ? 'macOS：关掉最后一个窗口后留在 Dock；装最小应用菜单（否则终端里 Cmd+C/Cmd+V 不可用）'
-      : '非 macOS：关掉最后一个窗口即退出；不装 macOS App 菜单',
+      ? 'macOS: stay in the Dock after the last window closes; install the minimal application menu (without it Cmd+C/Cmd+V are dead in the terminal)'
+      : 'not macOS: quit when the last window closes; no macOS App menu',
   )
   reasons.push(
     isMac
-      ? 'macOS：红绿灯由系统画在左上角，顶栏不自绘窗口按钮'
-      : '非 macOS：titleBarStyle:hidden 不带原生按钮，顶栏自绘最小化/最大化/关闭',
+      ? 'macOS: the system draws the traffic lights in the top-left, so the top bar draws no window buttons'
+      : 'not macOS: titleBarStyle:hidden brings no native buttons, so the top bar draws minimize/maximize/close',
   )
 
   return {

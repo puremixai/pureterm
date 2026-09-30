@@ -11,6 +11,12 @@ import { startFakeSshServer } from '../../../apps/desktop/tests/fake-ssh-server.
 const seal = (plain) => `test-ciphertext:${Buffer.from(plain).toString('base64')}`
 const unseal = (sealed) => Buffer.from(sealed.slice('test-ciphertext:'.length), 'base64').toString('utf8')
 
+/** `assert.rejects` 的判定器：失败带的是码，断言码而不是那句话。 */
+const rejectedWith = code => error => {
+  assert.equal(error.code, code, error.message)
+  return true
+}
+
 async function fixture(t, provider = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'pureterm-async-credentials-'))
   const gates = []
@@ -112,8 +118,8 @@ test('Host disposal drains accepted credential writes and rejects later mutation
   const disposing = host.dispose().then(() => { disposed = true })
   await delay(20)
   assert.equal(disposed, false)
-  await assert.rejects(host.saveHost({ ...record, id: 'late' }), /关闭|disposed/i)
-  await assert.rejects(host.removeHost(record.id), /关闭|disposed/i)
+  await assert.rejects(host.saveHost({ ...record, id: 'late' }), rejectedWith('host.closed-mutation'))
+  await assert.rejects(host.removeHost(record.id), rejectedWith('host.closed-mutation'))
   gate.resolve()
   await saving
   await disposing
@@ -154,7 +160,7 @@ for (const action of ['releaseClient', 'dispose']) {
       password: server.password, rememberPassword: true })
     const opening = host.openTerminal({ host: server.host, port: server.port, username: server.username,
       hostId: saved.id, clientId: 'client', acceptUnknownHostKey: true })
-    const rejected = assert.rejects(opening, /客户端|关闭|断开/)
+    const rejected = assert.rejects(opening, rejectedWith('host.client-disconnected'))
     await entered.promise
     if (action === 'releaseClient') { f.alive.delete('client'); host.releaseClient('client') }
     else await host.dispose()

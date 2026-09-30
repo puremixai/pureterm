@@ -13,6 +13,9 @@ if (process.isMainFrame && window.location.protocol === 'pureterm-app:' && windo
   const bridge: DesktopBridge = {
     bootstrap: () => ipcRenderer.invoke(DESKTOP_CHANNELS.bootstrap),
     signalReady: payload => ipcRenderer.send(DESKTOP_CHANNELS.ready, payload),
+    // send, not invoke: the page is reporting the language it just switched to,
+    // and nothing on this side has an answer worth waiting for.
+    reportLocale: locale => ipcRenderer.send(DESKTOP_CHANNELS.locale, locale),
     // send, not invoke: a window command has no answer to wait for, and making
     // the renderer await one would put a round trip between the click and the
     // window moving.

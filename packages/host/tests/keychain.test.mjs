@@ -12,6 +12,12 @@ const privateKey = pair.privateKey.export({ type: 'pkcs1', format: 'pem' }).toSt
 const passphrase = 'fixture-key-passphrase'
 const encryptedKey = pair.privateKey.export({ type: 'pkcs1', format: 'pem', cipher: 'aes-256-cbc', passphrase }).toString()
 
+/** `assert.rejects` 的判定器：失败带的是码，断言码而不是那句话。 */
+const rejectedWith = code => error => {
+  assert.equal(error.code, code, error.message)
+  return true
+}
+
 async function fixture(t, persistent = true) {
   const directory = await mkdtemp(join(tmpdir(), 'pureterm-keychain-'))
   const secret = randomBytes(32)
@@ -86,7 +92,7 @@ test('rename retains key material, replacement validates public key, and failed 
   await assert.rejects(host.saveKey({ id: original.id, label: 'bad', privateKey, publicKey: 'ssh-rsa AAAA' }, 'first'))
   const before = await readFile(join(f.directory, 'keychain.json'), 'utf8')
   f.credentials.seal = () => undefined
-  await assert.rejects(host.saveKey({ id: original.id, label: 'must not commit' }, 'first'), /加密/)
+  await assert.rejects(host.saveKey({ id: original.id, label: 'must not commit' }, 'first'), rejectedWith('keychain.encryption-unavailable'))
   assert.deepEqual(host.listKeys('first'), [renamed])
   assert.equal(await readFile(join(f.directory, 'keychain.json'), 'utf8'), before)
 })
@@ -97,8 +103,8 @@ test('used keys cannot be removed until host authentication is changed; nonexist
   const key = await host.saveKey({ label: 'used', privateKey }, 'first')
   const input = { host: 'example.test', username: 'demo', authMethod: 'privateKey', keyId: key.id }
   const saved = await host.saveHost(input, 'first')
-  await assert.rejects(host.removeKey(key.id, 'first'), /使用/)
-  await assert.rejects(host.saveHost({ ...input, keyId: 'missing' }, 'first'), /不存在/)
+  await assert.rejects(host.removeKey(key.id, 'first'), rejectedWith('host.key-in-use'))
+  await assert.rejects(host.saveHost({ ...input, keyId: 'missing' }, 'first'), rejectedWith('host.key-missing'))
   await host.saveHost({ ...input, id: saved.id, authMethod: 'password' }, 'first')
   assert.equal(host.listHosts('first')[0].keyId, undefined)
   assert.equal(await host.removeKey(key.id, 'first'), true)
@@ -129,7 +135,7 @@ test('session-only startup refuses a Desktop keychain without altering it', asyn
   await host.dispose()
   const before = await readFile(join(f.directory, 'keychain.json'), 'utf8')
   f.credentials.persistent = false
-  await assert.rejects(f.create(), /独立|目录/)
+  await assert.rejects(f.create(), rejectedWith('keychain.desktop-store-in-web'))
   assert.equal(await readFile(join(f.directory, 'keychain.json'), 'utf8'), before)
 })
 

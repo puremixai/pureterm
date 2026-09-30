@@ -390,8 +390,13 @@ test('malformed framing is rejected rather than parsed leniently', () => {
     'OS with two payload lines': frame([], { os: 'Linux\nextra' }),
     'non-Linux followed by Linux sections': frame(allSections(), { os: 'Darwin' }),
   }
+  // 断言的是**码**，不是一句话：帧读不懂的每一种都各有各的码，界面按码给译文。
+  // 具体是哪一格由 fixture 决定，这里只钉「它是帧的错，不是被宽松地读成了某个指标」。
   for (const [name, output] of Object.entries(cases)) {
-    assert.throws(() => parseLinuxProbe(output), new RegExp('监控'), name)
+    assert.throws(() => parseLinuxProbe(output), error => {
+      assert.match(error.code, /^monitor\.frame\./, `${name} 报的是 ${error.code}`)
+      return true
+    }, name)
   }
 })
 
@@ -435,10 +440,18 @@ test('the snapshot survives the wire validator it will be sent through', () => {
   // 一个都量不到 -> error：snapshot 必须是 null 并带上原因，而不是一张全 null 的表。
   const empty = toMonitorSnapshot(parseLinuxProbe(frame(allFailedSections())), null, 1_002_000)
   assert.equal(MONITOR_METRICS.every(metric => empty.issues[metric] === 'unavailable'), true)
-  const error = parseMonitorUpdate({ ...identity, status: 'error', snapshot: null, message: '这台主机没有给出任何可用的指标。' })
+  const error = parseMonitorUpdate({
+    ...identity,
+    status: 'error',
+    snapshot: null,
+    error: { code: 'monitor.no-metrics', message: 'the remote returned no usable metrics' },
+  })
   assert.equal(error.snapshot, null)
   // 全 null 的快照不能冒充 error 的载荷：那样界面上会出现六个空槽而不是一句原因。
-  assert.throws(() => parseMonitorUpdate({ ...identity, status: 'error', snapshot: empty, message: 'x' }), /snapshot/)
+  assert.throws(
+    () => parseMonitorUpdate({ ...identity, status: 'error', snapshot: empty, error: { code: 'monitor.no-metrics', message: 'x' } }),
+    /snapshot/,
+  )
 })
 
 test('the shipped command is one fixed POSIX script with no interpolation', () => {

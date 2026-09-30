@@ -109,11 +109,11 @@ if (env.SSH_CORDIS_LAUNCH_VERIFY !== '1') process.exit(0)
 
 const waitSeconds = Number(env.SSH_CORDIS_LAUNCH_WAIT) || 60
 const deadlineMs = Math.max(5, waitSeconds) * 1000
-const READY_MARKER = '[main] 闸门已打开'
-const FALLBACK_MARKER = '将以 --no-sandbox 重启一次'
-const APPLIED_MARKER = '本次启动前直接带上'
-const COMMIT_MARKER = '启动档案已更新'
-const FAILURE_MARKERS = ['[BOOT-FAIL]', '自动重启失败']
+const READY_MARKER = '[main] gate open'
+const FALLBACK_MARKER = 'Restarting once with --no-sandbox'
+const APPLIED_MARKER = 'adding it up front'
+const COMMIT_MARKER = 'launch profile updated'
+const FAILURE_MARKERS = ['[BOOT-FAIL]', 'automatic restart failed']
 
 const alive = (pid) => {
   try {

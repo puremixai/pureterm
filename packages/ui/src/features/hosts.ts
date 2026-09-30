@@ -1,6 +1,8 @@
 import { Service, type Context } from 'cordis'
 import type { AuthMethod, HostRecord, HostSaveRequest, RuntimeCapabilities, TerminalOpenRequest } from '@pureterm/protocol'
-import { ClientScope, cleanError } from '../client-runtime.js'
+import { t, tPlural } from '@pureterm/i18n'
+import { ClientScope } from '../client-runtime.js'
+import { errorText } from '../failure-diagnostics.js'
 import { createHostList, type HostListView } from '../host-list.js'
 import { BrowserPrivateKeySelection, connectionCredentials, savedCredentials, readBrowserPrivateKey } from '../credentials.js'
 
@@ -22,6 +24,8 @@ export class ClientHosts extends Service {
   private listRevision = 0
   private query = ''
   private readonly pendingForms = new Set<number>()
+  /** 第一份主机列表画出来了没有。语言广播靠它判断「现在该不该重画列表」。 */
+  private loaded = false
 
   constructor(ctx: Context) {
     super(ctx, 'clientHosts')
@@ -83,9 +87,9 @@ export class ClientHosts extends Service {
     this.scope.listen(view.element('host-save'), 'click', () => {
       void this.save().then(record => {
         if (!this.scope.alive) return
-        if (record) { view.status('', 'ok'); this.ctx.clientToasts.notify({ title: '已保存主机', detail: record.label }) }
-        else { view.status('保存前请先把主机地址和用户名填上', 'err'); this.input(this.input('host').value.trim() ? 'user' : 'host').focus() }
-      }).catch(error => { if (this.scope.alive) view.status(cleanError(error), 'err') })
+        if (record) { view.status('', 'ok'); this.ctx.clientToasts.notify({ title: t('hosts.toast.saved'), detail: record.label }) }
+        else { view.status(t('hosts.error.need-address'), 'err'); this.input(this.input('host').value.trim() ? 'user' : 'host').focus() }
+      }).catch(error => { if (this.scope.alive) view.status(errorText(error), 'err') })
     })
     this.scope.listen(view.element('host-delete'), 'click', () => { if (this.editingId) void this.remove(this.editingId) })
     this.scope.listen(view.element('auth'), 'change', () => { this.formRevision++; this.clearBrowserKey(); this.syncAuth(); this.updateButtons() })
@@ -124,6 +128,19 @@ export class ClientHosts extends Service {
       this.renderHostList()
     })
     ctx.on('client/connection-change', () => { this.updateButtons(); this.renderCount() })
+    // 语言换完之后这一段里所有已经画出来的句子都要重画一次：降级说明、认证方式的
+    // 标签、地址提示、模式行、空态，以及整张主机表（行的 title 和 aria-label 都是
+    // 拼出来的）。它们不会自己变，而它们正是用户在库里看到的大部分文字。
+    ctx.on('client/locale-change', () => {
+      if (!this.scope.alive) return
+      // 开局那次广播发生在能力答复和第一份列表之前：那两处都还没画，跳过它们，
+      // 免得把骨架换成「还没有保存的主机」，或者用一句没根据的降级说明顶上去。
+      if (this.capabilities) this.renderDegraded()
+      this.syncAuth()
+      this.syncMode()
+      this.renderAddressHint()
+      if (this.loaded) this.renderHostList()
+    })
     this.clearForm()
     this.updateButtons()
     this.ready = this.initialize()
@@ -145,16 +162,27 @@ export class ClientHosts extends Service {
     this.ctx.clientView.element('credential-lock').hidden = this.capabilities.credentialPersistence !== 'encrypted'
     // 能力关着不是失败：这台机器上「密码留空也能连」这件事不成立，得常驻说一句，
     // 而不是等用户每次保存都撞上一次。
-    const degraded = this.input('hosts-degraded')
-    degraded.hidden = this.capabilities.credentialPersistence === 'encrypted'
-    degraded.textContent = this.capabilities.credentialPersistence === 'session'
-      ? '本机 Web 不保存凭据：主机列表会留下，密码与私钥口令只在这个页面里有效。'
-      : '这台机器上的凭据存储不可用，主机可以连，但每次都要重填凭据。'
+    this.renderDegraded()
     this.syncAuth()
     await this.ctx.clientKeychain.ready
     if (!this.scope.alive) return
     this.syncKeys()
     await this.refresh()
+  }
+
+  /**
+   * 凭据存储不可用时的常驻说明。
+   *
+   * 单独一个方法是因为它由两个来源共同决定（能力 + 当前语言），而换语言之后这句话
+   * 必须跟着变 —— 它是这一屏上唯一一句解释「为什么每次都让我重填」的文字。
+   */
+  private renderDegraded(): void {
+    const persistence = this.capabilities?.credentialPersistence
+    const degraded = this.input('hosts-degraded')
+    degraded.hidden = persistence === 'encrypted'
+    degraded.textContent = persistence === 'session'
+      ? t('hosts.degraded.session')
+      : t('hosts.degraded.unavailable')
   }
 
   private syncKeys(selected = this.input('host-keychain').value): void {
@@ -164,9 +192,9 @@ export class ClientHosts extends Service {
       const element = this.ctx.clientView.document.createElement('option')
       element.value = value; element.textContent = label; select.append(element)
     }
-    option('', '使用本地私钥文件…')
+    option('', t('host.keychain.local'))
     for (const key of this.ctx.clientKeychain.records) option(key.id, `${key.label} · ${key.type}`)
-    if (selected && !this.ctx.clientKeychain.records.some(key => key.id === selected)) option(selected, '密钥不可用，请重新选择')
+    if (selected && !this.ctx.clientKeychain.records.some(key => key.id === selected)) option(selected, t('hosts.keychain.missing'))
     select.value = selected
     this.syncAuth()
   }
@@ -188,10 +216,12 @@ export class ClientHosts extends Service {
     view.element('host-direct-key').hidden = keychain
     view.element('host-keychain-hint').hidden = !keychain
     view.element('remember-label').parentElement!.hidden = keychain
-    view.element('remember-label').textContent = this.capabilities?.credentialPersistence === 'session' ? '仅当前页面' : method === 'privateKey' ? '记住口令' : '记住密码'
+    view.element('remember-label').textContent = this.capabilities?.credentialPersistence === 'session'
+      ? t('host.remember.session')
+      : method === 'privateKey' ? t('host.remember.passphrase') : t('host.remember.password')
     const saved = this.savedSecret()
-    this.input('pass').placeholder = saved ? '使用已保存的密码' : ''
-    this.input('key-pass').placeholder = saved ? '使用已保存的口令' : ''
+    this.input('pass').placeholder = saved ? t('host.placeholder.saved-password') : ''
+    this.input('key-pass').placeholder = saved ? t('host.placeholder.saved-passphrase') : ''
   }
 
   private updateButtons(): void {
@@ -231,8 +261,9 @@ export class ClientHosts extends Service {
     this.input('key-path').value = request.privateKeyPath ?? ''
     this.syncKeys(request.keyId ?? '')
     if (request.privateKey && this.capabilities?.privateKeyPicker === 'browser') {
-      this.browserKey.commit(this.browserKey.begin(), { name: '当前会话私钥', content: request.privateKey })
-      this.input('key-path').value = '当前会话私钥'
+      const name = t('hosts.session-key-name')
+      this.browserKey.commit(this.browserKey.begin(), { name, content: request.privateKey })
+      this.input('key-path').value = name
     }
     this.syncAuth()
     this.renderAddressHint()
@@ -253,8 +284,8 @@ export class ClientHosts extends Service {
     empty.hidden = visible.length > 0
     const filtered = this.hosts.length > 0 && visible.length === 0
     this.ctx.clientView.element('hosts-empty-text').innerHTML = filtered
-      ? '没有匹配的主机。<br />换个关键词再试试。'
-      : '还没有保存的主机。<br />新建一条记录，之后双击就能连上。'
+      ? t('hosts.empty.filtered')
+      : t('hosts.empty.none')
     // 筛不中的时候「新建主机」是个错的动作：用户要的是清掉关键词，不是再加一条。
     this.ctx.clientView.element('hosts-empty-new').hidden = filtered
     this.renderCount(visible.length)
@@ -271,8 +302,10 @@ export class ClientHosts extends Service {
    */
   private renderCount(visible = this.visibleHosts().length): void {
     const connected = this.hosts.filter(record => this.connected(record)).length
-    const saved = this.query && visible !== this.hosts.length ? `${visible} / ${this.hosts.length} saved` : `${this.hosts.length} saved`
-    this.ctx.clientView.element('host-count').textContent = `${saved} · ${connected} connected`
+    const saved = this.query && visible !== this.hosts.length
+      ? t('hosts.count.filtered', { visible, total: this.hosts.length })
+      : tPlural('hosts.count.saved', this.hosts.length)
+    this.ctx.clientView.element('host-count').textContent = [saved, tPlural('hosts.count.connected', connected)].join(' · ')
   }
 
   private connected(record: HostRecord): boolean {
@@ -292,7 +325,7 @@ export class ClientHosts extends Service {
   private syncMode(): void {
     const record = this.hosts.find(host => host.id === this.editingId)
     const mode = this.ctx.clientView.element('form-mode')
-    mode.textContent = record ? `Edit ${record.label}` : 'New Host'
+    mode.textContent = record ? t('hosts.editor.edit', { label: record.label }) : t('hosts.new')
     mode.classList.toggle('editing', !!record)
   }
 
@@ -330,7 +363,7 @@ export class ClientHosts extends Service {
     } catch (error) {
       // 「后端不可用」和「这一次操作失败了」是两件事：前者要求重连或重启，后者
       // 只要再试一次。混成一句红字，用户两种都无从下手。
-      this.setListError('主机列表读不出来，后端可能已经断开。', cleanError(error))
+      this.setListError(t('hosts.error.list-unavailable'), errorText(error))
       throw error
     }
     if (!this.scope.alive || listRevision !== this.listRevision) return
@@ -349,6 +382,7 @@ export class ClientHosts extends Service {
     this.renderHostList()
     this.syncMode()
     this.updateButtons()
+    this.loaded = true
   }
 
   private applyHost(record: HostRecord): void {
@@ -371,8 +405,10 @@ export class ClientHosts extends Service {
     this.list.select(this.selectedId)
     this.syncMode()
     this.updateButtons()
-    const hint = this.savedSecret() ? record.authMethod === 'privateKey' ? '，口令留空即使用已保存的' : '，密码留空即使用已保存的' : ''
-    this.ctx.clientView.status(`已选择「${record.label}」${hint}`)
+    const hint = !this.savedSecret()
+      ? 'hosts.status.selected'
+      : record.authMethod === 'privateKey' ? 'hosts.status.selected.saved-passphrase' : 'hosts.status.selected.saved-password'
+    this.ctx.clientView.status(t(hint, { label: record.label }))
   }
 
   private selectHost(record: HostRecord): void {
@@ -400,7 +436,7 @@ export class ClientHosts extends Service {
     this.list.select(this.selectedId)
     this.syncMode()
     this.updateButtons()
-    this.ctx.clientView.status('新建主机：填好地址和用户名后点「保存」')
+    this.ctx.clientView.status(t('hosts.status.new'))
     this.input('host').focus()
   }
 
@@ -410,7 +446,7 @@ export class ClientHosts extends Service {
   }
 
   private saveRequest(): HostSaveRequest | null {
-    if (!this.scope.alive || !this.capabilities) throw new Error('尚未确认本机后端的凭据能力，暂时无法保存。')
+    if (!this.scope.alive || !this.capabilities) throw new Error(t('hosts.error.capabilities-unknown'))
     const host = this.input('host').value.trim()
     const username = this.input('user').value.trim()
     if (!host || !username) return null
@@ -430,17 +466,20 @@ export class ClientHosts extends Service {
   private async remove(id: string): Promise<void> {
     if (!this.scope.alive) return
     const record = this.hosts.find(host => host.id === id)
-    const label = record?.label ?? '这台主机'
+    const label = record?.label ?? t('hosts.fallback-label')
     const view = this.ctx.clientView
-    if (!view.window.confirm(`删除「${label}」？${record?.hasSecret ? '它保存的凭据也会一并删除。' : ''}`)) return
+    const question = record?.hasSecret
+      ? t('hosts.confirm.delete-secret', { label })
+      : t('hosts.confirm.delete', { label })
+    if (!view.window.confirm(question)) return
     try {
       await this.ctx.clientTransport.api.hosts.remove(id)
       if (!this.scope.alive) return
       if (this.editingId === id) { this.editingId = null; this.clearForm() }
       if (this.selectedId === id) this.selectedId = null
       await this.refresh(this.editingId)
-      if (this.scope.alive) this.ctx.clientToasts.notify({ title: '已删除主机', detail: label })
-    } catch (error) { if (this.scope.alive) view.status(cleanError(error), 'err') }
+      if (this.scope.alive) this.ctx.clientToasts.notify({ title: t('hosts.toast.deleted'), detail: label })
+    } catch (error) { if (this.scope.alive) view.status(errorText(error), 'err') }
   }
 
   private async connect(): Promise<void> {
@@ -450,9 +489,9 @@ export class ClientHosts extends Service {
     const host = this.input('host').value.trim()
     const username = this.input('user').value.trim()
     const method = this.auth()
-    const missing = !host ? ['请填写主机地址', 'host'] : !username ? ['请填写用户名', 'user']
+    const missing = !host ? [t('error.ssh.empty-host'), 'host'] : !username ? [t('error.ssh.empty-username'), 'user']
       : method === 'privateKey' && !this.input('host-keychain').value && (this.capabilities.privateKeyPicker === 'browser' ? !this.browserKey.value : !this.input('key-path').value.trim())
-        ? ['请先选择私钥文件', 'key-pick'] : method === 'password' && !this.input('pass').value && !this.savedSecret() ? ['请填写密码', 'pass'] : undefined
+        ? [t('hosts.error.choose-key'), 'key-pick'] : method === 'password' && !this.input('pass').value && !this.savedSecret() ? [t('hosts.error.enter-password'), 'pass'] : undefined
     if (missing) { this.ctx.clientView.status(missing[0]!, 'err'); this.input(missing[1]!).focus(); return }
     const revision = this.formRevision
     const credentialFilled = !!this.input(method === 'privateKey' ? 'key-pass' : 'pass').value
@@ -467,8 +506,8 @@ export class ClientHosts extends Service {
     try { await this.save(saveRequest, revision) } catch (error) {
       if (!this.scope.alive) return
       // 两轨都要：内联那行说明「这次没存上」，通知保证离开表单之后仍然看得见。
-      this.ctx.clientView.status(`已连接，但保存主机失败：${cleanError(error)}`, 'err')
-      this.ctx.clientToasts.notify({ title: '已连接，但保存失败', detail: cleanError(error), kind: 'err' })
+      this.ctx.clientView.status(t('hosts.status.save-after-connect-failed', { error: errorText(error) }), 'err')
+      this.ctx.clientToasts.notify({ title: t('hosts.toast.save-after-connect-failed'), detail: errorText(error), kind: 'err' })
     }
   }
 
@@ -491,10 +530,10 @@ export class ClientHosts extends Service {
       if (!this.scope.alive || !picked || !this.browserKey.isCurrent(revision)) return
       this.formRevision++
       this.input('key-path').value = picked.path
-      if (picked.error) { view.status(picked.error, 'err'); return }
-      if (picked.encrypted) { this.input('key-pass').focus(); view.status('这把私钥有口令保护，请在「私钥口令」里填上。', 'pending') }
-      else { this.input('key-pass').value = ''; view.status('已选择私钥（未加密，口令留空即可）。', 'ok') }
-    }).catch(error => { if (this.scope.alive) view.status(cleanError(error), 'err') })
+      if (picked.error) { view.status(errorText(picked.error), 'err'); return }
+      if (picked.encrypted) { this.input('key-pass').focus(); view.status(t('error.ssh.key-passphrase-needed'), 'pending') }
+      else { this.input('key-pass').value = ''; view.status(t('hosts.status.key-picked-plain'), 'ok') }
+    }).catch(error => { if (this.scope.alive) view.status(errorText(error), 'err') })
   }
 
   private readKey(): void {
@@ -510,7 +549,7 @@ export class ClientHosts extends Service {
       if (!this.scope.alive || !this.browserKey.commit(revision, selected)) return
       this.input('key-path').value = selected.name
       this.input('key-pass').focus()
-      view.status('私钥仅在当前页面使用。若有口令请填写，未加密则留空。', 'ok')
-    }).catch(error => { if (this.scope.alive && this.browserKey.isCurrent(revision)) view.status(cleanError(error), 'err') })
+      view.status(t('hosts.status.key-read'), 'ok')
+    }).catch(error => { if (this.scope.alive && this.browserKey.isCurrent(revision)) view.status(errorText(error), 'err') })
   }
 }

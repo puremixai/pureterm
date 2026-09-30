@@ -2,7 +2,7 @@
 
 [English version](README.md)
 
-在用户电脑运行 Node，浏览器连接同一台电脑上的 PureTerm。SSH、SFTP、主机信息和已信任主机密钥都由这个 Node 进程管理。Web 与 Desktop 使用相同的 `@pureterm/transport/web-host` 装配，但数据目录及凭据策略分离。Web 也共用 `@pureterm/host`、`@pureterm/protocol` 和 `@pureterm/ui`；运行时无需 Electron。
+在用户电脑运行 Node，浏览器连接同一台电脑上的 PureTerm。SSH、SFTP、主机信息和已信任主机密钥都由这个 Node 进程管理。Web 与 Desktop 使用相同的 `@pureterm/transport/web-host` 装配，但数据目录及凭据策略分离。Web 也共用 `@pureterm/host`、`@pureterm/protocol`、`@pureterm/i18n` 和 `@pureterm/ui`；运行时无需 Electron。
 
 从仓库根目录安装依赖后启动，命令会构建共享模块和 Web 入口：
 

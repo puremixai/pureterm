@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
  */
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const targets = ['packages/host/src', 'packages/protocol/src', 'packages/transport/src', 'apps/web/src', 'apps/desktop/electron']
+const targets = ['packages/host/src', 'packages/i18n/src', 'packages/protocol/src', 'packages/transport/src', 'apps/web/src', 'apps/desktop/electron']
 const allowed = ['.js', '.cjs', '.mjs', '.json']
 const pattern = /(?:from\s*|import\s*\(\s*|import\s+)['"](\.[^'"]*)['"]/g
 

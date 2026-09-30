@@ -22,7 +22,7 @@ export interface LocalWebServer {
 /** A local Node entry point using the same Host, protocol and UI as Desktop. */
 export async function startLocalWeb(options: LocalWebOptions = {}): Promise<LocalWebServer> {
   const port = options.port ?? 0
-  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('端口必须是 0 到 65535 之间的整数。')
+  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('The port must be an integer between 0 and 65535.')
   const dataDir = resolve(options.dataDir ?? join(homedir(), '.ssh-cordis', 'web'))
   const staticDir = dirname(fileURLToPath(import.meta.resolve('@pureterm/ui/index.html')))
   const webHost = await startWebHost({

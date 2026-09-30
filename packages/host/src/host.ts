@@ -1,11 +1,12 @@
 import { Context } from 'cordis'
 import { dirname, join } from 'node:path'
-import type {
-  KeyRecord,
-  KeySaveRequest,
-  MonitorStartRequest,
-  MonitorStartResult,
-  MonitorStopResult,
+import {
+  HostError,
+  type KeyRecord,
+  type KeySaveRequest,
+  type MonitorStartRequest,
+  type MonitorStartResult,
+  type MonitorStopResult,
 } from '@pureterm/protocol'
 import { RendererService, type RendererBridge } from './services/renderer.js'
 import { SshService, type SshServiceConfig } from './services/ssh.js'
@@ -148,10 +149,10 @@ export async function createHost(options: HostOptions): Promise<Host> {
     return keys
   }
   function mutate<T>(operation: () => T | Promise<T>, clientId?: string): Promise<T> {
-    if (disposed) return Promise.reject(new Error('Host 已关闭，无法修改记录。'))
+    if (disposed) return Promise.reject(new HostError('host.closed-mutation'))
     const owner = !storeConfig.credentials.persistent && clientId !== undefined ? clientKeys(clientId) : undefined
     const result = mutations.then(() => {
-      if (owner && sessionKeys.get(clientId!) !== owner) throw new Error('客户端已关闭，操作已取消。')
+      if (owner && sessionKeys.get(clientId!) !== owner) throw new HostError('host.client-closed')
       return operation()
     })
     mutations = result.then(() => undefined, () => undefined)
@@ -175,7 +176,7 @@ export async function createHost(options: HostOptions): Promise<Host> {
   }
   return {
     openTerminal: async (payload) => {
-      if (disposed) throw new Error('Host 已关闭，无法建立新连接。')
+      if (disposed) throw new HostError('host.closed')
       const sessionKey = payload.hostId && !payload.privateKey && !payload.privateKeyPath ? sessionKeys.get(payload.clientId)?.get(payload.hostId) : undefined
       const opening = root.terminal.open({ ...payload, keyId: payload.keyId ?? sessionKey })
       openings.add(opening)
@@ -187,7 +188,7 @@ export async function createHost(options: HostOptions): Promise<Host> {
     },
     input: (sessionId, data) => root.terminal.input(sessionId, data),
     resize: (sessionId, cols, rows) => root.terminal.resize(sessionId, cols, rows),
-    close: (sessionId) => root.terminal.close(sessionId, '用户断开连接。'),
+    close: (sessionId) => root.terminal.close(sessionId, new HostError('host.user-disconnected')),
     releaseClient: (clientId) => {
       if (!disposed) {
         // 先收监控、再收终端：监控的归属检查要问终端，反过来会把一个还活着的
@@ -202,11 +203,11 @@ export async function createHost(options: HostOptions): Promise<Host> {
     saveHost: (input, clientId = '') => {
       const snapshot = { ...input }
       return mutate(async () => {
-        if (snapshot.keyId !== undefined && typeof snapshot.keyId !== 'string') throw new Error('密钥 ID 无效。')
+        if (snapshot.keyId !== undefined && typeof snapshot.keyId !== 'string') throw new HostError('host.key-id-invalid')
         const previous = snapshot.id ? listHosts(clientId).find(host => host.id === snapshot.id) : undefined
         const authMethod = snapshot.authMethod ?? previous?.authMethod ?? 'password'
         const keyId = snapshot.keyId ?? previous?.keyId
-        if (authMethod === 'privateKey' && keyId && !root.keychain.has(keyId, clientId)) throw new Error('选择的密钥不存在，请重新选择。')
+        if (authMethod === 'privateKey' && keyId && !root.keychain.has(keyId, clientId)) throw new HostError('host.key-missing')
         const record = await root.sessionStore.save(snapshot)
         if (!storeConfig.credentials.persistent) {
           if (record.authMethod !== 'privateKey') for (const keys of sessionKeys.values()) keys.delete(record.id)
@@ -231,7 +232,7 @@ export async function createHost(options: HostOptions): Promise<Host> {
       return mutate(() => root.keychain.save(snapshot, clientId), clientId)
     },
     removeKey: (id, clientId) => mutate(() => {
-      if (listHosts(clientId).some(host => host.keyId === id)) throw new Error('此密钥正在被主机使用，请先更改主机的认证设置或删除对应主机。')
+      if (listHosts(clientId).some(host => host.keyId === id)) throw new HostError('host.key-in-use')
       return root.keychain.remove(id, clientId)
     }, clientId),
     sftpList: (sessionId, path) => root.sftp.list(sessionId, path),
@@ -240,11 +241,11 @@ export async function createHost(options: HostOptions): Promise<Host> {
     sftpMkdir: (sessionId, dir, name) => root.sftp.mkdir(sessionId, dir, name),
     sftpRemove: (sessionId, path) => root.sftp.remove(sessionId, path),
     startMonitor: async (request, clientId) => {
-      if (disposed) throw new Error('Host 已关闭，无法开始监控。')
+      if (disposed) throw new HostError('host.closed-monitor')
       // 没有监控插件是一种**可预期的**状态，不是异常：给一个稳定的错误码，
       // 界面据此渲染「此环境不支持监控」，而不是去猜一句人话。
       const monitor = monitorOf()
-      if (!monitor) throw new Error('MONITOR_UNAVAILABLE')
+      if (!monitor) throw new HostError('host.monitor-unavailable')
       return monitor.start(request, clientId)
     },
     stopMonitor: async (subscriptionId, clientId) => {

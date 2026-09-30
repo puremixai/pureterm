@@ -12,7 +12,7 @@ English is the default reading language for every maintained Markdown document. 
 
 ## Current facts and historical material
 
-- Current entry points are `apps/desktop/` and `apps/web/`; shared capabilities are in `packages/host/`, `packages/protocol/`, `packages/transport/`, and `packages/ui/`.
+- Current entry points are `apps/desktop/` and `apps/web/`; shared capabilities are in `packages/host/`, `packages/protocol/`, `packages/i18n/`, `packages/transport/`, and `packages/ui/`.
 - Electron starts an independent Node-mode Web Host child process for Desktop; standalone Web assembles the same Web Host in its own ordinary Node process.
 - The root `package-lock.json` is the only lockfile. Run all install, build, and verification commands from the repository root.
 - Current behavior is authoritative in the root `README.md`, `LAYOUT-PROPOSAL.md`, `VERSION.txt`, `docs/architecture.md`, `docs/DEVELOPMENT.md`, `docs/design-system.md`, `docs/desktop-release.md`, the application READMEs, and `CHANGELOG.md`. The root `design-qa.md` is a dated design-review record, not a current authority.
@@ -26,6 +26,7 @@ apps/desktop/       Electron shell, runtime, Host child entry, carriers, and Des
 apps/web/           standalone local Web Node entry, server, and tests
 packages/host/      Cordis Host, SSH/SFTP, host storage, and credential interfaces
 packages/protocol/  environment-neutral requests, events, capabilities, and binary protocol
+packages/i18n/      message catalog and t(); the only place user-facing copy lives
 packages/transport/ shared Web Host, dispatcher, HTTP/WebSocket, and readiness validation
 packages/ui/        Cordis Client, terminal, host list, SFTP, and browser adapters
 VERSION.txt         source version baseline shared by all workspaces
@@ -40,6 +41,7 @@ Organize directories by entry point and capability. Do not copy deepseek-harness
 
 - `@pureterm/protocol` has no dependency on local packages, Electron, Node, or the UI.
 - `@pureterm/host` does not depend on Electron, the UI, or application entry points; its public API is exported from the package entry.
+- `@pureterm/i18n` holds the user-facing catalog and `t()`, depends on no local package, and is imported by the UI and the application entries only. `@pureterm/host` never imports it: the Host reports a failure as a code from `@pureterm/protocol`, and the side that knows the language turns the code into a sentence. Keep developer log lines and the standalone Web CLI's text in English and out of the catalog, because neither has a language switch.
 - `@pureterm/ui` targets browsers only and cannot import Node, Electron, or Host; the page uses a static Cordis Client plugin composition.
 - `@pureterm/transport` dispatches through the public Host API and cannot read `Host.internals`.
 - Electron APIs may enter only Desktop `electron/app/`, preload, and diagnostic adapters; `electron/runtime/`, `electron/host/`, and ordinary carriers have no Electron import.

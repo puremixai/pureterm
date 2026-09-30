@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <!--
@@ -18,12 +18,21 @@
     <link rel="stylesheet" href="./app.css" />
   </head>
   <body>
+    <!--
+      这份 markup 是英文的，因为英文是目录的源语言，也是默认语言。中文用户在 app.js
+      跑到之前会看到一帧英文，之后由 i18n-dom.ts 的 translateDocument 换成中文。
+      `data-i18n` 换 textContent，`data-i18n-attr` 换属性（`属性:键`，分号分隔），
+      `data-i18n-html` 只给需要保留内部标签的那一两处用。标签本身不带 <i> 图标之外
+      的子节点，所以换 textContent 不会吃掉图标——有图标的按钮因此把文字包在
+      <span data-i18n> 里。
+    -->
     <div id="app" class="app-shell">
       <header class="app-topbar">
         <div class="topbar-leading">
           <!-- 原型 .brand：图标 + 「PureTerm / Vault」一行。分区名跟着当前所在的地方走
-               —— 会话里是 / Session，库里是 / Vault（原型两屏就是这么写的）。 -->
-          <button type="button" id="workspace-home" class="workspace-switcher" aria-label="返回主机管理">
+               —— 会话里是 / Session，库里是 / Vault（原型两屏就是这么写的）。
+               这两个是品牌里的分区名，两种语言都保持英文，所以不带 data-i18n。 -->
+          <button type="button" id="workspace-home" class="workspace-switcher" aria-label="Back to hosts" data-i18n-attr="aria-label:app.home">
             <span class="workspace-mark" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 4l4 4-4 4"/><path d="M8.5 12.5h5"/></svg></span>
             <span class="workspace-copy"><strong>PureTerm</strong><small id="workspace-area">/ Vault</small></span>
           </button>
@@ -31,11 +40,15 @@
                品牌里的 / Vault 已经说明你在哪一屏，轨道上高亮的那一格才是切库页面的
                地方（#nav-hosts / #nav-keychain），再挂一个「Hosts」只是把同一件事
                说第二遍 —— 原型顶栏里也只有会话标签。 -->
-          <div id="workspace-tabs" class="workspace-tabs" role="tablist" aria-label="会话标签"></div>
+          <div id="workspace-tabs" class="workspace-tabs" role="tablist" aria-label="Session tabs" data-i18n-attr="aria-label:app.tabs"></div>
         </div>
         <div class="topbar-actions">
-          <button type="button" id="theme-toggle" class="icon-button" aria-label="切换到浅色主题" aria-pressed="false" title="主题"><i class="ti ti-moon" aria-hidden="true"></i></button>
-          <button type="button" id="density-toggle" class="icon-button" aria-label="切换到紧凑行高" aria-pressed="false" title="行高密度"><i class="ti ti-arrows-minimize" aria-hidden="true"></i></button>
+          <!-- 三个开关的 aria-label / title 由 services/chrome.ts 的 apply() 每次重写，
+               因为它们说的是「点下去会怎样」，而不是当前状态。这里写的是英文初值，
+               和目录里的 en 一致，免得首帧的读屏名字是空的。 -->
+          <button type="button" id="theme-toggle" class="icon-button" aria-label="Switch to light theme" aria-pressed="false" title="Theme"><i class="ti ti-moon" aria-hidden="true"></i></button>
+          <button type="button" id="density-toggle" class="icon-button" aria-label="Switch to compact rows" aria-pressed="false" title="Row density"><i class="ti ti-arrows-minimize" aria-hidden="true"></i></button>
+          <button type="button" id="locale-toggle" class="icon-button" aria-label="Switch to Chinese" aria-pressed="false" title="Language"><i class="ti ti-language" aria-hidden="true"></i></button>
           <!-- 顶栏右端还有一组窗口按钮（原型 .wctl），但它不在这份 markup 里。
                Web 端没有窗口可控，桌面端 macOS 的红绿灯由系统画在左上角，所以这组按钮
                只有 Windows/Linux 的桌面端才有 —— 而它是 services/chrome.ts 在拿到
@@ -45,18 +58,18 @@
       </header>
 
       <div class="app-body">
-        <nav id="primary-nav" class="primary-nav" aria-label="主导航">
-          <button type="button" id="nav-hosts" class="nav-item active" aria-label="Hosts" title="Hosts"><span class="nav-icon" aria-hidden="true"><i class="ti ti-server-2"></i></span></button>
-          <button type="button" id="nav-keychain" class="nav-item" aria-label="密钥管理" title="密钥管理"><span class="nav-icon" aria-hidden="true"><i class="ti ti-key"></i></span></button>
+        <nav id="primary-nav" class="primary-nav" aria-label="Primary navigation" data-i18n-attr="aria-label:app.nav">
+          <button type="button" id="nav-hosts" class="nav-item active" aria-label="Hosts" title="Hosts" data-i18n-attr="aria-label:app.nav.hosts;title:app.nav.hosts"><span class="nav-icon" aria-hidden="true"><i class="ti ti-server-2"></i></span></button>
+          <button type="button" id="nav-keychain" class="nav-item" aria-label="Keychain" title="Keychain" data-i18n-attr="aria-label:app.nav.keychain;title:app.nav.keychain"><span class="nav-icon" aria-hidden="true"><i class="ti ti-key"></i></span></button>
           <div class="nav-divider" aria-hidden="true"></div>
-          <button type="button" id="nav-shortcuts" class="nav-item" aria-label="快捷键" title="快捷键"><span class="nav-icon" aria-hidden="true"><i class="ti ti-keyboard"></i></span></button>
+          <button type="button" id="nav-shortcuts" class="nav-item" aria-label="Shortcuts" title="Shortcuts" data-i18n-attr="aria-label:app.nav.shortcuts;title:app.nav.shortcuts"><span class="nav-icon" aria-hidden="true"><i class="ti ti-keyboard"></i></span></button>
         </nav>
 
         <main id="main" class="workspace">
           <!-- 库页面不再是 tabpanel：控制它的那个标签已经不在顶栏里了。给它自己的
                名字，是把它作为一块地标保留下来（<section> 没有可访问名字就不成其为
                landmark），而不是留一个指向不存在标签的 aria-labelledby。 -->
-          <section id="hosts-panel" class="hosts-dashboard" aria-label="Hosts">
+          <section id="hosts-panel" class="hosts-dashboard" aria-label="Hosts" data-i18n-attr="aria-label:hosts.title">
             <!-- 原型 .ph：标题、计数、搜索、主按钮、视图开关是同一行。原来是三行
                  —— 55px 的搜索条、58px 的工具栏、再加一行 23px 的标题，139px 只为放
                  五个控件，而且「Hosts」被推到了列表上方单独一行。
@@ -65,87 +78,87 @@
                  的文字内容只有「Ctrl K」，不写的话输入框的可访问名字就变成 Ctrl K 了。
                  aria-label 在 accname 算法里优先于包裹它的 label，所以两者可以共存。 -->
             <div class="page-head">
-              <h1>Hosts</h1>
-              <span id="host-count" class="host-count">0 hosts</span>
+              <h1 data-i18n="hosts.title">Hosts</h1>
+              <span id="host-count" class="host-count">0 saved</span>
               <label class="search">
                 <i class="ti ti-search" aria-hidden="true"></i>
-                <input id="host-search" placeholder="搜索主机…" aria-label="搜索主机" spellcheck="false" aria-keyshortcuts="Control+K Meta+K" />
+                <input id="host-search" placeholder="Search hosts…" aria-label="Search hosts" data-i18n-attr="placeholder:hosts.search.placeholder;aria-label:hosts.search" spellcheck="false" aria-keyshortcuts="Control+K Meta+K" />
                 <kbd aria-hidden="true">Ctrl K</kbd>
               </label>
-              <button type="button" id="host-new" class="primary"><i class="ti ti-plus" aria-hidden="true"></i> 新建主机</button>
-              <button type="button" id="host-view-toggle" class="tool-icon" aria-label="切换到卡片视图" aria-pressed="false" title="切换到卡片视图"><i class="ti ti-list" aria-hidden="true"></i></button>
+              <button type="button" id="host-new" class="primary"><i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="hosts.new">New Host</span></button>
+              <button type="button" id="host-view-toggle" class="tool-icon" aria-label="Switch to card view" aria-pressed="false" title="Switch to card view" data-i18n-attr="aria-label:hosts.view-toggle;title:hosts.view-toggle"><i class="ti ti-list" aria-hidden="true"></i></button>
             </div>
 
-            <p id="hosts-error" class="list-error" role="alert" hidden><span class="list-error-title"></span><span class="list-error-detail"></span><button type="button" id="hosts-retry" class="ghost small">重新加载</button></p>
+            <p id="hosts-error" class="list-error" role="alert" hidden><span class="list-error-title"></span><span class="list-error-detail"></span><button type="button" id="hosts-retry" class="ghost small" data-i18n="common.reload">Reload</button></p>
             <p id="hosts-degraded" class="list-error is-warn" hidden></p>
             <div id="hosts-body">
               <div id="host-columns" class="host-columns" role="presentation">
-                <span>名称</span><span>地址</span><span>用户</span><span>认证</span><span>更新</span><span></span>
+                <span data-i18n="hosts.column.name">Name</span><span data-i18n="hosts.column.address">Address</span><span data-i18n="hosts.column.user">User</span><span data-i18n="hosts.column.auth">Auth</span><span data-i18n="hosts.column.updated">Updated</span><span></span>
               </div>
-              <ul id="host-list" aria-label="已保存的主机"></ul>
+              <ul id="host-list" aria-label="Saved hosts" data-i18n-attr="aria-label:hosts.list"></ul>
               <!-- 空状态必须给出下一步动作，而不是只描述「这里没有东西」。文案与按钮分开
                    两个节点：筛选没有命中时按钮要退场（用户已经有主机了），而那段文字
                    是 renderHostList 用 innerHTML 写的，写在一起会把按钮一起冲掉。 -->
               <div id="hosts-empty" class="empty-state">
                 <p id="hosts-empty-text"></p>
-                <button type="button" id="hosts-empty-new" class="primary small">新建主机</button>
+                <button type="button" id="hosts-empty-new" class="primary small" data-i18n="hosts.new">New Host</button>
               </div>
             </div>
           </section>
 
-          <section id="keychain-panel" class="keychain-dashboard" aria-label="Keys" hidden>
+          <section id="keychain-panel" class="keychain-dashboard" aria-label="Keys" data-i18n-attr="aria-label:keys.title" hidden>
             <div class="keychain-main">
               <!-- 原型 ③ 的头部与主机页是同一行：标题、计数、搜索、主按钮、视图开关。
                    原来是 86px 的工具栏加一行 23px 的「Keys」—— 五个控件摊在三层里，
                    而这一屏真正的主角（那张密钥表）被推到 130px 之下。 -->
               <div class="page-head keychain-head">
-                <h1>Keys</h1>
+                <h1 data-i18n="keys.title">Keys</h1>
                 <span id="keychain-count" class="host-count"></span>
-                <label class="search keychain-search"><i class="ti ti-search" aria-hidden="true"></i><input id="keychain-search" type="search" placeholder="搜索密钥…" aria-label="搜索密钥" /></label>
-                <button type="button" id="keychain-new" class="primary" disabled><i class="ti ti-plus" aria-hidden="true"></i> 新建密钥</button>
-                <button type="button" id="keychain-view" class="tool-icon" aria-label="切换到卡片视图" aria-pressed="false" title="切换到卡片视图"><i class="ti ti-list" aria-hidden="true"></i></button>
+                <label class="search keychain-search"><i class="ti ti-search" aria-hidden="true"></i><input id="keychain-search" type="search" placeholder="Search keys…" aria-label="Search keys" data-i18n-attr="placeholder:keys.search.placeholder;aria-label:keys.search" /></label>
+                <button type="button" id="keychain-new" class="primary" disabled><i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="keys.new">New Key</span></button>
+                <button type="button" id="keychain-view" class="tool-icon" aria-label="Switch to card view" aria-pressed="false" title="Switch to card view" data-i18n-attr="aria-label:keys.view-toggle;title:keys.view-toggle"><i class="ti ti-list" aria-hidden="true"></i></button>
               </div>
               <div class="keychain-content">
                 <p id="keychain-policy" class="keychain-policy"></p>
-                <p id="keychain-notice" class="keychain-message" role="status">正在加载密钥…</p>
-                <button id="keychain-reload" type="button" class="ghost" hidden>重新加载</button>
+                <p id="keychain-notice" class="keychain-message" role="status">Loading keys…</p>
+                <button id="keychain-reload" type="button" class="ghost" hidden data-i18n="common.reload">Reload</button>
                 <div id="keychain-columns" class="host-columns" role="presentation">
-                  <span>名称</span><span>类型</span><span>指纹 SHA256</span><span>关联</span><span>创建</span><span></span>
+                  <span data-i18n="keys.column.name">Name</span><span data-i18n="keys.column.type">Type</span><span data-i18n="keys.column.fingerprint">Fingerprint SHA256</span><span data-i18n="keys.column.usage">Used by</span><span data-i18n="keys.column.created">Created</span><span></span>
                 </div>
-                <ul id="keychain-list" class="keychain-list" aria-label="已保存的密钥"></ul>
-                <div id="keychain-empty" class="keychain-empty" hidden><i class="ti ti-key" aria-hidden="true"></i><h2>还没有密钥</h2><p>点击「新建密钥」，粘贴或导入私钥文件。<br />保存后可在主机认证设置中选择使用。</p></div>
+                <ul id="keychain-list" class="keychain-list" aria-label="Saved keys" data-i18n-attr="aria-label:keys.list"></ul>
+                <div id="keychain-empty" class="keychain-empty" hidden><i class="ti ti-key" aria-hidden="true"></i><h2 data-i18n="keys.empty.title">No keys yet</h2><p><span data-i18n="keys.empty.body">Click “New Key” to paste or import a private key file.</span><br /><span data-i18n="keys.empty.body2">Once saved, a host can select it in its authentication settings.</span></p></div>
               </div>
             </div>
             <form id="keychain-editor" class="keychain-editor" autocomplete="off" hidden aria-labelledby="keychain-title">
-              <div class="toolbar-head"><div class="form-context"><span id="keychain-title" class="mode">新建密钥</span><span class="drawer-subtitle">Local keychain</span></div><button type="button" id="keychain-close" class="icon-button" aria-label="关闭密钥编辑面板"><i class="ti ti-arrow-bar-right" aria-hidden="true"></i></button></div>
+              <div class="toolbar-head"><div class="form-context"><span id="keychain-title" class="mode">New Key</span><span class="drawer-subtitle" data-i18n="keys.editor.subtitle">Local keychain</span></div><button type="button" id="keychain-close" class="icon-button" aria-label="Close the key editor" data-i18n-attr="aria-label:keys.editor.close"><i class="ti ti-arrow-bar-right" aria-hidden="true"></i></button></div>
               <fieldset id="keychain-fields" class="drawer-scroll">
                 <section class="keychain-form-section">
-                  <h2>Identity</h2>
-                  <label class="field"><span>名称 <span aria-hidden="true">*</span></span><input id="keychain-label" placeholder="例如 production.pem" required maxlength="200" /></label>
-                  <label class="field"><span>私钥 <span id="keychain-required" aria-hidden="true">*</span></span><textarea id="keychain-private" rows="5" spellcheck="false" placeholder="粘贴完整的私钥内容" required></textarea></label>
-                  <label class="field"><span>私钥口令（仅加密私钥需要）</span><input id="keychain-passphrase" type="password" spellcheck="false" maxlength="4096" autocomplete="new-password" placeholder="未加密则留空" /></label>
-                  <label class="field"><span>公钥（留空自动生成）</span><textarea id="keychain-public" rows="3" spellcheck="false" placeholder="保存时从私钥生成，也可粘贴公钥校验匹配"></textarea></label>
+                  <h2 data-i18n="keys.section.identity">Identity</h2>
+                  <label class="field"><span><span data-i18n="keys.field.label">Name</span> <span aria-hidden="true">*</span></span><input id="keychain-label" placeholder="e.g. production.pem" data-i18n-attr="placeholder:keys.placeholder.label" required maxlength="200" /></label>
+                  <label class="field"><span><span data-i18n="keys.field.private">Private key</span> <span id="keychain-required" aria-hidden="true">*</span></span><textarea id="keychain-private" rows="5" spellcheck="false" placeholder="Paste the full private key" data-i18n-attr="placeholder:keys.placeholder.private" required></textarea></label>
+                  <label class="field"><span data-i18n="keys.field.passphrase">Private key passphrase (only for encrypted keys)</span><input id="keychain-passphrase" type="password" spellcheck="false" maxlength="4096" autocomplete="new-password" placeholder="Leave empty if unencrypted" data-i18n-attr="placeholder:keys.placeholder.passphrase" /></label>
+                  <label class="field"><span data-i18n="keys.field.public">Public key (generated when empty)</span><textarea id="keychain-public" rows="3" spellcheck="false" placeholder="Generated from the private key on save; paste one to check it matches" data-i18n-attr="placeholder:keys.placeholder.public"></textarea></label>
                   <!-- 草稿阶段能诚实说出来的只有这几件：字节数（内容在手里）、口令状态
                        （输入框在手里）、公钥是从私钥生成还是要校验。类型和指纹要等
                        Host 解析完才有，所以它们只在下面那块里出现。 -->
                   <p id="keychain-summary" class="keychain-help" hidden></p>
                   <div id="keychain-details" hidden>
-                    <div class="keychain-detail-chips"><span id="keychain-verdict" class="chip ok">私钥有效</span><span id="keychain-type" class="chip ac"></span></div>
+                    <div class="keychain-detail-chips"><span id="keychain-verdict" class="chip ok" data-i18n="keys.verdict.valid">Valid private key</span><span id="keychain-type" class="chip ac"></span></div>
                     <code id="keychain-fingerprint"></code>
                     <div class="keychain-detail-actions">
-                      <button id="keychain-copy" type="button" class="ghost small"><i class="ti ti-copy" aria-hidden="true"></i> 复制公钥</button>
-                      <button id="keychain-download" type="button" class="ghost small"><i class="ti ti-download" aria-hidden="true"></i> 下载 .pub</button>
+                      <button id="keychain-copy" type="button" class="ghost small"><i class="ti ti-copy" aria-hidden="true"></i> <span data-i18n="keys.copy">Copy public key</span></button>
+                      <button id="keychain-download" type="button" class="ghost small"><i class="ti ti-download" aria-hidden="true"></i> <span data-i18n="keys.download">Download .pub</span></button>
                     </div>
                   </div>
                 </section>
                 <section class="keychain-form-section">
-                  <h2>Import</h2>
-                  <div id="keychain-drop" class="keychain-drop"><i class="ti ti-file-upload" aria-hidden="true"></i><p>将私钥文件拖到这里导入</p><span>OpenSSH、PEM、PPK · 最大 256 KiB</span></div>
-                  <button id="keychain-import" type="button" class="keychain-import">从密钥文件导入</button><input id="keychain-file" type="file" hidden />
-                  <p class="keychain-help">私钥和口令不会在重新编辑时回显。修改名称不需要再次导入私钥。SSH 证书、Windows Hello 和 FIDO2 暂不支持。</p>
+                  <h2 data-i18n="keys.section.import">Import</h2>
+                  <div id="keychain-drop" class="keychain-drop"><i class="ti ti-file-upload" aria-hidden="true"></i><p data-i18n="keys.drop">Drop a private key file here to import it</p><span data-i18n="keys.drop.hint">OpenSSH, PEM, PPK · up to 256 KiB</span></div>
+                  <button id="keychain-import" type="button" class="keychain-import" data-i18n="keys.import">Import from a key file</button><input id="keychain-file" type="file" hidden />
+                  <p class="keychain-help" data-i18n="keys.help">The private key and passphrase are not echoed back when you edit again. Renaming does not need the key re-imported. SSH certificates, Windows Hello and FIDO2 are not supported yet.</p>
                 </section>
               </fieldset>
-              <div class="drawer-footer"><p id="keychain-status" class="keychain-message" role="status"></p><div class="keychain-footer-actions"><button type="button" id="keychain-delete" class="ghost danger" hidden><i class="ti ti-trash" aria-hidden="true"></i> 删除</button><button type="submit" id="keychain-save" class="primary">保存密钥</button></div></div>
+              <div class="drawer-footer"><p id="keychain-status" class="keychain-message" role="status"></p><div class="keychain-footer-actions"><button type="button" id="keychain-delete" class="ghost danger" hidden><i class="ti ti-trash" aria-hidden="true"></i> <span data-i18n="common.delete">Delete</span></button><button type="submit" id="keychain-save" class="primary" data-i18n="keys.save">Save key</button></div></div>
             </form>
           </section>
 
@@ -154,23 +167,23 @@
               <div class="toolbar-head">
                 <div class="form-context">
                   <span id="form-mode" class="mode">New Host</span>
-                  <span class="drawer-subtitle">Local workspace</span>
+                  <span class="drawer-subtitle" data-i18n="host.editor.subtitle">Local workspace</span>
                 </div>
                 <div class="toolbar-actions">
-                  <button type="button" id="connection-close" class="icon-button" aria-label="返回主机"><i class="ti ti-arrow-bar-right" aria-hidden="true"></i></button>
+                  <button type="button" id="connection-close" class="icon-button" aria-label="Back to hosts" data-i18n-attr="aria-label:host.editor.back"><i class="ti ti-arrow-bar-right" aria-hidden="true"></i></button>
                 </div>
               </div>
 
               <div class="drawer-scroll">
                 <section class="drawer-section address-section">
-                  <h2>Address</h2>
+                  <h2 data-i18n="host.section.address">Address</h2>
                   <!-- 地址和端口并排，是原型 .row2 的样子。原来那个 55px 的图标方块在这一行里
                        装不下：322px 的抽屉减去内边距和 64px 的端口框，再让方块吃掉 69px，
                        主机框只剩 64px，「singapore-edge.example.com」只看得见四个字母。
                        方块是纯装饰，原型这一行也没有它。 -->
                   <div class="address-row">
-                    <input id="host" class="address-host" placeholder="IP or Hostname" spellcheck="false" />
-                    <input id="port" class="port-control" value="22" inputmode="numeric" spellcheck="false" aria-label="端口" />
+                    <input id="host" class="address-host" placeholder="IP or hostname" data-i18n-attr="placeholder:host.placeholder.host" spellcheck="false" />
+                    <input id="port" class="port-control" value="22" inputmode="numeric" spellcheck="false" aria-label="Port" data-i18n-attr="aria-label:host.port" />
                   </div>
                   <!-- 原型在这行写的是「ssh deploy@10.2.1.8:22 · 已解析」。「已解析」页面说不了：
                        解析主机名的是 Host，Web 载体上更是后端那台机器在解析，页面手上没有这个
@@ -179,36 +192,36 @@
                 </section>
 
                 <section class="drawer-section general-section">
-                  <h2>General</h2>
-                  <label class="field"><span>Label</span><input id="host-label" placeholder="主机名称（可选）" /></label>
+                  <h2 data-i18n="host.section.general">General</h2>
+                  <label class="field"><span data-i18n="host.field.label">Label</span><input id="host-label" placeholder="Host name (optional)" data-i18n-attr="placeholder:host.placeholder.label" /></label>
                 </section>
 
                 <section class="drawer-section credentials-section">
-                  <h2>Credentials</h2>
-                  <label class="field"><span>Username</span><input id="user" placeholder="Username" spellcheck="false" /></label>
+                  <h2 data-i18n="host.section.credentials">Credentials</h2>
+                  <label class="field"><span data-i18n="host.field.username">Username</span><input id="user" placeholder="Username" data-i18n-attr="placeholder:host.placeholder.username" spellcheck="false" /></label>
                   <!-- 分段开关是原型里的控件，但值仍然由这个 <select> 持有：它是唯一
                        一处「当前认证方式」的真相，两个按钮只是它的代理。这样键盘/读屏
                        用户拿到的仍是一个标准控件，而 client-lifecycle.browser.ts 里
                        「设 #auth.value 再派发 change」的写法也照旧成立。 -->
                   <div class="field auth-field">
-                    <span id="auth-label">Authentication</span>
+                    <span id="auth-label" data-i18n="host.field.auth">Authentication</span>
                     <div id="auth-switch" class="switch" role="group" aria-labelledby="auth-label">
-                      <button type="button" id="auth-key" class="switch-option" aria-pressed="false">Private key</button>
-                      <button type="button" id="auth-password" class="switch-option" aria-pressed="true">Password</button>
+                      <button type="button" id="auth-key" class="switch-option" aria-pressed="false" data-i18n="host.auth.private-key">Private key</button>
+                      <button type="button" id="auth-password" class="switch-option" aria-pressed="true" data-i18n="host.auth.password">Password</button>
                     </div>
-                    <select id="auth" hidden><option value="password">Password</option><option value="privateKey">Private key</option></select>
+                    <select id="auth" hidden><option value="password" data-i18n="host.auth.password">Password</option><option value="privateKey" data-i18n="host.auth.private-key">Private key</option></select>
                   </div>
-                  <div class="row credential-row" id="cred-password"><label class="field grow"><span>Password</span><input id="pass" type="password" placeholder="Password" spellcheck="false" /></label></div>
+                  <div class="row credential-row" id="cred-password"><label class="field grow"><span data-i18n="host.field.password">Password</span><input id="pass" type="password" placeholder="Password" data-i18n-attr="placeholder:host.placeholder.password" spellcheck="false" /></label></div>
 
                   <div class="row credential-row key-row" id="cred-key" hidden>
-                    <label class="field keychain-selector"><span>Keychain</span><select id="host-keychain"><option value="">使用本地私钥文件…</option></select></label>
+                    <label class="field keychain-selector"><span data-i18n="host.field.keychain">Keychain</span><select id="host-keychain"><option value="" data-i18n="host.keychain.local">Use a local private key file…</option></select></label>
                     <div id="host-direct-key" class="key-row row">
-                      <label class="field grow"><span>Private key</span><input id="key-path" placeholder="Choose a private key file" spellcheck="false" readonly /></label>
-                      <button type="button" id="key-pick" class="ghost" disabled>Choose…</button>
+                      <label class="field grow"><span data-i18n="host.field.private-key">Private key</span><input id="key-path" placeholder="Choose a private key file" data-i18n-attr="placeholder:host.placeholder.private-key" spellcheck="false" readonly /></label>
+                      <button type="button" id="key-pick" class="ghost" disabled data-i18n="host.choose">Choose…</button>
                       <input id="private-key-file" type="file" hidden />
-                      <label class="field"><span>Passphrase</span><input id="key-pass" type="password" spellcheck="false" /></label>
+                      <label class="field"><span data-i18n="host.field.passphrase">Passphrase</span><input id="key-pass" type="password" spellcheck="false" /></label>
                     </div>
-                    <p id="host-keychain-hint" class="keychain-help" hidden>连接时由密钥库读取私钥与口令，无需重复填写。</p>
+                    <p id="host-keychain-hint" class="keychain-help" hidden data-i18n="host.keychain.hint">The keychain supplies the key and passphrase at connect time; there is nothing to fill in again.</p>
                   </div>
                   <label class="check"><input id="remember" type="checkbox" disabled /><span id="remember-label">Remember password</span></label>
                   <!-- 原型这里写的是「Windows DPAPI · 私钥不落明文」。提供方名字页面拿不到：
@@ -216,22 +229,22 @@
                        钥匙串、Windows DPAPI 还是 libsecret 由主进程决定。所以这里只说得出
                        来的那一半。它与下面 #credential-hint 是一对互斥的说法：一个有系统
                        加密，一个没有。 -->
-                  <p id="credential-lock" class="credential-note" hidden><i class="ti ti-lock" aria-hidden="true"></i> 凭据通过系统加密保存在本机，私钥不以明文落盘。</p>
-                  <p id="credential-hint" hidden>Web 模式只在当前页面使用凭据；刷新或关闭后需重新填写。</p>
+                  <p id="credential-lock" class="credential-note" hidden><i class="ti ti-lock" aria-hidden="true"></i> <span data-i18n="host.credential.lock">Credentials are stored on this machine with system encryption; the private key is never written in clear text.</span></p>
+                  <p id="credential-hint" hidden data-i18n="host.credential.web">In Web mode credentials are used for this page only; a refresh or a close means filling them in again.</p>
                 </section>
               </div>
 
               <div class="drawer-footer">
-                <button type="button" id="host-delete" class="ghost danger" disabled><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>
-                <button type="button" id="host-save" class="ghost" disabled><i class="ti ti-device-floppy" aria-hidden="true"></i> Save host</button>
-                <button type="button" id="connect" class="primary drawer-connect" disabled>Connect</button>
-                <div id="status" role="status">正在连接本机后端…</div>
+                <button type="button" id="host-delete" class="ghost danger" disabled><i class="ti ti-trash" aria-hidden="true"></i> <span data-i18n="common.delete">Delete</span></button>
+                <button type="button" id="host-save" class="ghost" disabled><i class="ti ti-device-floppy" aria-hidden="true"></i> <span data-i18n="host.save">Save host</span></button>
+                <button type="button" id="connect" class="primary drawer-connect" disabled data-i18n="host.connect">Connect</button>
+                <div id="status" role="status">Connecting to the local backend…</div>
               </div>
             </form>
 
           </section>
 
-          <section id="session-workspace" class="session-workspace" hidden aria-label="终端会话">
+          <section id="session-workspace" class="session-workspace" hidden aria-label="Terminal session" data-i18n-attr="aria-label:session.workspace">
             <div class="session-toolbar">
               <!-- 分诊结论和它依据的那句原文放在这里，而不是失败页里：失败页盖住整块
                    画布，而这一栏是它上面唯一一直在的东西，所以结论跟着会话走，不跟着
@@ -241,9 +254,9 @@
                    也由它拆 —— 卸载监控插件时这一颗按钮跟着走，而不是留在页面上按一个
                    已经没有订阅的面板。 -->
               <div class="session-actions">
-                <button type="button" id="sftp-toggle" class="ghost small" disabled>文件</button>
-                <button type="button" id="session-reconnect" class="ghost small" hidden>重新连接</button>
-                <button type="button" id="disconnect" class="ghost small" disabled>断开连接</button>
+                <button type="button" id="sftp-toggle" class="ghost small" disabled>Files</button>
+                <button type="button" id="session-reconnect" class="ghost small" hidden data-i18n="session.reconnect">Reconnect</button>
+                <button type="button" id="disconnect" class="ghost small" disabled data-i18n="session.disconnect">Disconnect</button>
               </div>
             </div>
             <!-- 资源面板和 #sftp 共用右侧那一格抽屉：同一时刻只开一个，所以它俩是
@@ -263,7 +276,7 @@
                     <p id="failure-endpoint">SSH —</p>
                   </div>
                 </div>
-                <button type="button" id="failure-copy" class="failure-copy"><i class="ti ti-copy" aria-hidden="true"></i> Copy logs</button>
+                <button type="button" id="failure-copy" class="failure-copy"><i class="ti ti-copy" aria-hidden="true"></i> <span id="failure-copy-label" data-i18n="failure.copy">Copy logs</span></button>
               </div>
 
               <!-- 四个节点是画出来的静态骨架：阶段为空时整条收起，而不是留一排灰点。
@@ -282,21 +295,21 @@
               <div id="failure-log" class="failure-log" role="log" aria-live="polite"></div>
               <p id="failure-suggestion" class="failure-suggestion"></p>
               <div class="failure-actions">
-                <button type="button" id="failure-close" class="failure-secondary">Close</button>
-                <button type="button" id="failure-edit" class="failure-secondary">Edit host</button>
-                <button type="button" id="failure-retry" class="primary">重新连接</button>
+                <button type="button" id="failure-close" class="failure-secondary" data-i18n="failure.close">Close</button>
+                <button type="button" id="failure-edit" class="failure-secondary" data-i18n="failure.edit">Edit host</button>
+                <button type="button" id="failure-retry" class="primary" data-i18n="failure.retry">Reconnect</button>
               </div>
             </div>
           </section>
           </section>
         </main>
       </div>
-      <footer class="status-bar" aria-label="工作区状态">
-        <span class="status-item"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status-state">正在启动…</span></span>
+      <footer class="status-bar" aria-label="Workspace status" data-i18n-attr="aria-label:status.bar">
+        <span class="status-item"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status-state">Starting…</span></span>
         <span class="status-sep" aria-hidden="true">│</span>
         <span id="status-endpoint" class="status-item status-value">—</span>
         <span class="status-sep" aria-hidden="true">│</span>
-        <span id="status-session" class="status-item status-value">0 个会话</span>
+        <span id="status-session" class="status-item status-value">0 sessions</span>
         <span class="status-sep" aria-hidden="true">│</span>
         <!-- 握手事实填的是原型那一格（chacha20-poly1305 · ed25519 · 128 行）的前两项。
              它们在一条连接内是常量，所以归状态栏，不归每 5 秒刷一次的监控行。
@@ -310,7 +323,7 @@
         <!-- 提示只说当时成立的话：文件表没开就没有竖线可拖。传输速率不在这里 —— 那个
              通道不存在（见 CHANGELOG 的 Fixed 一节），空着比编一个数字好。 -->
         <span id="status-hint" class="status-item"></span>
-        <span id="status-workspace" class="status-item">本地工作区</span>
+        <span id="status-workspace" class="status-item" data-i18n="status.workspace">Local workspace</span>
         <span class="status-sep" aria-hidden="true">│</span>
         <span id="status-version" class="status-item status-value">—</span>
       </footer>
@@ -319,18 +332,18 @@
       <div id="toasts" class="toasts" aria-live="polite"></div>
     </div>
     <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
-      <h2 id="shortcuts-title">工作区快捷键</h2>
+      <h2 id="shortcuts-title" data-i18n="shortcuts.title">Workspace shortcuts</h2>
       <dl>
-        <div><dt>下一个标签</dt><dd><kbd>Ctrl</kbd> <kbd>Tab</kbd></dd></div>
-        <div><dt>上一个标签</dt><dd><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Tab</kbd></dd></div>
-        <div><dt>关闭当前会话标签</dt><dd><kbd>Ctrl</kbd> <kbd>W</kbd></dd></div>
-        <div><dt>聚焦终端</dt><dd><kbd>Ctrl</kbd> <kbd>`</kbd></dd></div>
-        <div><dt>切换文件面板</dt><dd><kbd>Ctrl</kbd> <kbd>E</kbd></dd></div>
-        <div><dt>收起主机编辑面板</dt><dd><kbd>Esc</kbd></dd></div>
+        <div><dt data-i18n="shortcuts.next-tab">Next tab</dt><dd><kbd>Ctrl</kbd> <kbd>Tab</kbd></dd></div>
+        <div><dt data-i18n="shortcuts.prev-tab">Previous tab</dt><dd><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Tab</kbd></dd></div>
+        <div><dt data-i18n="shortcuts.close-tab">Close the current session tab</dt><dd><kbd>Ctrl</kbd> <kbd>W</kbd></dd></div>
+        <div><dt data-i18n="shortcuts.focus-terminal">Focus the terminal</dt><dd><kbd>Ctrl</kbd> <kbd>`</kbd></dd></div>
+        <div><dt data-i18n="shortcuts.toggle-files">Toggle the file panel</dt><dd><kbd>Ctrl</kbd> <kbd>E</kbd></dd></div>
+        <div><dt data-i18n="shortcuts.collapse-editor">Collapse the host editor</dt><dd><kbd>Esc</kbd></dd></div>
       </dl>
       <div class="shortcuts-foot">
-        <p>macOS 上把 <kbd>Ctrl</kbd> 换成 <kbd>⌘</kbd>。主机卡片：单击选中，点击「编辑」打开编辑面板，双击连接。关闭标签会断开该连接；切换标签不会断开。浏览器可能占用部分快捷键，此时请使用标签栏按钮。</p>
-        <button type="button" id="shortcuts-close" class="primary">知道了</button>
+        <p data-i18n-html="shortcuts.note">On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Host cards: single-click selects, Edit opens the editor, double-click connects. Closing a tab disconnects that session; switching tabs does not. The browser may claim some shortcuts, in which case use the tab-bar buttons.</p>
+        <button type="button" id="shortcuts-close" class="primary" data-i18n="shortcuts.close">Got it</button>
       </div>
     </dialog>
     <script type="module" src="./app.js"></script>

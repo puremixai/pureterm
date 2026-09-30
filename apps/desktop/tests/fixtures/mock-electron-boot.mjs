@@ -26,12 +26,12 @@ registerHooks({
       export * from 'node:child_process'
       export function spawn(_executable, _args, options) {
         const scenario = process.env.BOOT_TEST_SCENARIO
-        let code = 'console.log("[main] 闸门已打开"); console.log("[BOOT-OK]");' +
+        let code = 'console.log("[main] gate open"); console.log("[BOOT-OK]");' +
           (scenario === 'failure-marker' ? 'console.log("[BOOT-FAIL]");' : '') +
           (scenario === 'unhandled-rejection' ? 'console.error("[main] unhandledRejection: Error: asynchronous startup failure");' : '') +
           'process.exit(' + (scenario === 'nonzero-exit' ? 9 : 0) + ')'
         if (scenario === 'timeout-tree') code = [
-          'console.log("[main] 闸门已打开"); console.log("[BOOT-OK]");',
+          'console.log("[main] gate open"); console.log("[BOOT-OK]");',
           'console.log("[BOOT-PARENT] " + process.pid);',
           'console.log("[BOOT-TEMP] " + process.env.SSH_CORDIS_DATA_DIR);',
           'const { spawn } = require("node:child_process");',

@@ -30,6 +30,7 @@ pureterm/
   packages/
     host/src/                      Host 公共接口、services、plugins、凭据策略
     protocol/src/                  通道、数据、事件与二进制线格式
+    i18n/src/                      文案目录与 t()；界面文案唯一存在的地方
     transport/src/                 共享 Web Host、dispatcher、HTTP/WS 与就绪报文校验
     ui/src/                        页面、xterm、文件面板、客户端传输和生成元数据
   docs/
@@ -59,6 +60,7 @@ Desktop 子进程拥有共享 Web Host 及回环 HTTP/WS 载体。`pureterm-app:
 
 - `@pureterm/protocol` 不导入其他模块。
 - `@pureterm/host` 不依赖 Electron、界面或应用入口。
+- `@pureterm/i18n` 持有文案目录与 `t()`，不依赖任何本地包。`@pureterm/host` 永不导入它：失败以错误码跨线，由知道语言的那一侧说成句子。
 - `@pureterm/ui` 只依赖协议及浏览器库，不导入 Node、Electron 或 Host。
 - `@pureterm/transport` 通过公共 Host 接口分派请求，不读取 `Host.internals`。
 - 跨包引用必须经过允许的公开导出，不通过相对路径访问另一包源码。

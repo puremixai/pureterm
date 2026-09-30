@@ -1,4 +1,5 @@
 import {
+  HostError,
   METHODS,
   NOTICES,
   MAX_SESSION_ID_LENGTH,
@@ -47,20 +48,28 @@ export interface DispatcherOptions {
   onReady(payload: RendererReadyPayload, clientId: string): void
 }
 
-/** 参数一律来自边界之外，收窄不了就报出来——绝不猜。 */
+/**
+ * 参数一律来自边界之外，收窄不了就报出来——绝不猜。
+ *
+ * 报的是**错误码**而不是一句话：这句话要跨线，而跨线的句子没法翻译。
+ * `where`（哪个方法）和实际收到的类型作为参数一起过去，界面据此拼一句
+ * 「<方法> 期望一个字符串」，而不是把类型名原样丢给用户。
+ */
 function asObject(value: unknown, where: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${where} 的第一个参数应当是一个对象。`)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HostError('dispatch.arg-not-object', { where, received: typeof value })
+  }
   return value as Record<string, unknown>
 }
 
 function asString(value: unknown, where: string): string {
-  if (typeof value !== 'string') throw new Error(`${where} 期望一个字符串参数，收到 ${typeof value}。`)
+  if (typeof value !== 'string') throw new HostError('dispatch.arg-not-string', { where, received: typeof value })
   return value
 }
 
 function asNumber(value: unknown, where: string): number {
   const numeric = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(numeric)) throw new Error(`${where} 期望一个数字参数，收到 ${String(value)}。`)
+  if (!Number.isFinite(numeric)) throw new HostError('dispatch.arg-not-number', { where, received: String(value) })
   return numeric
 }
 
@@ -74,7 +83,7 @@ function asNumber(value: unknown, where: string): number {
  */
 function asBytes(value: unknown, where: string): Uint8Array {
   if (value instanceof Uint8Array) return value
-  throw new Error(`${where} 期望一段字节（Uint8Array），收到 ${Object.prototype.toString.call(value)}。`)
+  throw new HostError('dispatch.arg-not-bytes', { where, received: Object.prototype.toString.call(value) })
 }
 
 /**
@@ -86,14 +95,14 @@ function asBytes(value: unknown, where: string): Uint8Array {
  */
 function rejectExtraFields(payload: Record<string, unknown>, allowed: readonly string[], where: string): void {
   for (const key of Object.keys(payload)) {
-    if (!allowed.includes(key)) throw new Error(`${where} 不接受字段「${key}」。`)
+    if (!allowed.includes(key)) throw new HostError('dispatch.extra-field', { where, field: key })
   }
 }
 
 /** 会话 ID：非空、有上限。上限来自协议常量，不在这里另抄一个数字。 */
 function asSessionId(value: unknown, where: string): string {
   if (typeof value !== 'string' || !value || value.length > MAX_SESSION_ID_LENGTH) {
-    throw new Error(`${where} 的会话 ID 不合法。`)
+    throw new HostError('dispatch.bad-session-id', { where })
   }
   return value
 }
@@ -101,7 +110,7 @@ function asSessionId(value: unknown, where: string): string {
 /** 订阅 ID：UI 每次激活新建一个 UUID，字符集由协议定义。 */
 function asSubscriptionId(value: unknown, where: string): string {
   if (typeof value !== 'string' || !SUBSCRIPTION_ID_PATTERN.test(value)) {
-    throw new Error(`${where} 的订阅 ID 不合法。`)
+    throw new HostError('dispatch.bad-subscription-id', { where })
   }
   return value
 }
@@ -172,7 +181,7 @@ export function createDispatcher(options: DispatcherOptions): Dispatcher {
         case METHODS.monitorStop:
           return host.stopMonitor(asSubscriptionId(params[0], 'monitor:stop'), clientId)
         default:
-          throw new Error(`不认识的请求：${method}`)
+          throw new HostError('dispatch.unknown-request', { method })
       }
     },
 
@@ -194,7 +203,7 @@ export function createDispatcher(options: DispatcherOptions): Dispatcher {
           options.onReady(normalizeReadyPayload(params[0]), clientId)
           return
         default:
-          throw new Error(`不认识的通知：${name}`)
+          throw new HostError('dispatch.unknown-notice', { name })
       }
     },
   }

@@ -47,7 +47,7 @@ export function relaunchSelf(options: RelaunchOptions): void {
   const graceMs = options.graceMs ?? 400
   const args = [...argv, ...options.switches]
 
-  log(`[relaunch] 准备以「${options.switches.join(' ') || '无开关'}」重启：${execPath} ${args.join(' ')}`)
+  log(`[relaunch] about to restart with "${options.switches.join(' ') || 'no switches'}": ${execPath} ${args.join(' ')}`)
 
   let child: ChildProcess
   try {
@@ -75,7 +75,7 @@ export function relaunchSelf(options: RelaunchOptions): void {
     if (graceMs > 0) {
       settled = true
       options.onFailure(
-        new Error(`新进程启动后立刻退出（exitCode=${child.exitCode ?? 'null'}，signal=${child.signalCode ?? 'null'}）。`),
+        new Error(`The new process exited immediately after starting (exitCode=${child.exitCode ?? 'null'}, signal=${child.signalCode ?? 'null'}).`),
       )
       return
     }
@@ -92,7 +92,7 @@ export function relaunchSelf(options: RelaunchOptions): void {
   // 否则会变成未处理的 'error' 事件把进程掀掉。
   child.on('error', (error: Error) => {
     if (settled) {
-      log(`[relaunch] 新进程后续报错（已交接，仅记录）：${error.message}`)
+      log(`[relaunch] the new process reported a later error (already handed over, recording only): ${error.message}`)
       return
     }
     settled = true

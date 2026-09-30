@@ -1,4 +1,5 @@
 import type { SftpDir, SftpEntry } from '@pureterm/protocol'
+import { t } from '@pureterm/i18n'
 import { formatBytes, formatTime } from './format.js'
 import { cell } from './host-list.js'
 import { DomListeners } from './client-runtime.js'
@@ -29,7 +30,13 @@ export interface SftpHandlers {
 
 export interface SftpView {
   dispose(): void
-  /** 画一个目录；传 null = 没有会话（未连接 / 已断开） */
+  /**
+   * 画一个目录；传 null = 没有会话（未连接 / 已断开）。
+   *
+   * 面板的固定文字（标题、按钮、占位、aria-label）也在这里重写：它们只在构造时
+   * 建一次节点，而「现在是什么语言」是随时会变的，所以每次 render 都顺手刷一遍
+   * —— 换语言就是靠这一次重画到达面板的。
+   */
   render(dir: SftpDir | null): void
   /** 面板内的提示/报错。不复用状态栏那条，因为它说的是终端的事 */
   setHint(text: string, kind?: 'ok' | 'err' | 'pending' | ''): void
@@ -78,7 +85,9 @@ function button(id: string, label: string, className: string): HTMLButtonElement
 
 function must<T extends HTMLElement>(root: HTMLElement, id: string): T {
   const element = root.querySelector<T>(`#${id}`)
-  if (!element) throw new Error(`远端文件面板缺少元素 #${id}`)
+  // 开发者诊断，不是给用户看的句子：它说的是这份骨架和 index.html 对不上，
+  // 也就是一次构建错误。所以它是英文，而且不进目录。
+  if (!element) throw new Error(`The remote file panel is missing #${id}`)
   return element
 }
 
@@ -91,20 +100,20 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   const head = document.createElement('header')
   head.className = 'panel-head'
 
-  const title = span('panel-title', '远端文件')
+  const title = span('panel-title', t('sftp.title'))
   // 路径做成可输入的：要去 /var/log 不该靠一层层点进去。回车才跳转——
   // 失焦也跳的话，用户点到别处就会莫名其妙换目录。
   const pathInput = document.createElement('input')
   pathInput.id = 'sftp-path'
   pathInput.spellcheck = false
-  pathInput.placeholder = '连上之后可以在这里浏览远端文件'
+  pathInput.placeholder = t('sftp.path.placeholder')
   pathInput.disabled = true
 
-  const upButton = button('sftp-up', '上级', 'ghost small')
-  const refreshButton = button('sftp-refresh', '刷新', 'ghost small')
-  const mkdirButton = button('sftp-mkdir', '新建文件夹', 'ghost small')
-  const uploadButton = button('sftp-upload', '上传…', 'ghost small')
-  const closeButton = button('sftp-close', '收起', 'ghost small')
+  const upButton = button('sftp-up', t('sftp.up'), 'ghost small')
+  const refreshButton = button('sftp-refresh', t('common.refresh'), 'ghost small')
+  const mkdirButton = button('sftp-mkdir', t('sftp.mkdir'), 'ghost small')
+  const uploadButton = button('sftp-upload', t('sftp.upload'), 'ghost small')
+  const closeButton = button('sftp-close', t('common.collapse'), 'ghost small')
 
   // 上传入口。放在这里而不是让壳弹系统对话框：浏览器里也有 <input type="file">，
   // 于是桌面端和 Web 载体走的是同一个控件、同一段代码。
@@ -129,32 +138,34 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   const createName = document.createElement('input')
   createName.id = 'sftp-create-name'
   createName.spellcheck = false
-  createName.placeholder = '新文件夹的名字'
-  const createOk = button('sftp-create-ok', '创建', 'ghost small')
-  const createCancel = button('sftp-create-cancel', '取消', 'ghost small')
-  createBar.append(span('panel-title', '新建文件夹'), createName, createOk, createCancel)
+  createName.placeholder = t('sftp.mkdir.placeholder')
+  const createOk = button('sftp-create-ok', t('common.create'), 'ghost small')
+  const createCancel = button('sftp-create-cancel', t('common.cancel'), 'ghost small')
+  createBar.append(span('panel-title', t('sftp.mkdir')), createName, createOk, createCancel)
 
   const columns = document.createElement('div')
   columns.id = 'sftp-columns'
   columns.className = 'file-columns'
   // 列标题只是给眼睛对齐用的；每一行自己带完整语义，所以这里不重复播报。
+  // 五个空格子对应「名称 / 大小 / 模式 / 修改时间 / 动作」那五列 —— 标题本身不画，
+  // 所以这里没有文字可翻。
   columns.setAttribute('aria-hidden', 'true')
-  for (const label of ['名称', '大小', '模式', '修改时间', '']) columns.append(document.createElement('span'))
+  for (let column = 0; column < 5; column += 1) columns.append(document.createElement('span'))
 
   // 面包屑单独一行，不塞进 .panel-head：那一行已经有五个按钮，620px 以下还会换行，
   // 一个会跳到按钮之间的路径是没法扫读的。
   const crumbs = document.createElement('nav')
   crumbs.className = 'sftp-crumbs'
-  crumbs.setAttribute('aria-label', '远端路径')
+  crumbs.setAttribute('aria-label', t('sftp.crumbs'))
 
   const list = document.createElement('ul')
   list.id = 'sftp-list'
-  list.setAttribute('aria-label', '远端目录内容')
+  list.setAttribute('aria-label', t('sftp.list'))
 
   const hint = document.createElement('p')
   hint.id = 'sftp-hint'
   hint.className = 'empty'
-  hint.textContent = '连上之后可以在这里浏览远端文件。'
+  hint.textContent = t('sftp.hint.empty')
 
   body.append(columns, list, hint)
   root.textContent = ''
@@ -232,9 +243,9 @@ const buildCrumbs = (path: string): HTMLElement[] => {
     const top = document.createElement('span')
     top.className = 'file-top'
     top.append(span('file-name', entry.name))
-    if (entry.isDirectory) top.append(label('目录'))
+    if (entry.isDirectory) top.append(label(t('sftp.badge.directory')))
     // 软链单独标出来：它的类型是「跟着目标走」的，用户需要知道这一行不是本体
-    if (entry.isSymlink) top.append(badge('链接', 'warn'))
+    if (entry.isSymlink) top.append(badge(t('sftp.badge.symlink'), 'warn'))
 
     // 大小、模式、时间是行的孩子而不是按钮的孩子：它们是表格里的那些列，
     // 得和列标题对得上，而按钮里的内容对不到列上。
@@ -242,18 +253,17 @@ const buildCrumbs = (path: string): HTMLElement[] => {
     // 目录的大小没有意义（不是 0，是「不适用」），写 0 会让人以为它是空目录
     item.append(main,
       cell('file-size', entry.isDirectory ? '—' : formatBytes(entry.size)),
-      cell('file-mode', octalMode(entry.mode), entry.mode ? `八进制 ${(entry.mode & 0o7777).toString(8)}` : '对端没有给出权限属性'),
+      cell('file-mode', octalMode(entry.mode), entry.mode ? t('sftp.mode.octal', { mode: (entry.mode & 0o7777).toString(8) }) : t('sftp.mode.unknown')),
       cell('file-time', formatTime(entry.mtime)))
 
     const actions = document.createElement('span')
     actions.className = 'file-actions'
     // 目录的主动作是「进去」，文件的主动作是「取下来」——按钮文字按结果说，不按类型说
-    const primaryLabel = entry.isDirectory ? '打开' : '下载'
     const primary = document.createElement('button')
     primary.type = 'button'
     primary.className = 'mini'
     primary.dataset.act = entry.isDirectory ? 'open' : 'download'
-    primary.textContent = primaryLabel
+    primary.textContent = entry.isDirectory ? t('common.open') : t('common.download')
     rowListeners.add(primary, 'click', (event) => {
       event.stopPropagation()
       fire()
@@ -263,7 +273,7 @@ const buildCrumbs = (path: string): HTMLElement[] => {
     remove.type = 'button'
     remove.className = 'mini danger'
     remove.dataset.act = 'delete'
-    remove.textContent = '删除'
+    remove.textContent = t('common.delete')
     rowListeners.add(remove, 'click', (event) => {
       // 行按钮必须截住事件，不然「删除」会先冒泡成一次双击/单击
       event.stopPropagation()
@@ -344,9 +354,30 @@ const buildCrumbs = (path: string): HTMLElement[] => {
 
   syncDisabled()
 
+  /**
+   * 面板固定那几句。节点只建一次，所以换语言之后得有人把它们重写一遍 ——
+   * 每次 render 都走一遍，代价是几次 textContent 赋值，换来的是「面板上的字
+   * 永远等于当前语言」这条简单性质。
+   */
+  function paintChrome(): void {
+    title.textContent = t('sftp.title')
+    pathInput.placeholder = t('sftp.path.placeholder')
+    upButton.textContent = t('sftp.up')
+    refreshButton.textContent = t('common.refresh')
+    mkdirButton.textContent = t('sftp.mkdir')
+    uploadButton.textContent = t('sftp.upload')
+    closeButton.textContent = t('common.collapse')
+    createName.placeholder = t('sftp.mkdir.placeholder')
+    createOk.textContent = t('common.create')
+    createCancel.textContent = t('common.cancel')
+    crumbs.setAttribute('aria-label', t('sftp.crumbs'))
+    list.setAttribute('aria-label', t('sftp.list'))
+  }
+
   return {
     dispose() { listeners.clear(); rowListeners.clear(); root.replaceChildren() },
     render(dir) {
+      paintChrome()
       current = dir
       pathInput.value = dir?.path ?? ''
       pathInput.title = dir?.path ?? ''
@@ -362,7 +393,7 @@ const buildCrumbs = (path: string): HTMLElement[] => {
 
       if (!dir) {
         hint.hidden = false
-        hint.textContent = enabled ? '正在读取目录…' : '连上之后可以在这里浏览远端文件。'
+        hint.textContent = enabled ? t('sftp.hint.loading-list') : t('sftp.hint.empty')
         syncDisabled()
         return
       }
@@ -372,7 +403,7 @@ const buildCrumbs = (path: string): HTMLElement[] => {
       // 空态的提示和「正在读」用的是同一个元素：同时只可能有一句是真话，
       // 两处各写一句就会出现「已加载完但还是写着正在读」
       hint.hidden = dir.entries.length > 0
-      hint.textContent = dir.entries.length ? '' : '这个目录是空的。'
+      hint.textContent = dir.entries.length ? '' : t('sftp.hint.empty-dir')
       syncDisabled()
     },
 
@@ -398,7 +429,7 @@ const buildCrumbs = (path: string): HTMLElement[] => {
         rowButtons = []
         hint.hidden = false
         hint.className = 'empty'
-        hint.textContent = '连上之后可以在这里浏览远端文件。'
+        hint.textContent = t('sftp.hint.empty')
       }
       syncDisabled()
     },

@@ -2,7 +2,7 @@
 
 [中文版本](README_zh.md)
 
-PureTerm’s local Web entry runs Node on the user’s computer, and a browser connects to that same computer. The Node process manages SSH, SFTP, host information, and trusted host keys. Web and Desktop use the same `@pureterm/transport/web-host` assembly with separate data directories and credential policies. Web also shares `@pureterm/host`, `@pureterm/protocol`, and `@pureterm/ui`; its runtime does not require Electron.
+PureTerm’s local Web entry runs Node on the user’s computer, and a browser connects to that same computer. The Node process manages SSH, SFTP, host information, and trusted host keys. Web and Desktop use the same `@pureterm/transport/web-host` assembly with separate data directories and credential policies. Web also shares `@pureterm/host`, `@pureterm/protocol`, `@pureterm/i18n`, and `@pureterm/ui`; its runtime does not require Electron.
 
 Install dependencies at the repository root and start the entry point. The command builds shared modules and the Web entry:
 

@@ -1,8 +1,11 @@
 import { Service, type Context } from 'cordis'
 import { MAX_PRIVATE_KEY_BYTES, type KeyRecord, type KeySaveRequest } from '@pureterm/protocol'
-import { ClientScope, cleanError, DomListeners } from '../client-runtime.js'
+import { t, tPlural } from '@pureterm/i18n'
+import { ClientScope, DomListeners } from '../client-runtime.js'
+import { errorMessage, errorText } from '../failure-diagnostics.js'
+import { messageKey, resolveMessage, type MessageText } from '../message-text.js'
 import { saveBytes } from '../local-file.js'
-import { formatBytes } from '../format.js'
+import { formatBytes, formatTime } from '../format.js'
 
 declare module 'cordis' { interface Context { clientKeychain: ClientKeychain } }
 
@@ -43,10 +46,19 @@ export class ClientKeychain extends Service {
       this.renderSummary()
       this.render()
       this.el('keychain-list').setAttribute('aria-busy', 'false')
-      this.notice(this.sessionOnly ? '与后端断开，临时密钥和草稿已清除。重新连接后请再次导入密钥。' : '与后端断开，未保存的草稿已清除。已加密保存的密钥不受影响。', true)
+      this.notice(messageKey(this.sessionOnly ? 'keys.notice.disconnected-session' : 'keys.notice.disconnected'), true)
       ctx.emit('client/keychain-change')
     })
     ctx.on('client/host-counts', counts => { this.hostCounts = counts; this.render() })
+    // 换语言之后要重画三样：策略说明（常驻）、编辑器头部（标题、占位、类型片）、
+    // 以及列表本身（卡片副标题、用量列、空态都是拼出来的）。
+    ctx.on('client/locale-change', () => {
+      if (!this.scope.alive) return
+      this.renderPolicy()
+      this.renderEditor()
+      this.paintNotice()
+      this.render()
+    })
     this.scope.listen(this.el('keychain-new'), 'click', () => this.edit())
     this.scope.listen(this.el('keychain-close'), 'click', () => this.close())
     this.scope.listen(this.el('keychain-search'), 'input', () => this.render())
@@ -72,7 +84,7 @@ export class ClientKeychain extends Service {
     this.scope.listen(drop, 'drop', event => {
       event.preventDefault(); drop.classList.remove('is-dragging')
       const files = (event as DragEvent).dataTransfer?.files
-      if (files?.length !== 1) { this.status('请一次导入一个私钥文件。', 'err'); return }
+      if (files?.length !== 1) { this.status(t('keys.error.one-file'), 'err'); return }
       void this.importFile(files[0]!)
     })
     // Never navigate the Electron/browser page to a dropped local file.
@@ -105,6 +117,9 @@ export class ClientKeychain extends Service {
       this.el<HTMLButtonElement>('keychain-new').disabled = true
     })
     this.setBusy(false)
+    // markup 里那一句「Loading keys…」是给脚本还没跑起来的那一帧的；这里接手之后
+    // 它就走目录，于是记住的语言在第一次答复到达之前就已经生效。
+    this.notice(messageKey('keys.status.loading'))
     this.ready = this.initialize()
   }
 
@@ -130,16 +145,37 @@ export class ClientKeychain extends Service {
       this.available = true
       this.sessionOnly = capabilities.credentialPersistence === 'session'
       this.el<HTMLButtonElement>('keychain-new').disabled = false
-      this.el('keychain-policy').textContent = capabilities.credentialPersistence === 'encrypted'
-        ? '私钥和口令通过系统加密保存在本机。' : '仅当前会话：刷新页面或关闭连接后，密钥将被清除，不会保存到磁盘。'
+      this.renderPolicy()
       await this.refresh()
-    } catch (error) { if (this.scope.alive) this.notice(cleanError(error), true) }
+    } catch (error) { if (this.scope.alive) this.notice(errorMessage(error), true) }
   }
 
-  private notice(message: string, error = false): void {
-    this.el('keychain-notice').textContent = message
-    this.el('keychain-notice').className = `keychain-message ${error ? 'err' : ''}`
-    this.el('keychain-reload').hidden = !error
+  /** 凭据怎么存这一句是常驻说明，所以它得跟着语言走，而不是在 initialize 里写死。 */
+  private renderPolicy(): void {
+    if (!this.available) return
+    this.el('keychain-policy').textContent = this.sessionOnly ? t('keys.policy.session') : t('keys.policy.encrypted')
+  }
+
+  private noticeMessage: MessageText = { text: '' }
+  private noticeError = false
+
+  private notice(message: MessageText, error = false): void {
+    this.noticeMessage = message
+    this.noticeError = error
+    this.paintNotice()
+  }
+
+  /**
+   * 通知那一行的画法。
+   *
+   * 单独一个方法是因为它必须能被重画：断开连接那条通知是**常驻**的（要等下一次
+   * 成功刷新才消失），它说的又是一句要紧的话 —— 临时密钥被清了。所以它存的是
+   * key，换语言之后重画一次就跟着变。
+   */
+  private paintNotice(): void {
+    this.el('keychain-notice').textContent = resolveMessage(this.noticeMessage)
+    this.el('keychain-notice').className = `keychain-message ${this.noticeError ? 'err' : ''}`
+    this.el('keychain-reload').hidden = !this.noticeError
   }
 
   async refresh(): Promise<void> {
@@ -150,10 +186,10 @@ export class ClientKeychain extends Service {
       const keys = await this.ctx.clientTransport.api.keychain.list()
       if (!this.scope.alive || revision !== this.listRevision) return
       this.keys = keys
-      this.notice('')
+      this.notice({ text: '' })
       this.render()
       this.ctx.emit('client/keychain-change')
-    } catch (error) { if (this.scope.alive && revision === this.listRevision) this.notice(cleanError(error), true) }
+    } catch (error) { if (this.scope.alive && revision === this.listRevision) this.notice(errorMessage(error), true) }
     finally { if (this.scope.alive && revision === this.listRevision) this.el('keychain-list').setAttribute('aria-busy', 'false') }
   }
 
@@ -163,14 +199,16 @@ export class ClientKeychain extends Service {
     list.replaceChildren()
     const query = this.value('keychain-search').trim().toLocaleLowerCase()
     const visible = this.keys.filter(key => `${key.label} ${key.type} ${key.fingerprint}`.toLocaleLowerCase().includes(query))
-    this.el('keychain-count').textContent = query ? `${visible.length} / ${this.keys.length} keys` : `${this.keys.length} keys`
+    this.el('keychain-count').textContent = query
+      ? t('keys.count.filtered', { visible: visible.length, total: this.keys.length })
+      : t('keys.count', { count: this.keys.length })
     const draft = !this.el('keychain-editor').hidden && !this.editingId
-    if (draft) this.card(null, this.value('keychain-label') || '添加名称…', '待保存', list)
-    for (const key of visible) this.card(key, key.label, `Type ${key.type}`, list)
+    if (draft) this.card(null, this.value('keychain-label') || t('keys.draft.name'), t('keys.draft.subtitle'), list)
+    for (const key of visible) this.card(key, key.label, t('keys.card.type', { type: key.type }), list)
     const empty = this.el('keychain-empty')
     empty.hidden = visible.length > 0 || draft
-    empty.querySelector('h2')!.textContent = query ? '没有匹配的密钥' : '还没有密钥'
-    empty.querySelector('p')!.textContent = query ? '试试名称、类型或指纹中的其他关键词。' : '点击「新建密钥」，粘贴或导入私钥文件。保存后可在主机认证设置中选择使用。'
+    empty.querySelector('h2')!.textContent = query ? t('keys.empty.filtered.title') : t('keys.empty.title')
+    empty.querySelector('p')!.textContent = query ? t('keys.empty.filtered.body') : t('keys.empty.none')
   }
 
   private cell(className: string, text: string, title = ''): HTMLElement {
@@ -212,8 +250,11 @@ export class ClientKeychain extends Service {
       row.append(
         this.cell('', key.type),
         this.cell('mono', fingerprint),
-        this.cell('when', usage ? `${usage} host${usage === 1 ? '' : 's'}` : '未使用', usage ? '' : '尚无主机使用这把密钥'),
-        this.cell('', new Date(key.updatedAt).toLocaleDateString()),
+        this.cell('when', usage ? tPlural('keychain.usage', usage) : t('keys.usage.none'),
+          usage ? '' : t('keys.usage.none-title')),
+        // updatedAt 是 ISO 串，而 formatTime 收秒（SFTP 的 attrs.mtime 那种）。
+        // 两处日期因此都是同一个房子格式，而不是各自 toLocaleDateString()。
+        this.cell('', formatTime(Math.floor(Date.parse(key.updatedAt) / 1000))),
       )
     } else {
       // 草稿卡片保留四个单元格，否则正在新建密钥时列会塌。
@@ -232,7 +273,7 @@ export class ClientKeychain extends Service {
     if (key) {
       const edit = doc.createElement('button')
       edit.type = 'button'; edit.className = 'keychain-card-edit tool-icon'; edit.dataset.act = 'edit'
-      edit.setAttribute('aria-label', `编辑密钥 ${label}`); edit.title = '编辑密钥'
+      edit.setAttribute('aria-label', t('keys.edit-aria', { label })); edit.title = t('keys.edit')
       edit.innerHTML = '<i class="ti ti-pencil" aria-hidden="true"></i>'
       this.cards.add(edit, 'click', () => this.edit(key))
       row.append(edit)
@@ -240,7 +281,7 @@ export class ClientKeychain extends Service {
     list.append(row)
   }
 
-  private canDiscard(): boolean { return !this.busy && (!this.dirty || this.ctx.clientView.window.confirm('放弃尚未保存的密钥修改？')) }
+  private canDiscard(): boolean { return !this.busy && (!this.dirty || this.ctx.clientView.window.confirm(t('keys.confirm.discard'))) }
   private edit(key?: KeyRecord): void {
     if (!this.available || !this.canDiscard()) return
     this.revision++
@@ -250,21 +291,33 @@ export class ClientKeychain extends Service {
     this.value('keychain-label', key?.label ?? '')
     this.value('keychain-public', key?.publicKey ?? '')
     this.el('keychain-editor').hidden = false
-    this.el('keychain-title').textContent = key ? '编辑密钥' : '新建密钥'
     this.el('keychain-delete').hidden = !key
     this.el('keychain-details').hidden = !key
     this.el('keychain-required').hidden = !!key
     this.el<HTMLTextAreaElement>('keychain-private').required = !key
-    this.el<HTMLTextAreaElement>('keychain-private').placeholder = key ? '已安全保存。留空保留原私钥；粘贴新私钥可替换。' : '粘贴完整的私钥内容'
     this.el<HTMLInputElement>('keychain-passphrase').disabled = !!key
-    if (key) {
-      this.el('keychain-fingerprint').textContent = key.fingerprint
-      this.el('keychain-type').textContent = `${key.type}${key.hasPassphrase ? ' · 有口令保护' : ''}`
-    }
+    this.renderEditor()
     this.status('')
     this.renderSummary()
     this.render()
     this.el('keychain-label').focus()
+  }
+
+  /**
+   * 编辑器头部那几句。**由 editingId 决定，不由这一次点击决定** —— 换语言时要能
+   * 只凭当前状态重画一遍，所以它读的是 `this.editingId`，而不是某个传进来的参数。
+   */
+  private renderEditor(): void {
+    const key = this.keys.find(entry => entry.id === this.editingId)
+    this.el('keychain-title').textContent = key ? t('keys.edit') : t('keys.editor.new')
+    this.el<HTMLTextAreaElement>('keychain-private').placeholder =
+      key ? t('keys.placeholder.private-keep') : t('keys.placeholder.private')
+    if (key) {
+      this.el('keychain-fingerprint').textContent = key.fingerprint
+      this.el('keychain-type').textContent = key.hasPassphrase
+        ? t('keys.type.with-passphrase', { type: key.type })
+        : key.type
+    }
   }
 
   private close(): void {
@@ -292,8 +345,8 @@ export class ClientKeychain extends Service {
     const facts: string[] = []
     if (privateKey) {
       facts.push(formatBytes(new TextEncoder().encode(privateKey).length))
-      facts.push(this.value('keychain-passphrase') ? '有口令保护' : '未加密')
-      facts.push(this.value('keychain-public').trim() ? '已提供公钥，保存时校验是否匹配' : '公钥由私钥自动生成')
+      facts.push(this.value('keychain-passphrase') ? t('keys.summary.passphrase') : t('keys.summary.plain'))
+      facts.push(this.value('keychain-public').trim() ? t('keys.summary.public-given') : t('keys.summary.public-generated'))
     }
     summary.textContent = facts.join(' · ')
     summary.hidden = facts.length === 0
@@ -304,7 +357,7 @@ export class ClientKeychain extends Service {
     this.el<HTMLFieldSetElement>('keychain-fields').disabled = busy
     for (const id of ['keychain-save', 'keychain-delete', 'keychain-close']) this.el<HTMLButtonElement>(id).disabled = busy
     this.el<HTMLButtonElement>('keychain-new').disabled = busy || !this.available
-    this.el('keychain-save').textContent = busy ? '处理中…' : '保存密钥'
+    this.el('keychain-save').textContent = busy ? t('keys.save.busy') : t('keys.save')
   }
 
   private async save(): Promise<void> {
@@ -314,13 +367,13 @@ export class ClientKeychain extends Service {
       privateKey: this.value('keychain-private').trim() || undefined, publicKey: this.value('keychain-public').trim() || undefined,
       passphrase: this.value('keychain-passphrase') || undefined }
     if ([input.privateKey, input.publicKey].some(value => value && new TextEncoder().encode(value).length > MAX_PRIVATE_KEY_BYTES)) {
-      this.status('密钥内容超过 256 KiB，请确认粘贴的是密钥文件内容。', 'err')
+      this.status(t('keys.error.content-too-large'), 'err')
       return
     }
     const operation = ++this.operation
     this.listRevision++
     this.setBusy(true)
-    this.status('正在校验并保存密钥…')
+    this.status(t('keys.status.saving'))
     try {
       const saved = await this.ctx.clientTransport.api.keychain.save(input)
       if (!this.scope.alive || revision !== this.revision) return
@@ -330,10 +383,10 @@ export class ClientKeychain extends Service {
       this.keys = [...this.keys.filter(key => key.id !== saved.id), saved]
       this.edit(saved)
       this.status('', 'ok')
-      this.ctx.clientToasts.notify({ title: '密钥已保存', detail: '可在主机的认证设置里选用' })
+      this.ctx.clientToasts.notify({ title: t('keys.toast.saved'), detail: t('keys.toast.saved-detail') })
       this.ctx.emit('client/keychain-change')
       await this.refresh()
-    } catch (error) { if (this.scope.alive && revision === this.revision) this.status(cleanError(error), 'err') }
+    } catch (error) { if (this.scope.alive && revision === this.revision) this.status(errorText(error), 'err') }
     finally { if (this.scope.alive && operation === this.operation) this.setBusy(false) }
   }
 
@@ -343,10 +396,10 @@ export class ClientKeychain extends Service {
     const operation = ++this.operation
     this.setBusy(true)
     try {
-      if (!file.size || file.size > MAX_PRIVATE_KEY_BYTES) throw new Error('请选择非空且不超过 256 KiB 的私钥文件。')
+      if (!file.size || file.size > MAX_PRIVATE_KEY_BYTES) throw new Error(t('keys.error.file-size'))
       const content = await file.text()
       if (!this.scope.alive || revision !== this.revision) return
-      if (new TextEncoder().encode(content).length > MAX_PRIVATE_KEY_BYTES) throw new Error('私钥内容超过 256 KiB。')
+      if (new TextEncoder().encode(content).length > MAX_PRIVATE_KEY_BYTES) throw new Error(t('keys.error.content-size'))
       this.value('keychain-private', content)
       this.value('keychain-public', '')
       this.value('keychain-passphrase', '')
@@ -355,15 +408,15 @@ export class ClientKeychain extends Service {
       this.dirty = true
       this.renderSummary()
       this.render()
-      this.status(`已读取「${file.name}」。若有口令请填写，然后保存。`)
+      this.status(t('keys.status.imported', { name: file.name }))
       this.el('keychain-passphrase').focus()
-    } catch (error) { if (this.scope.alive && revision === this.revision) this.status(cleanError(error), 'err') }
+    } catch (error) { if (this.scope.alive && revision === this.revision) this.status(errorText(error), 'err') }
     finally { if (this.scope.alive && operation === this.operation) this.setBusy(false) }
   }
 
   private async remove(): Promise<void> {
     const key = this.keys.find(key => key.id === this.editingId)
-    if (this.busy || !key || !this.ctx.clientView.window.confirm(`删除密钥「${key.label}」？本机保存的私钥及口令将被移除，此操作无法撤销。`)) return
+    if (this.busy || !key || !this.ctx.clientView.window.confirm(t('keys.confirm.delete', { label: key.label }))) return
     const operation = ++this.operation
     this.listRevision++
     this.setBusy(true)
@@ -374,16 +427,16 @@ export class ClientKeychain extends Service {
       this.setBusy(false)
       this.close()
       await this.refresh()
-      if (this.scope.alive && operation === this.operation) this.notice(`已删除「${key.label}」。`)
-    } catch (error) { if (this.scope.alive && operation === this.operation) this.status(cleanError(error), 'err') }
+      if (this.scope.alive && operation === this.operation) this.notice(messageKey('keys.notice.deleted', { label: key.label }))
+    } catch (error) { if (this.scope.alive && operation === this.operation) this.status(errorText(error), 'err') }
     finally { if (this.scope.alive && operation === this.operation) this.setBusy(false) }
   }
 
   private async copyPublicKey(): Promise<void> {
     const key = this.keys.find(key => key.id === this.editingId)
     if (!key) return
-    try { await this.ctx.clientView.window.navigator.clipboard.writeText(key.publicKey); if (this.scope.alive) this.status('公钥已复制。', 'ok') }
-    catch { if (this.scope.alive) this.status('复制失败，请选中公钥内容手动复制。', 'err') }
+    try { await this.ctx.clientView.window.navigator.clipboard.writeText(key.publicKey); if (this.scope.alive) this.status(t('keys.status.copied'), 'ok') }
+    catch { if (this.scope.alive) this.status(t('keys.error.copy'), 'err') }
   }
 
   /**
@@ -398,6 +451,6 @@ export class ClientKeychain extends Service {
     const name = `${key.label.replace(/[\\/]/g, '_')}.pub`
     const bytes = new TextEncoder().encode(`${key.publicKey}\n`)
     this.ctx.effect(() => saveBytes(bytes, name), 'keychain.pub')
-    this.status(`已导出 ${name}。`, 'ok')
+    this.status(t('keys.status.downloaded', { name }), 'ok')
   }
 }

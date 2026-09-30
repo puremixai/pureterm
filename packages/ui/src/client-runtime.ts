@@ -48,13 +48,13 @@ export class ClientView extends Service {
   constructor(ctx: Context, options: ClientViewOptions) {
     super(ctx, 'clientView')
     this.document = options.document
-    if (!options.document.defaultView) throw new Error('客户端需要一个已挂载的浏览器文档。')
+    if (!options.document.defaultView) throw new Error('The client needs a mounted browser document.')
     this.window = options.document.defaultView
   }
 
   element<T extends HTMLElement = HTMLElement>(id: string): T {
     const element = this.document.getElementById(id)
-    if (!element) throw new Error(`缺少元素 #${id}`)
+    if (!element) throw new Error(`The document is missing #${id}`)
     return element as T
   }
 
@@ -63,11 +63,6 @@ export class ClientView extends Service {
     element.textContent = text
     element.className = kind
   }
-}
-
-export function cleanError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error)
-  return raw.replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '')
 }
 
 /** A view can replace row nodes repeatedly without retaining their listeners until app exit. */

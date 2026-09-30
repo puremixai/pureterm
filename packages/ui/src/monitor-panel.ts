@@ -1,4 +1,5 @@
 import type { MonitorIssue, MonitorMetric, MonitorSnapshot } from '@pureterm/protocol'
+import { t, type MessageKey } from '@pureterm/i18n'
 import { DomListeners } from './client-runtime.js'
 import { formatBytes, formatRate } from './format.js'
 
@@ -37,6 +38,11 @@ export interface MonitorPanelState {
   available: boolean
   /** 最近若干帧的网络速率，用于画走势线。空数组表示还画不出线。 */
   history: readonly NetSample[]
+  /**
+   * 面板底下那一行。**已经解析成句子的文本**，不是 key：面板每次 render 都重画它，
+   * 而 render 在换语言时也会被叫一次，所以调用方在那一刻解析出来的就是新语言。
+   * 内容本身可能来自远端（宿主报的原文），那部分原样转述。
+   */
   message?: string
 }
 
@@ -51,39 +57,43 @@ export interface MonitorPanel {
   dispose(): void
 }
 
-const STATUS_TEXT: Record<MonitorStatus, string> = {
-  idle: '未开始',
-  loading: '读取中…',
-  ready: '已更新',
-  partial: '部分可用',
-  paused: '已暂停',
-  unsupported: '不支持监控',
-  error: '读取失败',
-  disconnected: '连接已结束',
-  stale: '数据已过期',
+/**
+ * 状态文字。存的是 key，由 render 解析 —— 换语言时面板会重画一次，而这一格是
+ * 用户判断「现在读到没有」的唯一依据。
+ */
+const STATUS_KEY: Record<MonitorStatus, MessageKey> = {
+  idle: 'monitor.status.idle',
+  loading: 'monitor.status.loading',
+  ready: 'monitor.status.ready',
+  partial: 'monitor.status.partial',
+  paused: 'monitor.status.paused',
+  unsupported: 'monitor.status.unsupported',
+  error: 'monitor.status.error',
+  disconnected: 'monitor.status.disconnected',
+  stale: 'monitor.status.stale',
 }
 
 /** 一个指标为 null 时，`issues` 里必有它的原因；原因直接说给用户，不写「错误」。 */
-const ISSUE_TEXT: Record<MonitorIssue, string> = {
-  'warming-up': '需要两个样本，正在预热',
-  unavailable: '远端没有提供这一项',
-  'invalid-data': '远端给出的读数无法解析',
+const ISSUE_KEY: Record<MonitorIssue, MessageKey> = {
+  'warming-up': 'monitor.issue.warming-up',
+  unavailable: 'monitor.issue.unavailable',
+  'invalid-data': 'monitor.issue.invalid-data',
 }
 
 /**
  * 顺序就是读的顺序：先看谁在忙，再看内存和负载，最后是磁盘、网络和主机运行时间。
  *
- * 标签用中文而 CPU 保留缩写：CPU 是这台机器上唯一一个中文里不写「处理器」的词，
- * 而「内存」比 MEM 更好认。单位都跟着数值走，不另设一列。`bar` 的那三项各画一条
- * 占用条；网络画走势线，负载和运行时间是标量，没有可比较的满格。
+ * 标签都走目录：CPU 是唯一一个两种语言写法相同的，但也照样进目录，这样这一行
+ * 没有例外。单位都跟着数值走，不另设一列。`bar` 的那三项各画一条占用条；网络画
+ * 走势线，负载和运行时间是标量，没有可比较的满格。
  */
-const FIELDS: ReadonlyArray<{ metric: MonitorMetric; label: string; bar: boolean }> = [
-  { metric: 'cpu', label: 'CPU', bar: true },
-  { metric: 'memory', label: '内存', bar: true },
-  { metric: 'load', label: '负载', bar: false },
-  { metric: 'disk', label: '磁盘 /', bar: true },
-  { metric: 'net', label: '网络', bar: false },
-  { metric: 'uptime', label: '主机运行', bar: false },
+const FIELDS: ReadonlyArray<{ metric: MonitorMetric; labelKey: MessageKey; bar: boolean }> = [
+  { metric: 'cpu', labelKey: 'monitor.field.cpu', bar: true },
+  { metric: 'memory', labelKey: 'monitor.field.memory', bar: true },
+  { metric: 'load', labelKey: 'monitor.field.load', bar: false },
+  { metric: 'disk', labelKey: 'monitor.field.disk', bar: true },
+  { metric: 'net', labelKey: 'monitor.field.net', bar: false },
+  { metric: 'uptime', labelKey: 'monitor.field.uptime', bar: false },
 ]
 
 const DASH = '—'
@@ -105,10 +115,10 @@ function duration(seconds: number): string {
   const days = Math.floor(total / 86400)
   const hours = Math.floor((total % 86400) / 3600)
   const minutes = Math.floor((total % 3600) / 60)
-  if (days) return `${days} 天 ${hours} 小时`
-  if (hours) return `${hours} 小时 ${minutes} 分`
-  if (minutes) return `${minutes} 分 ${total % 60} 秒`
-  return `${total} 秒`
+  if (days) return t('monitor.duration.days', { days, hours })
+  if (hours) return t('monitor.duration.hours', { hours, minutes })
+  if (minutes) return t('monitor.duration.minutes', { minutes, seconds: total % 60 })
+  return t('monitor.duration.seconds', { seconds: total })
 }
 
 function clock(milliseconds: number): string {
@@ -121,14 +131,22 @@ function clock(milliseconds: number): string {
 function valuesOf(snapshot: MonitorSnapshot): Record<MonitorMetric, string> {
   return {
     cpu: snapshot.cpuPercent === null ? DASH : percent(snapshot.cpuPercent),
-    memory: snapshot.memory === null ? DASH
-      : `${percent(snapshot.memory.usedPercent)}（${formatBytes(snapshot.memory.usedBytes)} / ${formatBytes(snapshot.memory.totalBytes)}）`,
+    memory: snapshot.memory === null ? DASH : t('monitor.value.usage', {
+      percent: percent(snapshot.memory.usedPercent),
+      used: formatBytes(snapshot.memory.usedBytes),
+      total: formatBytes(snapshot.memory.totalBytes),
+    }),
     load: snapshot.load === null ? DASH
       : `${snapshot.load.one.toFixed(2)} ${snapshot.load.five.toFixed(2)} ${snapshot.load.fifteen.toFixed(2)}`,
-    disk: snapshot.disk === null ? DASH
-      : `${percent(snapshot.disk.usedPercent)}（${formatBytes(snapshot.disk.usedBytes)} / ${formatBytes(snapshot.disk.totalBytes)}）`,
-    net: snapshot.net === null ? DASH
-      : `↓ ${formatRate(snapshot.net.receivedBytesPerSecond)} ↑ ${formatRate(snapshot.net.transmittedBytesPerSecond)}`,
+    disk: snapshot.disk === null ? DASH : t('monitor.value.usage', {
+      percent: percent(snapshot.disk.usedPercent),
+      used: formatBytes(snapshot.disk.usedBytes),
+      total: formatBytes(snapshot.disk.totalBytes),
+    }),
+    net: snapshot.net === null ? DASH : t('monitor.value.net', {
+      down: formatRate(snapshot.net.receivedBytesPerSecond),
+      up: formatRate(snapshot.net.transmittedBytesPerSecond),
+    }),
     uptime: snapshot.uptimeSeconds === null ? DASH : duration(snapshot.uptimeSeconds),
   }
 }
@@ -189,22 +207,23 @@ export function createMonitorPanel(
   head.className = 'panel-head'
   const title = document.createElement('span')
   title.className = 'panel-title'
-  title.textContent = '资源监控'
+  title.textContent = t('monitor.title')
   // 这一格**不**挂 aria-live：每 5 秒播报一次读数会把终端变成不能用的东西。
   // 状态的含义由文字本身承担，颜色只是重复一遍，所以色觉障碍下也不丢信息。
   const state = document.createElement('span')
   state.id = 'monitor-state'
   state.className = 'monitor-state'
-  const pause = button(document, 'monitor-pause', '暂停')
-  const retry = button(document, 'monitor-retry', '重试')
-  const close = button(document, 'monitor-close', '收起')
+  const pause = button(document, 'monitor-pause', t('monitor.pause'))
+  const retry = button(document, 'monitor-retry', t('common.retry'))
+  const close = button(document, 'monitor-close', t('common.collapse'))
   head.append(title, state, pause, retry, close)
 
   const body = document.createElement('div')
   body.id = 'monitor-body'
   body.className = 'monitor-body'
-  const cells = new Map<MonitorMetric, { field: HTMLElement; value: HTMLElement; fill: HTMLElement | null; spark: SVGSVGElement | null }>()
-  for (const { metric, label, bar } of FIELDS) {
+  type Cell = { field: HTMLElement; name: HTMLElement; value: HTMLElement; fill: HTMLElement | null; spark: SVGSVGElement | null }
+  const cells = new Map<MonitorMetric, Cell>()
+  for (const { metric, labelKey, bar } of FIELDS) {
     const field = document.createElement('section')
     field.className = 'monitor-field'
     field.dataset.metric = metric
@@ -213,7 +232,7 @@ export function createMonitorPanel(
     line.className = 'monitor-field-head'
     const name = document.createElement('span')
     name.className = 'monitor-label'
-    name.textContent = label
+    name.textContent = t(labelKey)
     const value = document.createElement('span')
     value.className = 'monitor-value'
     value.textContent = DASH
@@ -250,7 +269,7 @@ export function createMonitorPanel(
     }
 
     body.append(field)
-    cells.set(metric, { field, value, fill, spark })
+    cells.set(metric, { field, name, value, fill, spark })
   }
 
   const detail = document.createElement('p')
@@ -274,29 +293,33 @@ export function createMonitorPanel(
       toggle.disabled = !next.available
       toggle.setAttribute('aria-expanded', String(next.open))
       toggle.setAttribute('aria-controls', 'session-monitor')
-      toggle.title = next.open ? '收起资源监控' : '展开资源监控'
-      caption.textContent = next.open ? '收起资源' : '资源'
+      toggle.title = t(next.open ? 'monitor.toggle.hide-title' : 'monitor.toggle.show-title')
+      caption.textContent = t(next.open ? 'monitor.toggle.hide' : 'monitor.toggle.show')
       body.hidden = !next.open
-      state.textContent = STATUS_TEXT[next.status]
+      title.textContent = t('monitor.title')
+      state.textContent = t(STATUS_KEY[next.status])
 
       pause.disabled = !live
       pause.setAttribute('aria-pressed', String(next.paused))
-      pause.textContent = next.paused ? '继续' : '暂停'
-      pause.title = next.paused ? '继续采集资源指标' : '暂停采集资源指标'
+      pause.textContent = t(next.paused ? 'monitor.resume' : 'monitor.pause')
+      pause.title = t(next.paused ? 'monitor.resume.title' : 'monitor.pause.title')
       retry.disabled = !live
+      retry.textContent = t('common.retry')
+      close.textContent = t('common.collapse')
 
       /*
        * 每个快照当作**一次完整观测**：六个字段全部来自同一张快照，绝不把上一轮的
        * 内存和这一轮的 CPU 拼在一起。没有快照时整行是破折号。
        */
       const values = next.snapshot ? valuesOf(next.snapshot) : null
-      for (const { metric } of FIELDS) {
+      for (const { metric, labelKey } of FIELDS) {
         const cell = cells.get(metric)!
         const issue = next.snapshot?.issues[metric]
+        cell.name.textContent = t(labelKey)
         cell.value.textContent = values ? values[metric] : DASH
         if (issue) cell.field.dataset.issue = issue
         else delete cell.field.dataset.issue
-        cell.field.title = issue ? ISSUE_TEXT[issue] : ''
+        cell.field.title = issue ? t(ISSUE_KEY[issue]) : ''
         if (cell.fill) {
           const width = next.snapshot && !issue ? fillPercent(next.snapshot, metric) : 0
           cell.fill.style.width = `${width}%`
@@ -317,7 +340,7 @@ export function createMonitorPanel(
       }
 
       // 报错时先说为什么，其余时候说这组数字是什么时候取的。远端文本走 textContent。
-      detail.textContent = next.message ?? (next.snapshot ? `采样于 ${clock(next.snapshot.collectedAt)}` : '')
+      detail.textContent = next.message ?? (next.snapshot ? t('monitor.detail.sampled', { time: clock(next.snapshot.collectedAt) }) : '')
     },
     dispose(): void {
       listeners.clear()

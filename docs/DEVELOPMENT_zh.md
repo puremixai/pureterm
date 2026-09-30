@@ -49,6 +49,7 @@ npm run start:desktop
 | `apps/desktop/` | Electron 壳、平台适配、Node Host 子进程入口、载体、诊断和 Desktop 测试 |
 | `apps/web/` | 独立本机 Web 的 Node 入口、HTTP/WS 服务、CLI 和测试 |
 | `packages/protocol/` | 与环境无关的请求、能力、事件和二进制线格式 |
+| `packages/i18n/` | 文案目录与 `t()`；界面文案唯一存在的地方 |
 | `packages/host/` | Cordis Host、SSH/SFTP 服务、主机存储、指纹和凭据接口 |
 | `packages/transport/` | 共享 Web Host 装配、dispatcher、HTTP/WebSocket、客户端身份和就绪校验 |
 | `packages/ui/` | 浏览器 Cordis Client、终端、主机列表、SFTP 面板和浏览器选钥 |
@@ -65,6 +66,7 @@ npm run start:desktop
 
 - `@pureterm/protocol` 不导入本地包、Node、Electron 或 UI。
 - `@pureterm/host` 负责 SSH/SFTP 和存储，但不依赖 Electron、UI 或应用入口。
+- `@pureterm/i18n` 持有文案目录与 `t()`，不依赖任何本地包。只有 UI 与应用入口导入它；`@pureterm/host` 用错误码报告失败，永不导入目录。
 - `@pureterm/ui` 只面向浏览器，不导入 Node、Electron 或 Host。
 - `@pureterm/transport` 通过 Host 公共 API 调用，不读取 `Host.internals`。
 - Electron API 只进入 Desktop 的 `electron/app/`、preload 和诊断；`electron/runtime/`、`electron/host/` 与普通载体不导入 Electron。
@@ -73,6 +75,17 @@ npm run start:desktop
 Desktop 启动独立 Node 模式 Web Host 子进程。`pureterm-app://app/` 窗口通过子进程的回环 WebSocket 处理 SSH/SFTP、主机和 Keychain；私有父子 RPC 负责启动、关闭、系统加密和原生选钥。主进程拥有窗口、safeStorage、更新协调和子进程生命周期；独立 Web 在普通 Node 进程中装配自己的 Web Host。共享实现不代表共享会话或共享数据文件。
 
 Client、载体和 Host 必须提供明确的释放路径。WebSocket 传输保留终端和 SFTP 字节，不提前转成字符串。WebSocket 断开和渲染进程失败时，必须释放该客户端拥有的会话。
+
+## 界面文案
+
+界面能渲染的每一句话都在 `@pureterm/i18n` 里。英文是源语言，也是默认语言；中文是完整译文，而页面上的语言开关是到达它的唯一途径 —— 绝不跟随操作系统语言。
+
+- `packages/i18n/src/en.ts` 是键的来源（`as const`，`MessageKey = keyof typeof en`）。`zh.ts` 的类型是 `Record<MessageKey, string>`，所以漏翻是编译错误，而不是屏幕上的一片空白；占位符集合对不上同样会被挡住。
+- 新增文案先加进 `en.ts`，再加进 `zh.ts`。不要在组件里硬编码文案，也不要用拼接碎片的方式造句 —— 用参数。
+- 失败以错误码跨线，而不是一句话。`HOST_ERROR_CODES` 里每个码在每种语言各有一句话，编译期断言会拒绝任一目录里没有对应句子的码。`@pureterm/host` 只发码，永不导入目录。
+- 由 JavaScript 拼好、之后还要**留在屏幕上**的文案 —— 终端标签页的失败结论、文件表某一行的提示、抽屉的最后一条消息 —— 存的是「键 + 参数」，所以切换语言会把它重画，而不是把上一门语言留在那里。任何会拼句子的插件都必须监听这次变化。
+- 开发者不变量、开发者日志行与独立 Web CLI 自己的文案保持英文且不进目录：它们都没有语言开关，而 CLI 在任何页面存在之前就已经打印完毕。
+- 加译文时不要改动日期或单位格式。日期一律 `YYYY-MM-DD HH:mm`，单位不随开关变化。
 
 ## 质量检查
 

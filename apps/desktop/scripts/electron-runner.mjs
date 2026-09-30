@@ -10,7 +10,7 @@ export const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 // reserved for absent Electron or a recognizable failure before the renderer ran.
 export function decideElectronResult({ output = '', exitCode, signal, timedOut = false,
   spawnError, binaryMissing = false, successMarker = '[SMOKE-OK]', requiredMarkers = [] }) {
-  const applicationFailure = /\[(?:SMOKE|WEB-SMOKE|BOOT)-(?:FAIL|ERROR)\]|ERR_MODULE_NOT_FOUND|Cannot find module|ERR_FILE_NOT_FOUND|Unable to load preload|uncaughtException|UnhandledPromiseRejection|unhandledRejection|\[main\] 启动失败|自动重启失败/i
+  const applicationFailure = /\[(?:SMOKE|WEB-SMOKE|BOOT)-(?:FAIL|ERROR)\]|ERR_MODULE_NOT_FOUND|Cannot find module|ERR_FILE_NOT_FOUND|Unable to load preload|uncaughtException|UnhandledPromiseRejection|unhandledRejection|\[main\] startup failed|automatic restart failed/i
   if (applicationFailure.test(output)) return { code: 1, reason: 'application failure reported' }
   if (output.includes(successMarker)) {
     if (exitCode !== 0 || signal || timedOut || spawnError) return { code: 1, reason: 'success marker followed by an unsuccessful shutdown' }
@@ -19,7 +19,7 @@ export function decideElectronResult({ output = '', exitCode, signal, timedOut =
   }
   if (binaryMissing) return { code: 2, reason: 'Electron binary is not installed' }
   if (spawnError) return { code: 1, reason: `failed to start Electron: ${spawnError.message}` }
-  const rendererRan = /\[main\] 闸门已打开|\[WEB-READY\]|\[SMOKE\]|\[WEB-SMOKE\]/.test(output)
+  const rendererRan = /\[main\] gate open|\[WEB-READY\]|\[SMOKE\]|\[WEB-SMOKE\]/.test(output)
   const nativeFailure = /Missing X server|\$DISPLAY|cannot open display|No usable sandbox|SUID sandbox helper binary|error while loading shared libraries:|Failed to move to new namespace|GPU process isn't usable|The platform failed to initialize/i
   if (!rendererRan && nativeFailure.test(output)) return { code: 2, reason: 'native Chromium rendering environment is unavailable' }
   return { code: 1, reason: timedOut ? 'timeout without successful completion' : `missing success marker (exit=${exitCode}, signal=${signal ?? 'none'})` }

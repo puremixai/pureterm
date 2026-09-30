@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@pureterm/host": "*",
+    "@pureterm/i18n": "*",
     "@pureterm/protocol": "*",
     "@pureterm/transport": "*",
     "@pureterm/ui": "*"
