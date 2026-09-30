@@ -46,7 +46,7 @@ flowchart LR
 | `packages/i18n/` | 文案目录与 `t()`；界面文案唯一存在的地方。Host 用 `@pureterm/protocol` 里的错误码报告失败，永不引入本包 |
 | `packages/protocol/` | 与运行环境无关的协议和公共数据结构 |
 | `packages/transport/` | 共享 Web Host 装配、dispatcher、HTTP/WS 与就绪报文校验 |
-| `packages/ui/` | Cordis Client、页面、终端、SFTP、客户端传输、浏览器私钥选择与会话资源抽屉 |
+| `packages/ui/` | Cordis Client、页面、终端、终端自带的工具轨及其共享面板、SFTP、客户端传输与浏览器私钥选择 |
 | `apps/desktop/electron/app/` | Electron 启动、窗口、系统加密、原生文件选择和更新适配 |
 | `apps/desktop/electron/host/` | 不导入 Electron 的 Node Host 子进程入口 |
 | `apps/desktop/electron/runtime/` | 平台策略、就绪、档案、子进程/RPC、更新协调与资源定位 |
@@ -76,9 +76,9 @@ Desktop 先应用平台策略、注册自定义 scheme 与限定范围的 WebSoc
 
 Host 创建失败会卸载此前装配的服务。关闭 Host 时先取消连接和解密等待、等候已接受的存储修改，再卸载插件树；关闭后拒绝新连接与修改。save/remove 串行执行，加密完成前不会提交新状态。opened 事件无法送到客户端时也会收尾，避免浏览器关闭与握手完成竞态留下连接。
 
-共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、Keychain、hosts、SFTP、monitoring、chrome 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器、私钥草稿和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。Client 卸载会关闭 WebSocket 并释放 Host 中对应的会话。
+共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、session-tools、Keychain、hosts、SFTP、monitoring、chrome 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器、私钥草稿和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。Client 卸载会关闭 WebSocket 并释放 Host 中对应的会话。
 
-资源监控在 Host 上每个会话保留一个订阅，按探测完成时间调度而不是按固定节拍；客户端每个终端标签保留一份记录。客户端只在标签「被选中、已连接、页面可见、资源抽屉已打开、未被手动暂停」时采集，其余状态一律退订，被替换的订阅会在新订阅开始前停掉。Host 的 `releaseClient`、依赖卸载与关闭各自清理自己持有的登记与定时器；缺少监控服务时返回受控的「不支持」，不会妨碍终端或 Host 的释放。
+资源监控在 Host 上每个会话保留一个订阅，按探测完成时间调度而不是按固定节拍；客户端每个终端标签保留一份记录。客户端只在标签「被选中、已连接、页面可见、工具面板停在监控、未被手动暂停」时采集，其余状态一律退订，被替换的订阅会在新订阅开始前停掉。Host 的 `releaseClient`、依赖卸载与关闭各自清理自己持有的登记与定时器；缺少监控服务时返回受控的「不支持」，不会妨碍终端或 Host 的释放。
 
 Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_SANDBOX_FALLBACK=1` 禁止自动无沙箱回退及对应档案回填；`SSH_CORDIS_NO_LAUNCH_PROFILE=1` 禁止读写档案。档案未按 CI、容器或日常环境分区，测试使用临时目录。
 
@@ -88,7 +88,9 @@ Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_
 
 并发握手通过各自 `open()` RPC 的结果关联到标签，不依赖当前选中标签或 `opened` 事件顺序。先于 RPC 返回的事件按会话 ID 缓冲，每会话上限 1 MiB。关闭等待中的标签会立即移除视图，并关闭之后返回的会话；现有协议没有按 open 请求取消握手的接口。卸载整个客户端仍通过传输层释放所有会话和未完成握手。WebSocket 失联会为全部已跟踪会话报告关闭。
 
-`ClientSftp` 共用一个渲染面板，但按会话保留目录、开关、忙碌状态和导航版本。异步结果只更新所属状态，后台请求不会覆盖当前标签的文件。关闭或断开会话会使其文件状态失效。重试凭据在标签存续期间保留于客户端内存，不会序列化为会话恢复数据。无需修改 Host 或通信协议。
+`ClientSessionTools` 持有终端页面右侧那条工具轨：各功能注册进来的工具按钮、唯一的共享面板槽位与分隔条，以及当前选中标签开着哪个工具。选择按终端标签 ID 记忆，所以切换标签会同时换掉面板和分栏比例，标签之间互不继承。有效可见要求「标签已连接 + 工具已注册 + 用户选过它」三者齐备；管理页、断开或失败的标签、已注销的工具都会让工具轨留在原位而面板收起、按钮禁用。工具轨是 `#session-workspace` 里的一列，所以它随终端页面一起退场，不会留在外壳右边缘；它也不参与分栏比例，比例只描述终端与面板两条轨道。释放 scope 会移除按钮、面板和分隔条；功能注销时会清掉所有标签上对它的记忆选择。无需修改 Host 或通信协议。
+
+`ClientSftp` 渲染进那个共享槽位，并按会话保留目录、忙碌状态和导航版本。异步结果只更新所属状态，后台请求不会覆盖当前标签的文件，也不会从当前工具手里抢走槽位。关闭或断开会话会使其文件状态失效。重试凭据在标签存续期间保留于客户端内存，不会序列化为会话恢复数据。
 
 ## 数据与入口能力
 
@@ -110,7 +112,7 @@ SFTP 复用已建立的 SSH 会话，支持目录浏览、单文件上传/下载
 
 ## 验证与上游关系
 
-根 `verify` 构建全部项目，执行类型、边界、Host 子进程/凭据、更新协调、打包隔离、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试，其中包括有界 exec 与 Linux 采集器套件、以及 Web 侧监控路由测试。根 `verify:electron` 覆盖 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 请求、通过真实 Desktop 与独立 Web 界面渲染出的夹具资源快照与会话事实、附带 Desktop Web、渲染崩溃回收、真实更新器的本机下载及校验、独立 Node Web 和 Client 作用域生命周期。独立 Web 流程中 Electron 只充当测试浏览器，Web 服务仍由普通 Node 启动。
+根 `verify` 构建全部项目，执行类型、边界、Host 子进程/凭据、更新协调、打包隔离、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试，其中包括有界 exec 与 Linux 采集器套件、以及 Web 侧监控路由测试。根 `verify:electron` 覆盖 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 请求、通过真实 Desktop 与独立 Web 界面渲染出的夹具资源快照与会话事实、附带 Desktop Web、渲染崩溃回收、真实更新器的本机下载及校验、独立 Node Web 和 Client 作用域生命周期。两个入口流程还会断言终端工具轨——它在工作区里的归属、注册的两颗按钮、工具栏里没有重复入口、文件/监控之间的切换，以及它在管理页上不出现。另有一支独立样式布局检查：它加载构建出来的样式表、字体和真实 xterm，在六个视口、两种主题和两种语言下测量工具轨——52px 宽度、按钮尺寸、归属、沿当前轴向的面板切换、面板各自的滚动，以及开关面板前后同一会话拿到正数终端尺寸。独立 Web 流程中 Electron 只充当测试浏览器，Web 服务仍由普通 Node 启动。
 
 Electron 检查使用隔离的用户目录、受控窗口和严格的成功/失败/退出/超时判定，并回收测试进程。验证禁用自动无沙箱回退，因此不覆盖两代真实 Electron 的自动回退。GUI 鼠标键盘验收不在上述命令内，本机 ssh2 夹具也不代表所有真实 sshd 的兼容性覆盖。
 

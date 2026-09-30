@@ -52,7 +52,7 @@ npm run start:desktop
 | `packages/i18n/` | 文案目录与 `t()`；界面文案唯一存在的地方 |
 | `packages/host/` | Cordis Host、SSH/SFTP 服务、主机存储、指纹和凭据接口 |
 | `packages/transport/` | 共享 Web Host 装配、dispatcher、HTTP/WebSocket、客户端身份和就绪校验 |
-| `packages/ui/` | 浏览器 Cordis Client、终端、主机列表、SFTP 面板和浏览器选钥 |
+| `packages/ui/` | 浏览器 Cordis Client、终端、终端自带的工具轨、主机列表、SFTP 面板和浏览器选钥 |
 | `VERSION.txt` | 所有 workspace 共用的源码版本基准 |
 | `scripts/` | 根 workspace 构建、类型、边界、staging、Windows 安装包和 changelog 检查 |
 | `docs/` | 当前架构/发布/开发文档及带日期的历史记录 |
@@ -114,7 +114,7 @@ npm run verify
 npm run verify:electron
 ```
 
-该命令检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 行为、附带普通浏览器入口、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web 以及共享 Client 作用域生命周期。Desktop 与独立 Web 两条流程还会连上本机 SSH 夹具，在一条仍然承载终端与 SFTP 流量的连接上，断言通过真实界面渲染出的夹具资源快照与会话事实。Electron 显示环境不可用等已识别限制不算通过。
+该命令检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 行为、附带普通浏览器入口、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web 以及共享 Client 作用域生命周期。Desktop 与独立 Web 两条流程还会连上本机 SSH 夹具，在一条仍然承载终端与 SFTP 流量的连接上，断言通过真实界面渲染出的夹具资源快照与会话事实，以及终端工具轨的归属、注册的两颗按钮、文件/监控切换和它在管理页上不出现。另有一支独立样式布局检查：它加载构建出来的样式表、字体和真实 xterm，在六个视口、两种主题和两种语言下测量这条工具轨。Electron 显示环境不可用等已识别限制不算通过。
 
 文档-only 修改至少运行 `npm run release:check` 和 `git diff --check`，并检查所改文档里的相对链接都能解析；这项链接检查靠人工，没有脚本会替你跑。在 PR 中报告实际运行的命令和结果。不要用旧 `dist/`、进程存在或历史通过次数代替成功证据。
 
@@ -141,7 +141,7 @@ node --test apps/web/tests/*.test.mjs
 node apps/web/tests/smoke-browser.mjs
 ```
 
-浏览器冒烟测试只把 Electron 当作测试 Chromium 窗口，Web 服务本身仍是普通 Node 进程，并且必须继续拒绝非回环监听、无效启动 token、无效 Host/Origin 以及浏览器伪造的文件路径。它还会通过真实页面驱动资源抽屉与状态栏的会话事实，所以监控回归会在这里失败，而不是只在 Electron 流程里暴露。
+浏览器冒烟测试只把 Electron 当作测试 Chromium 窗口，Web 服务本身仍是普通 Node 进程，并且必须继续拒绝非回环监听、无效启动 token、无效 Host/Origin 以及浏览器伪造的文件路径。它还会通过真实页面驱动共享工具面板与状态栏的会话事实，所以监控回归会在这里失败，而不是只在 Electron 流程里暴露。
 
 ## 构建与打包
 
