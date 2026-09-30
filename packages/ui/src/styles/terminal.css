@@ -3,7 +3,7 @@
 /* #terminal paints --term-bg, not a chrome token: xterm fills its own canvas
    from that token through getComputedStyle, so anything behind it must be the
    same value or the pane padding shows a seam of a third colour. */
-#terminal { position: relative; display: block; min-width: 0; min-height: 0; background: var(--term-bg); }
+#terminal { position: relative; display: block; grid-row: 2; min-width: 0; min-height: 0; background: var(--term-bg); }
 .terminal-pane { position: absolute; inset: 0; padding: 10px 12px; }
 #terminal .xterm { height: 100%; }
 .xterm .xterm-viewport { background-color: transparent !important; scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
@@ -78,8 +78,10 @@ button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: 
    视口上的覆盖层；滚动的内容只滚自己那一格，图标栏和整个工作区不动。 */
 .session-body { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; }
 /* 终端那一格。失败界面是这一格里的覆盖层（states.css 的 inset: 0），所以失败详情盖住
-   的是终端，不是图标栏 —— 旧的 .session-workspace > .connection-failure 顶部偏移随之作废。 */
-.session-primary { position: relative; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); min-width: 0; min-height: 0; }
+   的是终端，不是图标栏 —— 旧的 .session-workspace > .connection-failure 顶部偏移随之作废。
+   两行：掉线横条那一行是 auto，终端钉在第二行。横条 [hidden] 时整个不参与布局，auto
+   那一行就是 0，终端拿回全部高度 —— 所以断开态多花 32px，连接态一分不多。 */
+.session-primary { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
 /* 槽位本身不画盒子：display: contents 让 #sftp / #session-monitor 直接成为
    .session-content 的网格项，收起时随 [hidden] 一起消失，不留一段空轨道。 */
 .session-tool-panel { display: contents; }
@@ -90,21 +92,13 @@ button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: 
 .session-tool:hover:not(:disabled) { border-color: transparent; color: var(--tx-1); background: var(--c-raised); }
 .session-tool.is-active { color: var(--ac); background: var(--ac-bg); }
 .session-tool:focus-visible { outline: none; box-shadow: var(--ring); }
-/* 原型 ④ 的会话栏是 40px：和顶栏、抽屉头同一条横线。原来 44px 加 6px 16px 的内边距，
-   一个只放状态和两个连接动作的条子占了 56px。文件／监控的入口不在这里，在右侧图标栏。 */
-.session-toolbar { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); background: var(--c-chrome); }
-.session-context { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; font-size: var(--fs-meta); }
-#session-state { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-3); }
-#session-state.connected { color: var(--ok); }
-#session-state.connecting { color: var(--warn); }
-#session-state.failed, #session-state.disconnected { color: var(--err); }
-#session-address { overflow: hidden; color: var(--tx-3); text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
-/* 结论和它依据的那句原文跟着会话走，所以它们住在这一栏里而不是失败页里（见
-   index.html 的注释）。原文截断而不是换行：它是日志里的一行，完整的那份就在失败页
-   的日志块里，这里只是让用户一眼看到是哪一类失败。 */
-.failure-raw { max-width: 240px; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); text-overflow: ellipsis; white-space: nowrap; }
-.failure-raw:empty { display: none; }
-.session-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+/* 掉线横条。会话状态、user@host:port 和「关标签即断开」都在状态栏里，这一条只补状态栏
+   给不出的那一样：一个重连动作。它占 #session-primary 的第一行，压在终端**上方**而不是
+   盖住它 —— 掉线时用户要读的正是回滚缓冲里最后那几行。 */
+.session-ended { display: flex; grid-row: 1; align-items: center; gap: 8px; min-height: 32px; padding: 0 10px; border-bottom: 1px solid var(--line); background: var(--c-raised); font-size: var(--fs-meta); }
+#session-ended-reason { min-width: 0; overflow: hidden; color: var(--tx-2); text-overflow: ellipsis; white-space: nowrap; }
+/* 两颗按钮一起靠右：理由占左边，动作占右边，中间的空隙是 --c-raised 上的一条留白。 */
+#session-reconnect { margin-left: auto; }
 /* 资源抽屉。和 #sftp 共用终端右边那一格，同一时刻只开一个，所以两者的几何一致：
    面板头一行、下面是可滚动的主体。收起时整段 display:none（base.css 的全局 [hidden]
    管着），终端因此一点宽度都不让 —— 打开才成为一列，和文件表并排的那一列。 */
@@ -193,8 +187,5 @@ button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: 
 
 @media (max-width: 620px) {
   .terminal-pane { padding: 8px; }
-  .session-toolbar { gap: 6px; padding: 4px 8px; }
-  .session-context { gap: 6px; }
-  #session-address { font-size: 10px; }
-  .failure-raw { max-width: 120px; }
+  .session-ended { gap: 6px; padding: 0 8px; }
 }

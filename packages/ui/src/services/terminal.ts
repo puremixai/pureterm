@@ -136,11 +136,12 @@ export class ClientTerminal extends Service {
         if (pending) pending.closed = ended
       }
     }), 'terminal.closed')
-    this.scope.listen(view.element('disconnect'), 'click', () => this.disconnect())
     for (const id of ['session-reconnect', 'failure-retry']) {
       this.scope.listen(view.element(id), 'click', () => { if (this.active) void this.retry(this.active.id) })
     }
-    this.scope.listen(view.element('failure-close'), 'click', () => { if (this.active) this.closeTab(this.active.id) })
+    for (const id of ['session-ended-close', 'failure-close']) {
+      this.scope.listen(view.element(id), 'click', () => { if (this.active) this.closeTab(this.active.id) })
+    }
     this.scope.listen(view.element('failure-edit'), 'click', () => {
       const tab = this.active
       if (!tab) return
@@ -302,19 +303,18 @@ export class ClientTerminal extends Service {
     view.element('connection-failure').hidden = !failed
     view.element('terminal').hidden = !!failed
     if (!active) return
-    view.element('session-address').textContent = `${active.request.username}@${active.request.host}:${active.request.port ?? 22}`
-    view.element('session-state').textContent = resolveMessage(active.message)
-    view.element('session-state').className = active.state
-    view.element<HTMLButtonElement>('disconnect').disabled = !active.sessionId
-    view.element('session-reconnect').hidden = active.state !== 'disconnected'
-    // 结论和它的依据只在这一条会话失败时有话说。它们现在住在会话栏里 —— 切标签时
-    // 那一栏是唯一不动的，所以换到一台好着的主机必须把它们收回去，否则上一台的
-    // 「认证被拒绝」会挂在这一台上。认不出阶段时不给结论，这和路由整条收起是同一条
-    // 规矩。
+    // 掉线横条。会话掉线但没失败时终端那一格照常显示、失败页不出现，所以这里是唯一
+    // 一个能原地重连的地方。理由就是 ended() 写进 tab.message 的那句话；连接中、已连接
+    // 和失败三种状态都不该看到它。用户主动断开这条路径已经没有了 —— 关标签就是断开。
+    const ended = active.state === 'disconnected'
+    view.element('session-ended').hidden = !ended
+    view.element('session-ended-reason').textContent = ended ? resolveMessage(active.message) : ''
+    // 结论只在这一条会话失败时有话说，它住在失败页里。失败页是按标签渲染的，所以换到
+    // 一台好着的主机时它随失败页一起收回去，上一台的「认证被拒绝」不会挂在这一台上。
+    // 认不出阶段时不给结论，这和路由整条收起是同一条规矩。
     const chip = view.element('failure-chip')
     chip.textContent = failed && active.failure ? resolveMessage(active.failure.title) : ''
     chip.hidden = !failed || !active.failure?.stage
-    view.element('failure-raw').textContent = failed ? resolveMessage(active.logs.at(-1)) : ''
     if (failed) {
       view.element('failure-title').textContent = active.title
       view.element('failure-endpoint').textContent = `SSH ${active.request.host}:${active.request.port ?? 22}`
@@ -441,14 +441,6 @@ export class ClientTerminal extends Service {
     // 重画，所以它在落笔的那一刻用当时那门语言，之后不跟着变（和远端输出一样）。
     tab.terminal.write(`\r\n\x1b[33m${t('session.terminal.ended', { reason: resolveMessage(reason) })}\x1b[0m\r\n`)
     this.changed(tab)
-  }
-
-  disconnect(): void {
-    const tab = this.active && this.owned.get(this.active.id)
-    if (!tab?.sessionId) return
-    const sessionId = tab.sessionId
-    this.ended(tab, messageKey('error.host.user-disconnected'))
-    this.ctx.clientTransport.api.close(sessionId)
   }
 
   closeTab(id: string): void {

@@ -127,7 +127,6 @@ export const en = {
   // ── session, failure screen, status bar, shortcuts ────────────────
   'session.workspace': 'Terminal session',
   'session.reconnect': 'Reconnect',
-  'session.disconnect': 'Disconnect',
   'session.tools.label': 'Terminal tools',
   'session.tools.files': 'Files',
   'session.tools.monitor': 'Monitor',

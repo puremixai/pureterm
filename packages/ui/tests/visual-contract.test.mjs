@@ -61,7 +61,6 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(css, /#status-hint:empty\s*\{\s*display:\s*none/, 'the hint slot collapses when it has nothing to say')
   assert.match(css, /\.credential-note\s*\{[^}]*font-size:\s*var\(--fs-micro\)/, 'the credential note recedes by type, not by a box')
   assert.match(html, /id="keychain-download"/, 'a saved key can leave the vault as a .pub file')
-  assert.match(css, /\.failure-raw\s*\{[^}]*var\(--font-mono\)/, 'the verdict\'s evidence is machine output')
   assert.match(css, /\.chip\.err\s*\{/, 'the verdict chip needs the error tint it is read through')
   assert.match(html, /id="connection-workspace"/)
   assert.match(html, /id="connection-failure"/)
@@ -209,17 +208,28 @@ test('the prototype\'s rearrangements are in the markup', () => {
   assert.match(html, /class="page-head keychain-head"/,
     'the keychain header is the same row, not an 86px toolbar plus a second heading inside the content')
 
-  // 会话栏和内容之间现在只剩一段注释：终端主体带着它的图标栏，排在这一栏下面。这条
-  // 模式因此放宽到「只允许一段注释夹在中间」。它要证的仍然是同一件事——会话栏就是内容
-  // 上面那一块——而不是被删掉。挂载点本身也断言：它出厂是空的，骨架归 monitor-panel.ts。
-  const toolbar = /<div class="session-toolbar">([\s\S]*?)<\/div>\s*\n(?:\s*<!--[\s\S]*?-->\s*\n)?\s*<div id="session-body" class="session-body">/.exec(html)
-  assert.ok(toolbar, 'the session toolbar is still one block above the session body')
-  assert.match(toolbar[1], /id="failure-chip"/, 'the failure verdict lives in the session toolbar')
-  assert.match(toolbar[1], /id="failure-raw"/, 'and so does the line it was read from')
-  // 文件／监控的入口按钮迁进了右侧图标栏：会话栏里留一颗，就等于同一件事有两个入口。
-  assert.doesNotMatch(toolbar[1], /id="(?:sftp|monitor)-toggle"/,
-    'the tool entries live in the rail, not in the session toolbar')
-  assert.doesNotMatch(html, /class="failure-verdict"/, 'the failure page no longer carries its own verdict row')
+  // 终端屏只有两条固定横带：顶栏和状态栏。会话状态、user@host:port 和「关标签即断开」
+  // 都在状态栏里，会话栏再说一遍就是同一件事有两个来源 —— 所以这一栏被删掉，而不是
+  // 被挪走。内容列自己带着图标栏，现在直接排在顶栏下面。
+  assert.doesNotMatch(html, /class="session-toolbar"/,
+    'the terminal page draws no second band above the session body')
+  assert.match(html, /<div id="session-body" class="session-body">/,
+    'the session body is the workspace\'s first block now that the toolbar is gone')
+  // 掉线横条只补状态栏给不出的那一样：一个重连动作。它是终端那一格的第一行，不是工作区
+  // 的一条横带；出厂 hidden，所以连接态一分高度都不占。
+  assert.match(html, /<div id="session-primary" class="session-primary">[\s\S]*<section id="session-ended" class="session-ended" hidden role="status">[\s\S]*id="session-reconnect"/,
+    'the reconnect banner is a hidden first row of the terminal cell, not a band of the workspace')
+  assert.match(css, /\.session-primary\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/,
+    'an empty banner row collapses, so a connected session keeps the full height')
+  assert.doesNotMatch(html, /id="disconnect"/,
+    'closing the tab is the only way to end a session; a second control would be the same action twice')
+  // 结论回到失败页，挨着它读到的那句话 —— 主机名就是那句话的主人。
+  assert.match(html, /class="failure-heading"[\s\S]*id="failure-chip"/,
+    'the failure verdict reads with the host name it was read from')
+  assert.match(html, /id="failure-chip"[^>]*class="chip err failure-verdict"/,
+    'the verdict keeps the error tint it is read through')
+  assert.doesNotMatch(html, /id="failure-raw"/,
+    'the line the verdict was read from is not printed twice: the failure log already carries it')
   // 工具轨严格属于终端工作区：图标栏、槽位、分隔条和失败界面都在 #session-workspace 里，
   // 而 #session-tools 是最后那一列 —— 不是 #app / .app-body / #main 的全局右边缘。
   assert.match(html, /<div id="session-content" class="session-content">[\s\S]*<div id="session-primary" class="session-primary">[\s\S]*<div id="terminal"[\s\S]*<section id="connection-failure"[\s\S]*<div id="session-grip"[\s\S]*<div id="session-tool-panel"[\s\S]*<section id="sftp"[\s\S]*<section id="session-monitor" class="monitor-drawer" hidden><\/section>[\s\S]*<div id="session-tools"/,

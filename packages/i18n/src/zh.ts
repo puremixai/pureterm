@@ -123,7 +123,6 @@ export const zh: Record<MessageKey, string> = {
   // ── session, failure screen, status bar, shortcuts ────────────────
   'session.workspace': '终端会话',
   'session.reconnect': '重新连接',
-  'session.disconnect': '断开连接',
   'session.tools.label': '终端工具',
   'session.tools.files': '文件',
   'session.tools.monitor': '监控',
