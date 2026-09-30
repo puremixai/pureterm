@@ -75,6 +75,9 @@ kbd { flex: 0 0 auto; padding: 2px 5px; border: 1px solid var(--line-strong); bo
 .failure-host .host-avatar { width: 34px; height: 34px; border: 1px solid var(--err-line); border-radius: var(--r-2); background: var(--err-bg); color: var(--err); font-size: var(--fs-micro); }
 .failure-host h1 { margin: 0 0 3px; overflow: hidden; color: var(--tx-1); font-size: var(--fs-h2); font-weight: 600; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
 .failure-host p { margin: 0; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); }
+/* 主机名和分诊结论同一行：结论说的是这一台主机出了什么事，隔开读就成了两件事。h1 仍然
+   截断（min-width: 0），徽标不参与压缩（.chip 自带 flex: 0 0 auto）。 */
+.failure-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .failure-copy { flex: 0 0 auto; }
 .failure-route { display: flex; align-items: center; margin: 18px 0; }
 /* Unclassified: the route says nothing true, so it says nothing at all and the

@@ -245,27 +245,22 @@
           </section>
 
           <section id="session-workspace" class="session-workspace" hidden aria-label="Terminal session" data-i18n-attr="aria-label:session.workspace">
-            <div class="session-toolbar">
-              <!-- 分诊结论和它依据的那句原文放在这里，而不是失败页里：失败页盖住整块
-                   画布，而这一栏是它上面唯一一直在的东西，所以结论跟着会话走，不跟着
-                   那张覆盖层走。原型 ④ 也把这两样画在顶栏。 -->
-              <div class="session-context"><span id="session-state" role="status"></span><span id="session-address"></span><span id="failure-chip" class="chip err" hidden></span><span id="failure-raw" class="failure-raw"></span></div>
-              <!-- 文件／监控的入口按钮不在这里：它们迁进了右侧图标栏，由各自的功能注册时
-                   建、注销时拆（见 #session-tools）。这一栏只留连接状态和连接操作。 -->
-              <div class="session-actions">
-                <button type="button" id="session-reconnect" class="ghost small" hidden data-i18n="session.reconnect">Reconnect</button>
-                <button type="button" id="disconnect" class="ghost small" disabled data-i18n="session.disconnect">Disconnect</button>
-              </div>
-            </div>
-            <!-- 终端工作区的主体：左边是内容列，右边是常驻的工具图标栏。图标栏是这一格
-                 布局里的一列，不是浮在视口上的覆盖层 —— 它属于终端工作区，进入主机／密钥
-                 页面时整块 #session-workspace 一起退场。 -->
+            <!-- 这一屏只有两条固定横带：顶栏和状态栏。会话状态、user@host:port 和「关标签
+                 即断开」都在状态栏里说过了，这里再说一遍就是同一件事有两个来源；失败结论
+                 也回到了失败页，而它依据的那行原文本来就在那张页的日志块里。 -->
             <div id="session-body" class="session-body">
               <div id="session-content" class="session-content">
                 <!-- 终端那一格。#connection-failure 是这一格里的覆盖层，所以失败详情盖住的
                      是终端，不是图标栏；旧的那条 .session-workspace > .connection-failure
                      顶部偏移假设随之作废。 -->
                 <div id="session-primary" class="session-primary">
+                  <!-- 掉线时的重连入口。它只在自己那一格出现，不占常驻高度，也不盖住
+                       回滚缓冲 —— 用户要读的正是掉线前那几行。 -->
+                  <section id="session-ended" class="session-ended" hidden role="status">
+                    <span id="session-ended-reason"></span>
+                    <button type="button" id="session-reconnect" class="ghost small" data-i18n="session.reconnect">Reconnect</button>
+                    <button type="button" id="session-ended-close" class="ghost small" data-i18n="session.tab.close-title">Close tab (Ctrl+W)</button>
+                  </section>
                   <div id="terminal" class="terminal-surface"></div>
                   <section id="connection-failure" class="connection-failure" hidden aria-labelledby="failure-title">
                     <div class="failure-shell">
@@ -273,7 +268,12 @@
                         <div class="failure-host">
                           <span id="failure-avatar" class="host-avatar" aria-hidden="true">SSH</span>
                           <div>
-                            <h1 id="failure-title">Connection failed</h1>
+                            <!-- 结论挨着它读到的那句话：主机名旁边那颗徽标就是分诊结论，
+                                 下面一行是它读自哪一段。 -->
+                            <div class="failure-heading">
+                              <h1 id="failure-title">Connection failed</h1>
+                              <span id="failure-chip" class="chip err failure-verdict" hidden></span>
+                            </div>
                             <p id="failure-endpoint">SSH —</p>
                           </div>
                         </div>

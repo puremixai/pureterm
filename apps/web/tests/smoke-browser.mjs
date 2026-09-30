@@ -84,7 +84,8 @@ try {
       assert.deepEqual(monitor.rail.closed.controls,
         { 'sftp-toggle': 'sftp', 'monitor-toggle': 'session-monitor' }, 'each tool controls its own panel')
       assert.equal(monitor.rail.closed.named, true, 'icon-only rail buttons must still carry an accessible name')
-      assert.equal(monitor.rail.closed.toolbarDuplicates, 0, 'the toolbar must not keep duplicate tool entries')
+      assert.deepEqual(monitor.rail.closed.bands, ['session-body'],
+        'the terminal workspace draws one band, the session body: the session toolbar is gone')
       assert.equal(monitor.rail.closed.files || monitor.rail.closed.monitor, false, 'a new session starts with no panel')
       assert.deepEqual([monitor.rail.monitor.files, monitor.rail.monitor.monitor], [false, true], 'Monitor replaces the closed slot')
       assert.deepEqual([monitor.rail.files.files, monitor.rail.files.monitor], [true, false], 'Files replaces Monitor in the one slot')

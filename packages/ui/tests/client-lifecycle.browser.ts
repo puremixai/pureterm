@@ -1401,8 +1401,11 @@ async function runChecks() {
 
     assert(!!rail && input('session-workspace').contains(rail), 'rail must belong to this terminal workspace')
 
-    assert(document.querySelectorAll('.session-toolbar #sftp-toggle, .session-toolbar #monitor-toggle').length === 0,
-      'tools must not have duplicate toolbar entries')
+    // 会话栏已经删掉了，「工具入口只有一个」现在读作：页面里除了图标栏那两颗按钮，没有
+    // 别的地方再放一份。
+    assert(document.querySelectorAll('.session-toolbar').length === 0
+      && document.querySelectorAll('#sftp-toggle, #monitor-toggle').length === 2,
+      'the tools have one home, the rail, with no second band to duplicate them')
 
     assert([...rail.children].map(node => node.id).join(',') === 'sftp-toggle,monitor-toggle',
       'the rail keeps the fixed Files-then-Monitor order regardless of mount order')
@@ -1487,7 +1490,11 @@ async function runChecks() {
     assert(input('session-workspace').hidden && input('session-tool-panel').hidden,
       'a management page shows neither the rail nor its panel')
 
-    assert(document.querySelector('.session-toolbar #sftp-toggle') === null, 'and no tool entry survives in the session toolbar')
+    // 工具入口不在别处另有一份这件事，已经在上面按「页面里只有图标栏那两颗」断言过了；
+    // 这里要证的是它们跟着工作区一起离场 —— 按钮本身还在 DOM 里，只是连同图标栏一起
+    // 被隐藏的祖先带走，所以读的是祖先，不是按钮自己的 hidden。
+    assert(input('session-workspace').contains(input('session-tools')) && input('session-tools').children.length === 2,
+      'the rail and its two entries leave the screen with the workspace, not on their own')
 
     click('nav-hosts'); await tick()
 
@@ -1694,7 +1701,13 @@ async function runChecks() {
 
     assert(restore.stats.lists === 1 && input('sftp-path').value === '/home', 'the connected tab listed its directory')
 
-    click('disconnect'); await tick()
+    // 掉线由宿主那一侧报 closed 产生，标签留着。用户主动断开那条路径已经没有了 ——
+    // 关标签才是断开，所以这里驱动的是宿主。
+    restore.api.close(restoreSessions[0]!); await tick()
+
+    assert(!input('session-ended').hidden, 'a dropped session shows the reconnect banner in the terminal cell')
+
+    assert(input('session-ended-reason').textContent !== '', 'and the banner says why the connection ended')
 
     assert(input('sftp-toggle').disabled && input('monitor-toggle').disabled, 'a disconnected tab disables both tools')
 
@@ -1703,6 +1716,8 @@ async function runChecks() {
     assert(!input('session-tools').hidden, 'but the rail stays on screen')
 
     click('session-reconnect'); await tick()
+
+    assert(input('session-ended').hidden, 'reconnecting takes the banner away again')
 
     assert(restoreSessions.length === 2 && restoreSessions[1] !== restoreSessions[0], 'reconnecting opens a new session')
 
@@ -1714,7 +1729,7 @@ async function runChecks() {
 
     assert(input('sftp-path').value === '/home', 'the new session shows its own listing')
 
-    checks.push('tools collapse while disconnected and restore with fresh data')
+    checks.push('a drop shows the reconnect banner, collapses the tools, and both restore with fresh data')
 
     await client.dispose()
 
@@ -2162,9 +2177,9 @@ async function runChecks() {
 
     assert(monitorValue('cpu') === '12.5%', 'the connected session draws its sample')
 
-    click('disconnect'); await tick()
+    ending.api.close(endedSessions[0]!); await tick()
 
-    assert(ending.monitor.stopsOf(beforeEnd.subscriptionId) === 1, 'disconnecting retires the subscription')
+    assert(ending.monitor.stopsOf(beforeEnd.subscriptionId) === 1, 'a dropped session retires the subscription')
 
     assert(monitorStatus() === 'disconnected', 'a closed session says the connection ended')
 
@@ -2188,7 +2203,7 @@ async function runChecks() {
 
     await client.dispose()
 
-    checks.push('disconnect, reconnect with a new session ID and tab close all retire the subscription and clear the per-tab numbers')
+    checks.push('a dropped session, a reconnect with a new session ID and a tab close all retire the subscription and clear the per-tab numbers')
 
 
 
