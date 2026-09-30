@@ -1,7 +1,7 @@
 import { Service, type Context } from 'cordis'
 import { MAX_TRANSFER_BYTES, type SftpDir, type SftpEntry } from '@pureterm/protocol'
 import { t } from '@pureterm/i18n'
-import { ClientScope, type ClientView } from '../client-runtime.js'
+import { ClientScope } from '../client-runtime.js'
 import { errorMessage } from '../failure-diagnostics.js'
 import { messageKey, messageText, resolveMessage, type MessageText } from '../message-text.js'
 import { createSftpPanel, type SftpView } from '../sftp-panel.js'
@@ -15,7 +15,6 @@ interface FileState {
   sessionId: string
   directory: SftpDir | null
   navigation: number
-  open: boolean
   busy: boolean
   /**
    * 面板底下那一行提示。**存的是 key 不是句子**：它会一直留在屏幕上（「正在下载
@@ -25,30 +24,19 @@ interface FileState {
   kind: 'ok' | 'err' | 'pending' | ''
 }
 
-/** 侧向分栏的默认比例，取自原型的 1.35fr : 1fr（含 5px 把手）。 */
-const DEFAULT_SPLIT = 0.574
-/** 两侧各自的下界，与 terminal.css 里 minmax 的那两个数一致，改一处要改两处。 */
-const MIN_TERMINAL = 0.22
-const MAX_TERMINAL = 0.78
-const NARROW = '(max-width: 820px)'
-
-/** The panel is shared, while every session retains its directory, requests and open state. */
+/** Every session retains its directory, requests and busy state; the panel slot, the tool selection and the splitter are shared. */
 export class ClientSftp extends Service {
-  static inject = ['clientView', 'clientTransport', 'clientTerminal']
+  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientSessionTools']
   readonly scope: ClientScope
   private readonly panel: SftpView
   private readonly states = new Map<string, FileState>()
   private renderedSession: string | null = null
-  private grip: HTMLElement | null = null
-  /** 上一次广播出去的面板开合状态，用来避免每次 sync 都重复发同一条事件。 */
-  private announced = false
 
   constructor(ctx: Context) {
     super(ctx, 'clientSftp')
     this.scope = new ClientScope(ctx)
     const view = ctx.clientView
     const element = view.element('sftp')
-    const toggle = view.element<HTMLButtonElement>('sftp-toggle')
     this.panel = createSftpPanel(element, {
       onNavigate: path => { const state = this.current(); if (state) void this.load(state, path) },
       onRefresh: () => { const state = this.current(); if (state) void this.load(state, state.directory?.path ?? '.') },
@@ -56,30 +44,32 @@ export class ClientSftp extends Service {
       onDelete: entry => void this.remove(entry),
       onUpload: file => void this.upload(file),
       onCreate: name => void this.mkdir(name),
-      onClose: () => this.setOpen(false),
+      onClose: () => this.ctx.clientSessionTools.close(),
     })
+    // 图标栏那一颗按钮归共享服务，但它的生命跟着这个功能：注销时按钮一起消失，
+    // 各标签记下的「文件」选择也一起清掉。
+    this.scope.onDispose(ctx.clientSessionTools.register({
+      id: 'files',
+      buttonId: 'sftp-toggle',
+      panelId: 'sftp',
+      iconClass: 'ti ti-folder',
+      labelKey: 'session.tools.files',
+      available: tab => !!tab && tab.state === 'connected' && !!tab.sessionId,
+    }))
     this.scope.onDispose(() => {
       this.states.clear()
       this.panel.dispose()
       element.hidden = true
-      toggle.disabled = true
-      view.element('session-workspace').classList.remove('files-open')
-      this.grip?.remove()
-      this.grip = null
     })
-    this.ensureGrip(view)
-    this.scope.listen(toggle, 'click', () => { if (ctx.clientTerminal.sessionId) this.setOpen(element.hidden) })
-    // Ctrl/Cmd+E 归这里，因为面板的开合只有这一处知道（ClientTerminal 不能反过来
-    // 注入 ClientSftp：那边已经注入了它，那样成环）。和 Ctrl+W 一样是抢来的键 ——
-    // readline 里 Ctrl+E 是移到行尾 —— 项目已经为 Ctrl+W 做过同样的取舍，这里保持一致，
-    // 并且对话框里写着它。
+    // Ctrl/Cmd+E 归这里，因为「文件」这个语义是这个功能的。开合本身交给共享服务，
+    // 所以面板收起／展开和点击图标走的是同一条路。
     this.scope.listen(view.document, 'keydown', event => {
       const key = event as KeyboardEvent
       if (!(key.ctrlKey || key.metaKey) || key.key.toLowerCase() !== 'e') return
       if (view.element<HTMLDialogElement>('shortcuts-dialog').open || !ctx.clientTerminal.sessionId) return
       key.preventDefault()
       key.stopPropagation()
-      this.setOpen(element.hidden)
+      ctx.clientSessionTools.toggle('files')
     }, true)
     ctx.on('client/session-change', () => this.sync())
     ctx.on('client/connection-change', () => this.sync())
@@ -91,30 +81,25 @@ export class ClientSftp extends Service {
       this.sync()
     })
     /*
-     * 文件面板和资源面板共用终端右边那一格抽屉，同一时刻只开一个。资源面板先开时
-     * 这里收起自己 —— 收起本身不会让对方再动，因为对方只在「别人打开」时反应，所以
-     * 不会互相触发。随后那次 sync 会把共用的把手按新的可见性重画：资源面板开着时
-     * 它也该在，否则那一格就没有可拖的线。
+     * 工具选择变了。展开时才按需拉一次当前目录；已经加载过的目录不重复请求，收起时
+     * 什么都不做 —— 槽位的 hidden 由共享服务写，这里只管自己的业务数据。
      */
-    ctx.on('client/drawer-change', (drawer, open) => {
+    ctx.on('client/session-tools-change', change => {
       if (!this.scope.alive) return
-      const state = this.current()
-      if (drawer === 'monitor' && open && state?.open) state.open = false
+      if (change.tool === 'files') {
+        const state = this.current()
+        if (state && !state.directory && !state.busy) void this.load(state, '.')
+      }
       this.sync()
     })
     this.sync()
   }
 
   /**
-   * 当前会话的文件面板开着吗。
-   *
-   * 和 current() 分开写：那个方法会顺手建一份状态，而状态栏每次重画都会问一次
-   * 这个问题 —— 一个 getter 不该有副作用。所以这里只读，不建。
+   * 当前会话的文件面板开着吗。委托给共享服务：它才是「哪一格开着」的唯一真相，
+   * 这里不再存第二份。
    */
-  get open(): boolean {
-    const sessionId = this.ctx.clientTerminal.sessionId
-    return !!sessionId && !!this.states.get(sessionId)?.open
-  }
+  get open(): boolean { return this.ctx.clientSessionTools.isOpen('files') }
 
   private current(): FileState | null {
     const tab = this.ctx.clientTerminal.active
@@ -122,7 +107,7 @@ export class ClientSftp extends Service {
     let state = this.states.get(tab.sessionId)
     if (!state) {
       state = { tabId: tab.id, sessionId: tab.sessionId, directory: null, navigation: 0,
-        open: false, busy: false, hint: messageKey('sftp.hint.closed'), kind: '' }
+        busy: false, hint: messageKey('sftp.hint.closed'), kind: '' }
       this.states.set(tab.sessionId, state)
     }
     return state
@@ -133,101 +118,10 @@ export class ClientSftp extends Service {
       this.ctx.clientTerminal.tabs.some(tab => tab.id === state.tabId && tab.sessionId === state.sessionId)
   }
 
-  /**
-   * 把手建在 #terminal 之后、#sftp 之前 —— `.session-content` 没有 id（加一个就会
-   * 变成 ClientView.element 的加载依赖），而 #terminal 是它的第一个孩子。
-   */
-  private ensureGrip(view: ClientView): void {
-    const terminal = view.element('terminal')
-    const content = terminal.parentElement
-    if (!content) return
-    const element = view.document.createElement('div')
-    element.className = 'session-grip'
-    element.setAttribute('role', 'separator')
-    // aria-orientation 说的是分隔条自己的朝向：这里它竖着立在两栏之间。
-    element.setAttribute('aria-orientation', 'vertical')
-    element.setAttribute('tabindex', '0')
-    element.hidden = true
-    terminal.after(element)
-    this.grip = element
-    this.scope.onDispose(() => { this.grip = null })
-    let drag: { start: number; ratio: number; span: number; vertical: boolean } | null = null
-    const narrow = (): boolean => view.window.matchMedia(NARROW).matches
-    this.scope.listen(element, 'pointerdown', (event) => {
-      const pointer = event as PointerEvent
-      const vertical = narrow()
-      const box = content.getBoundingClientRect()
-      drag = {
-        start: vertical ? pointer.clientY : pointer.clientX,
-        ratio: this.currentRatio(),
-        span: (vertical ? box.height : box.width) || 1,
-        vertical,
-      }
-      element.setPointerCapture(pointer.pointerId)
-      event.preventDefault()
-    })
-    this.scope.listen(element, 'pointermove', (event) => {
-      if (!drag) return
-      const pointer = event as PointerEvent
-      const moved = (drag.vertical ? pointer.clientY - drag.start : pointer.clientX - drag.start) / drag.span
-      this.ctx.clientTerminal.setSplit(this.clamp(drag.ratio + moved))
-      this.paintSplit()
-    })
-    const release = (event: Event): void => {
-      if (!drag) return
-      drag = null
-      element.releasePointerCapture((event as PointerEvent).pointerId)
-    }
-    this.scope.listen(element, 'pointerup', release)
-    this.scope.listen(element, 'pointercancel', release)
-    // 只有鼠标能拖的分隔条，对键盘用户等于不存在。步长 2%，Shift 10%，Home 回默认。
-    this.scope.listen(element, 'keydown', (event) => {
-      const key = event as KeyboardEvent
-      const step = key.shiftKey ? 0.1 : 0.02
-      if (key.key === 'ArrowLeft' || key.key === 'ArrowUp') this.ctx.clientTerminal.setSplit(this.clamp(this.currentRatio() - step))
-      else if (key.key === 'ArrowRight' || key.key === 'ArrowDown') this.ctx.clientTerminal.setSplit(this.clamp(this.currentRatio() + step))
-      else if (key.key === 'Home') this.ctx.clientTerminal.setSplit(null)
-      else return
-      event.preventDefault()
-      this.paintSplit()
-    })
-  }
-
-  private currentRatio(): number { return this.ctx.clientTerminal.active?.split ?? DEFAULT_SPLIT }
-
-  private clamp(ratio: number): number { return Math.min(MAX_TERMINAL, Math.max(MIN_TERMINAL, ratio)) }
-
-  /** 比例只存在 tab 上，所以这里每次都从 tab 读，屏幕上不会有第二个值。 */
-  private paintSplit(): void {
-    const content = this.grip?.parentElement
-    if (!content || !this.grip) return
-    const stored = this.ctx.clientTerminal.active?.split ?? null
-    const ratio = this.clamp(stored ?? DEFAULT_SPLIT)
-    const percent = Math.round(ratio * 100)
-    // aria-label 也在这里写：它是把手唯一的名字，而名字是会说两种语言的。
-    this.grip.setAttribute('aria-label', t('sftp.grip.label'))
-    this.grip.setAttribute('aria-valuenow', String(percent))
-    this.grip.setAttribute('aria-valuemin', String(Math.round(MIN_TERMINAL * 100)))
-    this.grip.setAttribute('aria-valuemax', String(Math.round(MAX_TERMINAL * 100)))
-    this.grip.setAttribute('aria-valuetext', t('sftp.grip.value', { percent }))
-    if (this.ctx.clientView.window.matchMedia(NARROW).matches) {
-      content.style.gridTemplateColumns = ''
-      content.style.gridTemplateRows = stored === null
-        ? ''
-        : `minmax(120px, ${(ratio * 100).toFixed(3)}fr) var(--grip-w) minmax(160px, ${((1 - ratio) * 100).toFixed(3)}fr)`
-      return
-    }
-    content.style.gridTemplateRows = ''
-    content.style.gridTemplateColumns = stored === null
-      ? ''
-      : `minmax(240px, ${(ratio * 100).toFixed(3)}fr) var(--grip-w) minmax(220px, ${((1 - ratio) * 100).toFixed(3)}fr)`
-  }
-
   private sync(): void {
     if (!this.scope.alive) return
     for (const [id, state] of this.states) if (!this.live(state)) this.states.delete(id)
     const state = this.current()
-    const view = this.ctx.clientView
     if (this.renderedSession !== (state?.sessionId ?? null)) {
       this.panel.setEnabled(false)
       this.panel.setBusy(false)
@@ -235,22 +129,6 @@ export class ClientSftp extends Service {
       this.renderedSession = state?.sessionId ?? null
     }
     this.panel.setEnabled(!!state)
-    const open = !!state?.open
-    if (open !== this.announced) {
-      this.announced = open
-      this.ctx.emit('client/files-change', open)
-      this.ctx.emit('client/drawer-change', 'files', open)
-    }
-    view.element('sftp').hidden = !open
-    // 把手是两格抽屉共用的：只要有一格开着，它就该在，否则资源面板打开时没有可拖的线。
-    if (this.grip) this.grip.hidden = !(open || !view.element('session-monitor').hidden)
-    this.paintSplit()
-    view.element('session-workspace').classList.toggle('files-open', open)
-    const toggle = view.element<HTMLButtonElement>('sftp-toggle')
-    toggle.disabled = !state
-    toggle.textContent = open ? t('sftp.toggle.open') : t('sftp.toggle.closed')
-    toggle.setAttribute('aria-expanded', String(open))
-    toggle.setAttribute('aria-controls', 'sftp')
     if (state) {
       this.panel.setBusy(state.busy)
       this.panel.render(state.directory)
@@ -262,14 +140,6 @@ export class ClientSftp extends Service {
 
   private show(state: FileState): void {
     if (this.current() === state) this.sync()
-  }
-
-  private setOpen(open: boolean): void {
-    const state = this.current()
-    if (!state) return
-    state.open = open
-    this.sync()
-    if (open && !state.directory && !state.busy) void this.load(state, '.')
   }
 
   private async load(state: FileState, path: string): Promise<boolean> {

@@ -10,7 +10,12 @@ test('the repository keeps workspace versions and a dated release section in syn
   // workspace cannot be added without a version that matches VERSION.txt.
   assert.equal(result.versions.length, 8)
   assert.equal(result.entry.version, 'Unreleased')
-  assert.match(result.entry.body, /Keep this section updated/)
+  // The unreleased section used to hold only its "keep this section updated"
+  // placeholder, which is what this assertion used to match. Real entries have
+  // landed since, so the same guard now reads the shape they must have instead:
+  // at least one category heading, because `validateProject` rejects an
+  // ungrouped body and the placeholder itself was never a change.
+  assert.match(result.entry.body, /^### (Added|Changed|Fixed|Security)$/m)
   assert.equal(result.changelog.entries.find(entry => entry.version === '0.1.0-alpha.1')?.date, '2026-09-16')
 })
 

@@ -50,14 +50,6 @@ declare module 'cordis' {
      * 注入 ClientKeychain —— 反向再注入一次就是一个环，所以走事件。
      */
     'client/host-counts'(counts: Record<string, number>): void
-    /** 文件面板开合。状态栏要拿它决定要不要提示「拖动竖线可调整比例」。 */
-    'client/files-change'(open: boolean): void
-    /**
-     * 右侧抽屉（文件或资源）的开合。两者共用终端右边那一格，同一时刻只开一个，所以
-     * 谁开了就广播自己，另一个收到后收起自己；把手和状态栏也据此重新判断 —— 它们
-     * 只知道「有一格抽屉开着」，不关心是哪一格。`drawer` 是刚变化的那一个。
-     */
-    'client/drawer-change'(drawer: 'files' | 'monitor', open: boolean): void
     'client/edit-connection'(request: TerminalOpenRequest, title: string): void
     'client/keychain-change'(): void
     /**

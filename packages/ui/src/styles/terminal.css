@@ -74,8 +74,24 @@ button.sftp-crumb:hover:not(:disabled) { border-color: transparent; background: 
 }
 
 .session-workspace { position: absolute; inset: 0; display: flex; min-height: 0; flex-direction: column; overflow: hidden; background: var(--c-canvas); }
+/* 终端工作区的主体：内容列 + 常驻的工具图标栏。图标栏是这一格布局里的一列，不是浮在
+   视口上的覆盖层；滚动的内容只滚自己那一格，图标栏和整个工作区不动。 */
+.session-body { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; }
+/* 终端那一格。失败界面是这一格里的覆盖层（states.css 的 inset: 0），所以失败详情盖住
+   的是终端，不是图标栏 —— 旧的 .session-workspace > .connection-failure 顶部偏移随之作废。 */
+.session-primary { position: relative; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); min-width: 0; min-height: 0; }
+/* 槽位本身不画盒子：display: contents 让 #sftp / #session-monitor 直接成为
+   .session-content 的网格项，收起时随 [hidden] 一起消失，不留一段空轨道。 */
+.session-tool-panel { display: contents; }
+/* 图标栏：宽度取 --rail-w，按钮与左侧导航同一套 —— 34px 方块、18px 字形、--r-2 圆角。
+   选中态用强调色，焦点用 --ring，禁用按钮由 base.css 统一降到 0.42 透明度。 */
+.session-tools { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px; width: var(--rail-w); min-height: 0; padding: 8px 0; overflow: hidden; border-left: 1px solid var(--line); background: var(--c-chrome); }
+.session-tool { width: 34px; min-height: 34px; height: 34px; padding: 0; border-color: transparent; border-radius: var(--r-2); background: transparent; color: var(--tx-3); font-size: 18px; line-height: 1; }
+.session-tool:hover:not(:disabled) { border-color: transparent; color: var(--tx-1); background: var(--c-raised); }
+.session-tool.is-active { color: var(--ac); background: var(--ac-bg); }
+.session-tool:focus-visible { outline: none; box-shadow: var(--ring); }
 /* 原型 ④ 的会话栏是 40px：和顶栏、抽屉头同一条横线。原来 44px 加 6px 16px 的内边距，
-   一个只放状态和三个按钮的条子占了 56px。 */
+   一个只放状态和两个连接动作的条子占了 56px。文件／监控的入口不在这里，在右侧图标栏。 */
 .session-toolbar { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); background: var(--c-chrome); }
 .session-context { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; font-size: var(--fs-meta); }
 #session-state { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-3); }

@@ -52,7 +52,7 @@ Do not commit `.env` files, passwords, private keys, tokens, certificates, or re
 | `packages/i18n/` | Message catalog and `t()`; the only place user-facing copy lives |
 | `packages/host/` | Cordis Host, SSH/SFTP services, host storage, fingerprints, and credential interfaces |
 | `packages/transport/` | Shared Web Host assembly, dispatcher, HTTP/WebSocket, client identity, and readiness validation |
-| `packages/ui/` | Browser Cordis Client, terminal, host list, SFTP panel, and browser key picker |
+| `packages/ui/` | Browser Cordis Client, terminal, terminal-local tool rail, host list, SFTP panel, and browser key picker |
 | `VERSION.txt` | Source version baseline shared by all workspaces |
 | `scripts/` | Root workspace build, type, boundary, staging, Windows package, and changelog checks |
 | `docs/` | Current architecture/release/development docs and dated historical records |
@@ -114,7 +114,7 @@ Changes involving Electron windows, IPC, preload, child processes, update behavi
 npm run verify:electron
 ```
 
-This command verifies Desktop custom-scheme boot, WebSocket SSH/Keychain behavior, the attached browser entry, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, and shared Client scope lifecycle. The Desktop and standalone Web flows also connect to the local SSH fixture and assert a fixture resource snapshot with its session facts rendered through the real UI, on a connection that still carries terminal and SFTP traffic. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
+This command verifies Desktop custom-scheme boot, WebSocket SSH/Keychain behavior, the attached browser entry, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, and shared Client scope lifecycle. The Desktop and standalone Web flows also connect to the local SSH fixture and assert a fixture resource snapshot with its session facts rendered through the real UI, on a connection that still carries terminal and SFTP traffic, plus the terminal tool rail’s ancestry, its two registered buttons, Files/Monitor switching and its absence on management pages. A separate styled-layout check serves the built stylesheet, fonts and a real xterm and measures that rail across six viewports, both themes and both languages. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
 
 Documentation-only changes must run `npm run release:check` and `git diff --check`, and check that relative links in the documents they touched resolve; the link check is manual because no script performs it. Report the actual commands and results in the pull request. Do not use an old `dist/` directory, process existence, or a historical pass count as evidence of success.
 
@@ -141,7 +141,7 @@ node --test apps/web/tests/*.test.mjs
 node apps/web/tests/smoke-browser.mjs
 ```
 
-The browser smoke test uses Electron only as a test Chromium window. The Web service itself remains an ordinary Node process and must continue to reject non-loopback listeners, invalid startup tokens, invalid Host/Origin headers, and browser fake file paths. It also drives the resource drawer and the status bar’s session facts through the real page, so a monitor regression fails here rather than only in the Electron flow.
+The browser smoke test uses Electron only as a test Chromium window. The Web service itself remains an ordinary Node process and must continue to reject non-loopback listeners, invalid startup tokens, invalid Host/Origin headers, and browser fake file paths. It also drives the shared tool panel and the status bar’s session facts through the real page, so a monitor regression fails here rather than only in the Electron flow.
 
 ## Building and packaging
 

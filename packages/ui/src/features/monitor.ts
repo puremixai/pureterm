@@ -27,7 +27,6 @@ type CollectionStatus = 'loading' | 'ready' | 'partial' | 'unsupported' | 'error
  */
 interface TabMonitor {
   sessionId: string | null
-  open: boolean
   paused: boolean
   status: CollectionStatus
   snapshot: MonitorSnapshot | null
@@ -85,41 +84,35 @@ function newSubscriptionId(): string {
  * transport 取，所以卸载这个插件不会让状态栏空掉。
  */
 export class ClientMonitor extends Service {
-  static inject = ['clientView', 'clientTransport', 'clientTerminal']
+  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientSessionTools']
   private readonly scope: ClientScope
   private readonly panel: MonitorPanel
-  private readonly toggle: HTMLButtonElement
   private readonly tabs = new Map<string, TabMonitor>()
   private current: Subscription | null = null
-  /** 上一次广播出去的抽屉开合，用来只在真的变化时才发一条 drawer-change。 */
-  private announced = false
 
   constructor(ctx: Context) {
     super(ctx, 'clientMonitor')
     this.scope = new ClientScope(ctx)
     const view = ctx.clientView
-    /*
-     * 开关由这个插件建、也由它拆：它住在会话栏里（`#sftp-toggle` 左边），但它的生命
-     * 属于监控 —— 卸载监控插件时这一颗按钮必须跟着走，而不是留在页面上按一个已经
-     * 没有订阅的面板。
-     */
-    this.toggle = view.document.createElement('button')
-    this.toggle.type = 'button'
-    this.toggle.id = 'monitor-toggle'
-    this.toggle.className = 'ghost small'
-    this.toggle.disabled = true
-    view.element('sftp-toggle').before(this.toggle)
-    this.panel = createMonitorPanel(view.element('session-monitor'), this.toggle, {
-      toggleOpen: () => this.setOpen(!this.activeState()?.open),
+    this.panel = createMonitorPanel(view.element('session-monitor'), {
+      close: () => this.ctx.clientSessionTools.close(),
       togglePaused: () => this.setPaused(!this.activeState()?.paused),
       retry: () => this.retry(),
     })
+    // 图标栏那一颗按钮归共享服务，但它的生命属于监控：卸载监控插件时按钮一起走，
+    // 各标签记下的「监控」选择也一起清掉。
+    this.scope.onDispose(ctx.clientSessionTools.register({
+      id: 'monitor',
+      buttonId: 'monitor-toggle',
+      panelId: 'session-monitor',
+      iconClass: 'ti ti-activity',
+      labelKey: 'session.tools.monitor',
+      available: tab => !!tab && tab.state === 'connected' && !!tab.sessionId,
+    }))
     this.scope.onDispose(() => {
       if (this.current) this.retire(this.current, true)
       this.tabs.clear()
       this.panel.dispose()
-      this.toggle.remove()
-      view.element('session-workspace').classList.remove('monitor-open')
     })
 
     const api = ctx.clientTransport.api
@@ -133,21 +126,15 @@ export class ClientMonitor extends Service {
     ctx.on('client/session-change', () => this.sync())
     ctx.on('client/connection-change', () => this.sync())
     // 换语言：sync() 是幂等的，而且以 render 收尾，所以重跑一遍就够了 —— 状态文字、
-    // 指标名、开关的字形说明、以及底下那一行（存的是 key）都会跟着变。
+    // 指标名、以及底下那一行（存的是 key）都会跟着变。图标栏按钮的名字归共享服务。
     ctx.on('client/locale-change', () => this.sync())
     ctx.on('client/tab-closed', tabId => {
       if (this.current?.tabId === tabId) this.retire(this.current)
       this.tabs.delete(tabId)
       this.sync()
     })
-    /*
-     * 资源面板和文件面板共用右侧那一格抽屉，同一时刻只开一个。文件面板先打开时这里
-     * 收起来 —— 只对「别人刚打开」这件事作反应，自己的开合由 sync 广播出去。
-     */
-    ctx.on('client/drawer-change', (drawer, open) => {
-      if (!this.scope.alive) return
-      if (drawer === 'files' && open && this.activeState()?.open) this.setOpen(false)
-    })
+    // 工具选择变了：展开状态由共享服务决定，这里只把「该不该采」重新对齐一次。
+    ctx.on('client/session-tools-change', () => this.sync())
     this.scope.listen(view.document, 'visibilitychange', () => this.sync())
     /*
      * 过期不靠事件驱动：远端停止推送时本地什么都不会发生，所以得有人过一会儿问一次
@@ -176,18 +163,12 @@ export class ClientMonitor extends Service {
   private stateOf(tab: TerminalTab): TabMonitor {
     let state = this.tabs.get(tab.id)
     if (!state) {
-      // 默认收起、未暂停：刚打开的会话在用户展开之前不采集任何东西。
-      state = { sessionId: null, open: false, paused: false, status: 'loading', snapshot: null, receivedAt: 0, history: [], message: undefined }
+      // 默认未暂停；「收起」不是这里的状态 —— 它由共享服务按工具选择决定，刚打开的
+      // 会话在用户展开之前不采集任何东西。
+      state = { sessionId: null, paused: false, status: 'loading', snapshot: null, receivedAt: 0, history: [], message: undefined }
       this.tabs.set(tab.id, state)
     }
     return state
-  }
-
-  private setOpen(open: boolean): void {
-    const state = this.activeState()
-    if (!state) return
-    state.open = open
-    this.sync()
   }
 
   private setPaused(paused: boolean): void {
@@ -200,14 +181,13 @@ export class ClientMonitor extends Service {
   /**
    * 「现在就要一组新数字」。
    *
-   * 它同时展开并清掉手动暂停，因为这两个状态下按钮本来无事可做 —— 一个点了没反应的
-   * 重试比一个不存在更糟。新订阅 = 新 ID = 宿主的 CPU 与网络基线重来，这正是重试的
-   * 意思：上一组增量算不出来，换一组重新开始。
+   * 它清掉手动暂停，因为暂停状态下按钮本来无事可做 —— 一个点了没反应的重试比一个
+   * 不存在更糟。新订阅 = 新 ID = 宿主的 CPU 与网络基线重来，这正是重试的意思：
+   * 上一组增量算不出来，换一组重新开始。面板此刻已经开着，所以这里不动工具选择。
    */
   private retry(): void {
     const state = this.activeState()
     if (!state) return
-    state.open = true
     state.paused = false
     if (this.current) this.retire(this.current)
     this.sync()
@@ -218,11 +198,12 @@ export class ClientMonitor extends Service {
    *
    * 「可见、展开、未暂停、当前选中的已连接标签页」——少任何一个都不该有一条探测在
    * 远端跑，因为那意味着终端的宽度和远端的进程都在为一个看不见的面板付出代价。
+   * 「展开」现在由共享服务回答：它就是「监控是当前有效工具」。
    */
   private eligible(tab: TerminalTab | undefined, state: TabMonitor | null): boolean {
     if (!this.scope.alive || !tab || !state) return false
     if (!tab.sessionId || tab.state !== 'connected') return false
-    if (!state.open || state.paused) return false
+    if (!this.ctx.clientSessionTools.isOpen('monitor') || state.paused) return false
     return !this.ctx.clientView.document.hidden
   }
 
@@ -242,25 +223,12 @@ export class ClientMonitor extends Service {
       state.message = undefined
     }
 
-    const open = !!state?.open
-    // 抽屉那一格和把手归 ClientSftp 画，它按这条广播重新判断；这里只负责自己的工作区类。
-    this.ctx.clientView.element('session-workspace').classList.toggle('monitor-open', open)
-
     const wanted = this.eligible(tab, state)
     const same = this.current && tab && state
       && this.current.tabId === tab.id && this.current.sessionId === tab.sessionId
     if (this.current && !(wanted && same)) this.retire(this.current)
     if (wanted && !this.current) this.begin(tab!, state!)
     this.render(state, tab)
-    /*
-     * 广播排在 render 之后：`#session-monitor` 的 hidden 是 render 写的，而 ClientSftp
-     * 靠读它决定共用的把手露不露面 —— 先广播的话，它在抽屉还没画出来时就判断了一次，
-     * 把手会留在隐藏状态，直到下一次偶然的 sync。
-     */
-    if (open !== this.announced) {
-      this.announced = open
-      this.ctx.emit('client/drawer-change', 'monitor', open)
-    }
   }
 
   private begin(tab: TerminalTab, state: TabMonitor): void {
@@ -374,9 +342,7 @@ export class ClientMonitor extends Service {
     return {
       status: this.statusOf(tab, state),
       snapshot: state.snapshot,
-      open: state.open,
       paused: state.paused,
-      available: !!tab.sessionId,
       history: state.history,
       // 在这里解析：面板拿到的是一句现成的文本，而 render 在换语言时会被再叫一次。
       message: resolveMessage(state.message),
@@ -386,7 +352,7 @@ export class ClientMonitor extends Service {
   private statusOf(tab: TerminalTab, state: TabMonitor): MonitorStatus {
     if (!tab.sessionId) return tab.state === 'connecting' ? 'idle' : 'disconnected'
     if (state.status === 'unsupported') return 'unsupported'
-    if (!state.open || state.paused || this.ctx.clientView.document.hidden) return 'paused'
+    if (!this.ctx.clientSessionTools.isOpen('monitor') || state.paused || this.ctx.clientView.document.hidden) return 'paused'
     if (state.snapshot && Date.now() - state.receivedAt > STALE_MS) return 'stale'
     return state.status
   }
@@ -395,6 +361,6 @@ export class ClientMonitor extends Service {
     if (!this.scope.alive) return
     this.panel.render(state && tab
       ? this.display(tab, state)
-      : { status: 'idle', snapshot: null, open: false, paused: false, available: false, history: [] })
+      : { status: 'idle', snapshot: null, paused: false, history: [] })
   }
 }
