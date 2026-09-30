@@ -4,11 +4,13 @@ import { mountPageClient } from '../src/page-client.js'
 
 import { ClientTransport } from '../src/services/transport.js'
 
+import { ClientSessionTools } from '../src/services/session-tools.js'
+
 import { VERSION } from '../src/lib/version.js'
 
-import { HostError, type SshApi, type HostRecord, type HostSaveRequest, type KeyRecord, type KeySaveRequest, type MonitorSnapshot, type MonitorStartRequest, type MonitorStartResult, type MonitorStopResult, type MonitorUpdate, type RendererReadyPayload, type SessionFacts, type SftpDir, type TerminalOpenResult, type TerminalOpenRequest } from '@pureterm/protocol'
+import { HostError, type HostRecord, type HostSaveRequest, type KeyRecord, type KeySaveRequest, type MonitorSnapshot, type SftpDir, type TerminalOpenResult, type TerminalOpenRequest } from '@pureterm/protocol'
 
-import type { TerminalView } from '../src/terminal-view.js'
+import { deferred, fixture, wire } from './client-test-fixture.js'
 
 
 
@@ -33,156 +35,6 @@ async function waitFor<T>(read: () => T | null | undefined, description: string,
 const input = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement
 
 const click = (id: string): void => input(id).click()
-
-const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
-
-/** 一个失败的线上形状。`message` 永远在，它是这个失败不依赖语言的那一面。 */
-const wire = (code: string, params?: Record<string, string | number>) => ({ code, ...(params ? { params } : {}), message: code })
-
-
-
-function fixture() {
-
-  const listeners = { opened: new Set<(...args: any[]) => void>(), data: new Set<(...args: any[]) => void>(), closed: new Set<(...args: any[]) => void>(), disconnected: new Set<(...args: any[]) => void>(), updates: new Set<(...args: any[]) => void>(), facts: new Set<(...args: any[]) => void>() }
-
-  const stats = { disposed: 0, opens: 0, inputs: 0, closes: 0, lists: 0, ready: [] as RendererReadyPayload[] }
-
-  const subscribe = (name: keyof typeof listeners, listener: (...args: any[]) => void) => { listeners[name].add(listener); return () => { listeners[name].delete(listener) } }
-
-  const emit = (name: keyof typeof listeners, ...args: unknown[]) => { for (const listener of listeners[name]) listener(...args) }
-
-  /*
-   * 监控 fixture。观测面有三样：可控的 start 回复（能挂住、能让它失败）、当前活着的
-   * 订阅集合、以及合成的事件源。默认「立刻同意」而且默认折叠，所以现有生命周期检查
-   * 一条 start 都不会发出来 —— 这正是折叠默认要保证的事。
-   */
-  const monitor = {
-
-    starts: [] as MonitorStartRequest[],
-
-    stops: [] as string[],
-
-    /** 当前活着的订阅：收到 start、还没被 stop 的 ID。 */
-    active: new Set<string>(),
-
-    /** 挂起未答的 start，按调用顺序。holding 为 true 时 start 不自动回复。 */
-    held: [] as Array<{ request: MonitorStartRequest; resolve: () => void; reject: (error: Error) => void }>,
-
-    holding: false,
-
-    /** 非 null 时 start 直接失败，用来造 MONITOR_UNAVAILABLE。 */
-    rejection: null as ReturnType<typeof wire> | null,
-
-    async start(request: MonitorStartRequest): Promise<MonitorStartResult> {
-      monitor.starts.push(request)
-      if (monitor.rejection) throw Object.assign(new Error(monitor.rejection.message), monitor.rejection)
-      monitor.active.add(request.subscriptionId)
-      if (monitor.holding) await new Promise<void>((resolve, reject) => { monitor.held.push({ request, resolve, reject }) })
-      return { subscriptionId: request.subscriptionId, intervalMs: 5000 }
-    },
-
-    async stop(subscriptionId: string): Promise<MonitorStopResult> {
-      monitor.stops.push(subscriptionId)
-      return { stopped: monitor.active.delete(subscriptionId) }
-    },
-
-    /** 让所有挂起的 start 回复。 */
-    release(): void { for (const entry of monitor.held.splice(0)) entry.resolve() },
-
-    /** 让所有挂起的 start 失败。 */
-    fail(message: string): void { for (const entry of monitor.held.splice(0)) entry.reject(new Error(message)) },
-
-    /** 一个订阅被停了几次。停止是幂等的，但重复的请求会让这条断言失去意义。 */
-    stopsOf(subscriptionId: string): number { return monitor.stops.filter(stop => stop === subscriptionId).length },
-
-    /** 合成一条 monitor:update。 */
-    update(update: MonitorUpdate): void { emit('updates', update) },
-
-    /** 合成一条 session:facts。 */
-    facts(facts: SessionFacts): void { emit('facts', facts) },
-
-  }
-
-  const hosts: HostRecord[] = [{ id: 'fixture', label: 'Fixture', host: 'localhost', username: 'demo', port: 22, authMethod: 'password', hasSecret: false, updatedAt: '' }]
-
-  const keys: KeyRecord[] = []
-
-  const api: SshApi = {
-
-    carrier: 'web', getCapabilities: async () => ({ credentialPersistence: 'session', privateKeyPicker: 'browser' }),
-
-    open: async () => { const sessionId = `test-${++stats.opens}`; emit('opened', sessionId, 80, 24); return { sessionId, host: 'localhost', cols: 80, rows: 24 } },
-
-    close: id => { stats.closes++; emit('closed', id, wire('host.session-closed')) },
-
-    input: () => { stats.inputs++ }, resize: () => {}, pickPrivateKey: async () => undefined,
-
-    onOpened: listener => subscribe('opened', listener), onData: listener => subscribe('data', listener), onClosed: listener => subscribe('closed', listener),
-
-    onDisconnected: listener => subscribe('disconnected', listener),
-
-    hosts: { list: async () => hosts, save: async () => hosts[0]!, remove: async () => true },
-
-    keychain: { list: async () => [...keys], save: async request => {
-
-      const record = { id: request.id ?? `key-${keys.length}`, label: request.label, type: 'RSA', publicKey: 'ssh-rsa fixture', fingerprint: 'SHA256:fixture', hasPassphrase: !!request.passphrase, updatedAt: '' }
-
-      const index = keys.findIndex(key => key.id === record.id)
-
-      if (index < 0) keys.push(record); else keys[index] = record
-
-      return record
-
-    }, remove: async id => { const index = keys.findIndex(key => key.id === id); if (index >= 0) keys.splice(index, 1); return index >= 0 } },
-
-    sftp: { list: async () => { stats.lists++; return { path: '/home', parent: '/', entries: [] } }, read: async () => ({ path: '', size: 0, bytes: new Uint8Array() }),
-
-      write: async () => ({ path: '', size: 0 }), mkdir: async () => {}, remove: async () => {} },
-
-    monitor: {
-      start: request => monitor.start(request),
-      stop: subscriptionId => monitor.stop(subscriptionId),
-      onUpdate: (listener: (update: MonitorUpdate) => void) => subscribe('updates', listener),
-      onSessionFacts: (listener: (facts: SessionFacts) => void) => subscribe('facts', listener),
-    },
-
-    signalReady: payload => { stats.ready.push(payload) }, dispose: () => { stats.disposed++ },
-
-  }
-
-  const terminals: Array<TerminalView & { disposed: number; themeCalls: number; inputs: Set<(data: string) => void>; writes: unknown[]; resizeListeners: Set<(size: { cols: number; rows: number }) => void> }> = []
-
-  const terminalFactory = () => {
-
-    const inputs = new Set<(data: string) => void>()
-
-    const resizeListeners = new Set<(size: { cols: number; rows: number }) => void>()
-
-    const device = { cols: 80, rows: 24, disposed: 0, themeCalls: 0, inputs, resizeListeners, writes: [] as unknown[],
-
-      write(data: unknown) { this.writes.push(data) }, focus() {}, fit() {}, text: () => '',
-
-      applyTheme() { this.themeCalls++ },
-
-      onData(listener: (data: string) => void) { inputs.add(listener); return { dispose: () => { inputs.delete(listener) } } },
-
-      onResize(listener: (size: { cols: number; rows: number }) => void) { resizeListeners.add(listener); return { dispose: () => { resizeListeners.delete(listener) } } },
-
-      dispose() { this.disposed++ },
-
-    }
-
-    terminals.push(device)
-
-    return device
-
-  }
-
-  return { api, hosts, keys, stats, listeners, terminals, terminalFactory, emit, monitor }
-
-}
-
-
 
 function fill() { input('host').value = 'localhost'; input('user').value = 'demo'; input('pass').value = 'password' }
 
@@ -1645,6 +1497,229 @@ async function runChecks() {
 
 
     /*
+     * 会话归属。左边栏切走再切回来，终端和 SSH 必须是原来那一个 —— 页面切换只是把
+     * 终端那棵树藏起来，不是把它拆了。工具选择则按标签各记各的：A 用文件、B 用监控，
+     * 来回切换后各自还是原来那一格。
+     */
+    const ownership = fixture()
+
+    client = createClient({ api: ownership.api, terminalFactory: ownership.terminalFactory })
+
+    assert((await client.ready).ok, 'ownership client failed readiness')
+
+    const ownerSessions: string[] = []
+
+    const openOwner = ownership.api.open
+
+    ownership.api.open = async request => { const result = await openOwner(request); ownerSessions.push(result.sessionId); return result }
+
+    const ownerTabs = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+
+    fill(); click('connect'); await tick()
+
+    click('workspace-home'); click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+
+    assert(ownerTabs().length === 2 && ownerSessions.length === 2, 'the ownership check needs two sessions')
+
+    ownerTabs()[0]!.click(); await tick(); click('sftp-toggle'); await tick()
+
+    assert(!input('sftp').hidden, 'tab A opens Files')
+
+    ownerTabs()[1]!.click(); await tick(); click('monitor-toggle'); await tick()
+
+    assert(!input('session-monitor').hidden && input('sftp').hidden, 'tab B opens Monitor in the same slot')
+
+    // 页面切换：切到管理页再回来，SSH 会话和 xterm 对象都不能换，也不许开关 SSH。
+    const ownedTab = client.context.clientTerminal.active!
+
+    const before = { sessionId: ownedTab.sessionId, terminal: ownedTab.terminal, opens: ownership.stats.opens, closes: ownership.stats.closes }
+
+    click('nav-keychain'); await tick()
+
+    client.context.clientTerminal.select(ownedTab.id); await tick()
+
+    assert(ownedTab.sessionId === before.sessionId && ownedTab.terminal === before.terminal, 'navigation preserves SSH and xterm identity')
+
+    assert(ownership.stats.opens === before.opens && ownership.stats.closes === before.closes, 'navigation does not open or close SSH')
+
+    // 回到 B，它记的还是监控；回到 A，它记的还是文件。
+    ownerTabs()[1]!.click(); await tick()
+
+    assert(!input('session-monitor').hidden && input('sftp').hidden, 'tab B still remembers Monitor after a page round trip')
+
+    ownerTabs()[0]!.click(); await tick()
+
+    assert(!input('sftp').hidden && input('session-monitor').hidden, 'tab A still remembers Files after a page round trip')
+
+    checks.push('navigation retains terminal identity and tool choice')
+
+    // 分栏比例也是各标签自己的：A 调走，B 保持默认，A 回来还是自己那个数。
+    const ownerGrip = document.querySelector<HTMLElement>('.session-grip')!
+
+    ownerGrip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+
+    ownerGrip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true }))
+
+    assert(Number(ownerGrip.getAttribute('aria-valuenow')) === 47, 'tab A moved its split away from the default')
+
+    ownerTabs()[1]!.click(); await tick()
+
+    assert(Number(document.querySelector<HTMLElement>('.session-grip')!.getAttribute('aria-valuenow')) === 57, 'tab B keeps the default split')
+
+    ownerTabs()[0]!.click(); await tick()
+
+    assert(Number(document.querySelector<HTMLElement>('.session-grip')!.getAttribute('aria-valuenow')) === 47, 'tab A keeps its own split')
+
+    checks.push('tools and split preferences belong to each tab')
+
+    await client.dispose()
+
+
+    /*
+     * 后台的文件回复不能改写当前那一格。挂住 A 的目录请求，切到 B 展开监控，再让 A
+     * 的回复到达：B 必须原样不动，而 A 回到前台时用的正是 A 自己的结果。
+     */
+    const background = fixture()
+
+    client = createClient({ api: background.api, terminalFactory: background.terminalFactory })
+
+    assert((await client.ready).ok, 'background client failed readiness')
+
+    const backgroundSessions: string[] = []
+
+    const openBackground = background.api.open
+
+    background.api.open = async request => { const result = await openBackground(request); backgroundSessions.push(result.sessionId); return result }
+
+    const heldDirectory = deferred<SftpDir>()
+
+    const backgroundRequests: string[] = []
+
+    background.api.sftp.list = async (sessionId, path) => {
+      backgroundRequests.push(`${sessionId}:${path}`)
+      if (sessionId === backgroundSessions[0]) return heldDirectory.promise
+      return { path: '/second', parent: '/', entries: [] }
+    }
+
+    fill(); click('connect'); await tick()
+
+    click('workspace-home'); click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+
+    const backgroundTabs = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+
+    // A 打开文件，请求挂住。
+    backgroundTabs()[0]!.click(); await tick(); click('sftp-toggle'); await tick()
+
+    assert(backgroundRequests.length === 1 && backgroundRequests[0] === `${backgroundSessions[0]}:.`, 'tab A asked for its own directory')
+
+    // 切到 B 展开监控。A 的请求还没回来。
+    backgroundTabs()[1]!.click(); await tick(); click('monitor-toggle'); await tick()
+
+    assert(!input('session-monitor').hidden, 'tab B shows Monitor while tab A is still pending')
+
+    // 现在 A 的目录回复到达。
+    heldDirectory.resolve({ path: '/first', parent: '/', entries: [] } as SftpDir)
+
+    await tick()
+
+    assert(!input('session-monitor').hidden && input('sftp').hidden, 'a background file reply must not take the slot from the active tool')
+
+    assert(background.monitor.starts.length === 1 && background.monitor.active.size === 1, 'and it must not disturb the active subscription')
+
+    // 回到 A：它显示的是 A 自己的结果，而且没有为 A 额外发一次隐式 list。
+    backgroundTabs()[0]!.click(); await tick()
+
+    assert(!input('sftp').hidden && input('sftp-path').value === '/first', 'tab A shows the directory its own request returned')
+
+    assert(backgroundRequests.length === 1, 'returning to a loaded tab must not re-list implicitly')
+
+    checks.push('background file replies cannot overwrite the active tool')
+
+    await client.dispose()
+
+
+    /*
+     * 文件／监控快速来回切。每次换格都是「退订旧的、订阅新的」，但不能留下两条活着
+     * 的订阅，也不能把同一个订阅停两次。
+     */
+    const rapid = fixture()
+
+    client = createClient({ api: rapid.api, terminalFactory: rapid.terminalFactory })
+
+    assert((await client.ready).ok, 'rapid-switch client failed readiness')
+
+    fill(); click('connect'); await tick()
+
+    for (let step = 0; step < 3; step += 1) {
+      click('monitor-toggle'); await tick()
+      click('sftp-toggle'); await tick()
+    }
+
+    assert(rapid.monitor.starts.length === 3, `three monitor activations are three subscriptions, found ${rapid.monitor.starts.length}`)
+
+    assert(rapid.monitor.active.size === 0, 'rapid file/monitor switching leaves no live subscription while Files is open')
+
+    assert(rapid.monitor.starts.every(start => rapid.monitor.stopsOf(start.subscriptionId) === 1), 'every subscription a rapid switch retired is stopped exactly once')
+
+    assert(!input('sftp').hidden && input('session-monitor').hidden, 'Files is the tool left open')
+
+    click('monitor-toggle'); await tick()
+
+    assert(rapid.monitor.active.size === 1 && rapid.monitor.starts.length === 4, 'opening Monitor after the rapid switch leaves exactly one live subscription')
+
+    assert(rapid.monitor.starts.at(-1)!.subscriptionId !== rapid.monitor.starts[0]!.subscriptionId, 'the last activation is a new generation')
+
+    checks.push('rapid file and monitor switching leaves one live subscription and one stop each')
+
+    await client.dispose()
+
+
+    /*
+     * 断线时工具收起、按钮禁用，但每个标签记住的选择还在；重连拿到的是新会话，所以
+     * 恢复的是新会话的业务数据，而不是上一段的目录。
+     */
+    const restore = fixture()
+
+    client = createClient({ api: restore.api, terminalFactory: restore.terminalFactory })
+
+    assert((await client.ready).ok, 'restore client failed readiness')
+
+    const restoreSessions: string[] = []
+
+    const openRestore = restore.api.open
+
+    restore.api.open = async request => { const result = await openRestore(request); restoreSessions.push(result.sessionId); return result }
+
+    fill(); click('connect'); await tick(); click('sftp-toggle'); await tick()
+
+    assert(restore.stats.lists === 1 && input('sftp-path').value === '/home', 'the connected tab listed its directory')
+
+    click('disconnect'); await tick()
+
+    assert(input('sftp-toggle').disabled && input('monitor-toggle').disabled, 'a disconnected tab disables both tools')
+
+    assert(input('session-tool-panel').hidden && input('session-grip').hidden, 'and collapses the panel and splitter')
+
+    assert(!input('session-tools').hidden, 'but the rail stays on screen')
+
+    click('session-reconnect'); await tick()
+
+    assert(restoreSessions.length === 2 && restoreSessions[1] !== restoreSessions[0], 'reconnecting opens a new session')
+
+    assert(!input('sftp-toggle').disabled && !input('monitor-toggle').disabled, 'the new session re-enables both tools')
+
+    assert(!input('sftp').hidden && input('sftp-toggle').getAttribute('aria-expanded') === 'true', 'the remembered tool reopens on the new session')
+
+    assert(restore.stats.lists === 2, 'and it lists the new session rather than reusing the old directory')
+
+    assert(input('sftp-path').value === '/home', 'the new session shows its own listing')
+
+    checks.push('tools collapse while disconnected and restore with fresh data')
+
+    await client.dispose()
+
+
+    /*
      * 监控：默认折叠、展开才采集、折叠就退订。
      *
      * 这是本增量里唯一一处「用户什么都不做、行为就变了」的地方 —— 一个刚打开的会话
@@ -2150,6 +2225,10 @@ async function runChecks() {
 
     assert(monitorRoot().children.length === 0, 'the panel unmounts with its plugin')
 
+    assert(document.getElementById('monitor-toggle') === null, 'unloading the monitor removes its rail button')
+
+    assert(document.getElementById('sftp-toggle') !== null, 'and leaves the other tool registered on the rail')
+
     for (const listener of removal.terminals[0]!.inputs) listener('still-alive\r')
 
     assert(removal.stats.inputs === 1, 'the terminal still accepts input after the monitor is unloaded')
@@ -2157,6 +2236,8 @@ async function runChecks() {
     click('sftp-toggle'); await tick()
 
     assert(removal.stats.lists === 1 && document.querySelector('#sftp-refresh') !== null, 'SFTP still lists after the monitor is unloaded')
+
+    assert(!input('session-grip').hidden, 'and the shared splitter is still there for the surviving tool')
 
     assert(input('status-cipher').textContent === 'chacha20-poly1305@openssh.com', 'unloading the monitor must not blank the cipher cell')
 
@@ -2167,6 +2248,93 @@ async function runChecks() {
     await client.dispose()
 
     checks.push('unloading the monitor plugin leaves the terminal, SFTP, readiness and the status bar facts working')
+
+
+
+    /*
+     * 反过来的那一半：卸载文件功能，监控必须原样活着。工具栏那一颗按钮随功能消失，
+     * 当前打开的文件面板让出槽位，而另一颗按钮、分隔条和终端都不受影响。
+     */
+    const sftpRemoval = fixture()
+
+    client = createClient({ api: sftpRemoval.api, terminalFactory: sftpRemoval.terminalFactory })
+
+    assert((await client.ready).ok, 'sftp-removal client failed readiness')
+
+    fill(); click('connect'); await tick(); click('sftp-toggle'); await tick()
+
+    assert(!input('sftp').hidden && sftpRemoval.stats.lists === 1, 'SFTP is open before its own unload')
+
+    await client.scopes.sftp.dispose()
+
+    assert(document.getElementById('sftp-toggle') === null, 'unloading SFTP removes its rail button')
+
+    assert(input('session-tool-panel').hidden && input('session-grip').hidden, 'and collapses the shared slot and splitter it was holding')
+
+    assert(document.getElementById('monitor-toggle') !== null, 'the monitor stays registered')
+
+    click('monitor-toggle'); await tick()
+
+    assert(!input('session-monitor').hidden && !input('session-grip').hidden, 'the surviving tool still opens and still gets the shared splitter')
+
+    for (const listener of sftpRemoval.terminals[0]!.inputs) listener('still-alive\r')
+
+    assert(sftpRemoval.stats.inputs === 1, 'the terminal still accepts input after SFTP is unloaded')
+
+    assert((await client.ready).ok, 'readiness never waited for SFTP')
+
+    await client.dispose()
+
+    checks.push('unloading SFTP removes its tool and leaves the monitor, splitter and terminal working')
+
+
+
+    /*
+     * 释放共享服务本身。两个功能都注入它，所以它们跟着一起卸载；重新挂上之后，页面上
+     * 必须只有一个工具栏和一根分隔条，不能留下上一次的监听或节点。
+     */
+    const toolRemoval = fixture()
+
+    client = createClient({ api: toolRemoval.api, terminalFactory: toolRemoval.terminalFactory })
+
+    assert((await client.ready).ok, 'tool-removal client failed readiness')
+
+    fill(); click('connect'); await tick(); click('sftp-toggle'); await tick()
+
+    assert(document.querySelectorAll('#session-tools .session-tool').length === 2, 'both tools are on the rail before the shared unload')
+
+    await client.scopes.sessionTools.dispose()
+
+    await tick()
+
+    assert(input('session-tools').children.length === 0, 'disposing the shared service removes every registration')
+
+    assert(input('session-grip').hidden, 'and hides the splitter')
+
+    assert(document.querySelectorAll('.session-grip').length === 1, 'without leaving a second splitter behind')
+
+    // 分隔条的键盘监听属于被释放的那个 scope；它若没跟着走，这一下就会改动比例。
+    const splitBefore = client.context.clientTerminal.active?.split ?? null
+
+    input('session-grip').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+
+    assert((client.context.clientTerminal.active?.split ?? null) === splitBefore, 'the disposed splitter leaves no live keyboard listener behind')
+
+    assert(document.getElementById('sftp-toggle') === null && document.getElementById('monitor-toggle') === null, 'dependent features unloaded with the shared service')
+
+    await client.context.plugin(ClientSessionTools)
+
+    for (let index = 0; index < 20 && !client.context.clientApplication; index++) await tick()
+
+    assert((await client.context.clientApplication.ready).ok, 'dependent scopes failed to reactivate')
+
+    assert(document.querySelectorAll('#session-tools .session-tool').length === 2, 'remounting yields exactly one rail with its two buttons')
+
+    assert(document.querySelectorAll('.session-grip').length === 1, 'and exactly one splitter')
+
+    checks.push('disposing and remounting the shared tool service leaves one rail and one splitter')
+
+    await client.dispose()
 
 
 
