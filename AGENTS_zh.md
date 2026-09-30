@@ -105,7 +105,7 @@ npm run version:sync
 ## 文档、版本与发布
 
 - 代码变化同时更新受影响的 README、架构说明、公开接口注释和测试说明。当前事实只保留一个权威位置；历史评审不要改写成当前状态。
-- `VERSION.txt` 是源码版本基准。根目录及所有 workspace 的 `package.json` 和 `package-lock.json` 必须与它一致。源码版本不带 `v`，发布 tag 使用 `v<version>`。当前开发版本为 `0.1.0-alpha.1`；已发布版本号不得复用，`0.x` 破坏性变更必须明确记录。
+- `VERSION.txt` 是源码版本基准。根目录及所有 workspace 的 `package.json` 和 `package-lock.json` 必须与它一致。源码版本不带 `v`，发布 tag 使用 `v<version>`。当前开发版本为 `0.1.0-alpha.2`；已发布版本号不得复用，`0.x` 破坏性变更必须明确记录。
 - 用户可见变化先写入 `CHANGELOG.md` 的 `[Unreleased]`，按 `Added`、`Changed`、`Fixed`、`Security` 分类。
 - `CHANGELOG.md` 首行必须是 `# PureTerm`。更新源码版本和变更日志后，运行 `node scripts/convert-changelog.js` 及 `node scripts/convert-changelog.js --sync-version`，并提交生成的 `packages/ui/src/lib/changelog.ts` 和 `packages/ui/src/lib/version.ts`。
 - 根目录和所有 workspace 版本必须一致；发布前运行 `npm run release:check -- --version <version>`、`npm run verify` 和 `npm run verify:electron`。

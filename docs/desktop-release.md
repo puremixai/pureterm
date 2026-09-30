@@ -75,7 +75,7 @@ The runner has no secret service, so Electron's `safeStorage` falls back to the 
 
 ## Versions and CHANGELOG
 
-PureTerm is in the `0.x` development cycle and follows [SemVer 2.0.0](https://semver.org/). The current source version is `0.1.0-alpha.1`; `0.1.0-alpha.N`, `0.1.0-beta.N`, `0.1.0-rc.N`, and `0.1.0` describe successive testing and delivery phases. Phase suffixes start at `1` independently, published versions are never reused, and `0.x` breaking changes must be called out in the changelog. Source versions omit `v`; Git tags use `v<version>`.
+PureTerm is in the `0.x` development cycle and follows [SemVer 2.0.0](https://semver.org/). The current source version is `0.1.0-alpha.2`; `0.1.0-alpha.N`, `0.1.0-beta.N`, `0.1.0-rc.N`, and `0.1.0` describe successive testing and delivery phases. Phase suffixes start at `1` independently, published versions are never reused, and `0.x` breaking changes must be called out in the changelog. Source versions omit `v`; Git tags use `v<version>`.
 
 `VERSION.txt` is the source-version baseline. The root and every `apps/*` and `packages/*` `package.json`, together with `package-lock.json`, must match it. `npm run release:check` verifies exact alignment, requires a `[Unreleased]` section in `CHANGELOG.md`, and rejects a changelog whose first line is not `# PureTerm` or whose non-empty entries are not grouped under categories such as `Added`, `Changed`, `Fixed`, or `Security`.
 

@@ -8,6 +8,12 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 
 ## [Unreleased]
 
+### Changed
+
+- Keep this section updated while work is merged after `0.1.0-alpha.2`.
+
+## [0.1.0-alpha.2] - 2026-09-30
+
 ### Added
 
 - Add `@pureterm/i18n`, one message catalog and one `t()` shared by the browser UI and the Electron shell, with English as the source of truth and a complete Chinese translation. The two catalogs are held key-identical, placeholder-identical and free of untranslated error codes by test, so a missing translation fails the build rather than rendering a blank. `@pureterm/protocol` gains `HOST_ERROR_CODES`, `WireError` and `HostError`, so a failure can cross the wire as an identity plus its parameters instead of a pre-rendered sentence; the Host emits codes and never imports the catalog. This change lays the foundation only — the producers and the interface are moved onto it separately.
@@ -55,8 +61,6 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 - Bring the maintained documentation back in step with the code after the message catalog landed. `@pureterm/i18n` was missing from every package listing — `AGENTS.md`, `README.md`, `LAYOUT-PROPOSAL.md`, the development guide and the Desktop README — and from the boundary rules that say what may import what; `window.puretermDesktop` was still described as accepting only the readiness report, when it also accepts the language report the shell needs for its own menu and native dialogs; the design system still said the top bar carries two switches, when the language switch is the third; and the English documents named two session controls by their Chinese labels, which the English interface no longer shows. The development guide gains a section on user-facing text, so the catalog's rules — English is the source, a missing translation is a compile error, a failure crosses the wire as a code, and developer logs and the CLI stay English and out of the catalog — are written down where a contributor will find them.
 - Pin Electron to 43 so the Desktop app runs on macOS 12. Electron 44 declares `LSMinimumSystemVersion = 13.0`, so on Monterey its binary stopped at `dyld` with `Symbol not found: (_OBJC_CLASS_$_SMAppService)` — a macOS 13 API — before a line of application code ran, which took `verify:electron` and every Electron-backed smoke suite down with it. Each major states its own floor and the boundary is clean: 38 and below need Big Sur, 39 through 43 need Monterey, 44 needs Ventura. The pin becomes `^43.7.5`; nothing in the repository required 44, no code uses an API that 43 lacks, and 43 is still inside Electron's supported window of the latest three majors. `npm run verify:electron` now completes — it never had on a Monterey host — across all seven flows, including the shared client-lifecycle suite and the standalone-browser run. The cost is one major behind: anything at or above 44 will require macOS 13, so a contributor still on macOS 12 stays on 43.
 - Report whether credentials can actually be encrypted, instead of offering storage the machine cannot protect. `safeStorage` falls back to a plaintext backend wherever no system keyring exists — the headless Linux CI runner, and any desktop without one — yet the Desktop entry point told the Host `credentialPersistence: 'encrypted'` regardless. The Host therefore believed it could seal a key, `seal()` returned nothing, and the Host correctly refused the write. The capability is measured now rather than assumed: `CredentialProvider` carries a `credentialPersistence` of `'encrypted'` or `'session'` — distinct from `persistent`, which says whether storage survives a restart, not whether it can be encrypted at all — the parent reports it over `platform:capabilities`, and the Host child validates and forwards it. Where it reads `'session'` the **remember credentials** switch is off and its hint says the credential lasts only for this page, rather than offering a save the Host would reject. Both smoke paths assert the outcome their capability promises, sealed and authenticated or refused with nothing reaching disk, so the Linux Electron job completes instead of failing on the refusal.
-- Keep this section updated while work is merged after `0.1.0-alpha.1`.
-
 ### Fixed
 
 - Hide the column header in card view on both library screens. The six labels sat over a grid with a single track, so they named columns that were not there; the header now follows the `.card-view` class the view toggle writes, exactly as it already followed the empty element's `hidden` attribute.
@@ -85,5 +89,6 @@ The `[Unreleased]` section is for changes that have landed but are not in a rele
 - Desktop credentials remain protected by the operating system credential store; the Host process accesses them through a private IPC capability.
 - Release builds exclude optional native SSH accelerators and do not contain GitHub credentials.
 
-[Unreleased]: https://github.com/puremixai/pureterm/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/puremixai/pureterm/compare/v0.1.0-alpha.2...HEAD
+[0.1.0-alpha.2]: https://github.com/puremixai/pureterm/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/puremixai/pureterm/releases/tag/v0.1.0-alpha.1

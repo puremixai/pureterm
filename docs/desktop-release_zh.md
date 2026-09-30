@@ -75,7 +75,7 @@ Linux job 在 `xvfb-run` 下运行 Electron 检查。`npm ci` 不保留 setuid �
 
 ## 版本与 CHANGELOG
 
-PureTerm 目前处于 `0.x` 开发周期，版本格式遵循 [SemVer 2.0.0](https://semver.org/)。当前源码版本为 `0.1.0-alpha.1`；`0.1.0-alpha.N`、`0.1.0-beta.N`、`0.1.0-rc.N` 和 `0.1.0` 表示连续的测试与交付阶段。每个阶段的数字后缀从 `1` 独立递增，已发布版本号不复用，`0.x` 破坏性变更必须写入变更日志。源码版本不带 `v`，Git tag 使用 `v<version>`。
+PureTerm 目前处于 `0.x` 开发周期，版本格式遵循 [SemVer 2.0.0](https://semver.org/)。当前源码版本为 `0.1.0-alpha.2`；`0.1.0-alpha.N`、`0.1.0-beta.N`、`0.1.0-rc.N` 和 `0.1.0` 表示连续的测试与交付阶段。每个阶段的数字后缀从 `1` 独立递增，已发布版本号不复用，`0.x` 破坏性变更必须写入变更日志。源码版本不带 `v`，Git tag 使用 `v<version>`。
 
 `VERSION.txt` 是源码版本基准。根目录及所有 `apps/*`、`packages/*` 的 `package.json` 和 `package-lock.json` 必须与它一致。`npm run release:check` 会检查版本完全一致，要求 `CHANGELOG.md` 包含 `[Unreleased]` 区段，并拒绝首行不是 `# PureTerm` 或未按 `Added`、`Changed`、`Fixed`、`Security` 等类别归类的非空条目。
 

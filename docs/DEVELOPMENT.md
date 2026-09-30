@@ -167,7 +167,7 @@ Staging is disposable and must not be committed. The installer guide documents t
 
 ## Versions and changelog
 
-PureTerm is in the `0.x` development cycle. Version format and ordering follow [SemVer 2.0.0](https://semver.org/). The current source version is `0.1.0-alpha.1`, recorded in [VERSION.txt](../VERSION.txt). Features, configuration, and data structures may still change; record compatibility changes in the changelog.
+PureTerm is in the `0.x` development cycle. Version format and ordering follow [SemVer 2.0.0](https://semver.org/). The current source version is `0.1.0-alpha.2`, recorded in [VERSION.txt](../VERSION.txt). Features, configuration, and data structures may still change; record compatibility changes in the changelog.
 
 | Version form | Purpose |
 | --- | --- |
@@ -195,8 +195,8 @@ The first command generates `packages/ui/src/lib/changelog.ts` from the English 
 Record user-visible changes under `[Unreleased]` using categories such as `Added`, `Changed`, `Fixed`, and `Security`. Before a release, move those entries into a dated version section and create the matching tag only after `npm run verify`, `npm run verify:electron`, and the Windows package acceptance pass:
 
 ```powershell
-npm run release:check -- --version 0.1.0-alpha.1
-npm run release:notes -- --version 0.1.0-alpha.1 --output release-notes.md
+npm run release:check -- --version 0.1.0-alpha.2
+npm run release:notes -- --version 0.1.0-alpha.2 --output release-notes.md
 ```
 
 The release workflow builds Windows NSIS, macOS DMG/ZIP, and Linux AppImage artifacts and creates a GitHub draft release; it does not publish the draft automatically. See [Desktop Installers and GitHub Releases](desktop-release.md).

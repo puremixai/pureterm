@@ -6,7 +6,7 @@ PureTerm is an SSH/SFTP client built with Cordis, ssh2, and xterm.js. It provide
 
 The project is released under the [MIT License](LICENSE).
 
-The current source version is `0.1.0-alpha.1`, maintained in [VERSION.txt](VERSION.txt) and described in the [development guide](docs/DEVELOPMENT.md).
+The current source version is `0.1.0-alpha.2`, maintained in [VERSION.txt](VERSION.txt) and described in the [development guide](docs/DEVELOPMENT.md).
 
 Both entry points reuse the Host, protocol, shared Web Host assembly, and Cordis Client. Desktop starts an independent Node-mode Web Host child process from Electron. Its `pureterm-app://app/` window sends SSH/SFTP, host, and Keychain traffic over a loopback WebSocket; standalone Web runs the same assembly in an ordinary Node process without starting Electron.
 

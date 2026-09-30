@@ -4,8 +4,8 @@ import { parseChangelog, readSourceVersion, releaseNotes, validateProject } from
 
 test('the repository keeps workspace versions and a dated release section in sync', () => {
   const result = validateProject()
-  assert.equal(result.version, '0.1.0-alpha.1')
-  assert.equal(readSourceVersion(), '0.1.0-alpha.1')
+  assert.equal(result.version, '0.1.0-alpha.2')
+  assert.equal(readSourceVersion(), '0.1.0-alpha.2')
   // The root manifest, five packages and two apps. The count is here so a new
   // workspace cannot be added without a version that matches VERSION.txt.
   assert.equal(result.versions.length, 8)
@@ -15,8 +15,8 @@ test('the repository keeps workspace versions and a dated release section in syn
 })
 
 test('release notes are extracted from the matching changelog section', () => {
-  const notes = releaseNotes(undefined, '0.1.0-alpha.1')
-  assert.match(notes, /^# PureTerm 0\.1\.0-alpha\.1/m)
+  const notes = releaseNotes(undefined, '0.1.0-alpha.2')
+  assert.match(notes, /^# PureTerm 0\.1\.0-alpha\.2/m)
   assert.match(notes, /Desktop installers and update metadata/)
   assert.doesNotMatch(notes, /Keep this section updated/)
   assert.doesNotMatch(notes, /中文版本/)

@@ -105,7 +105,7 @@ npm run version:sync
 ## Documentation, versions, and releases
 
 - Update affected READMEs, architecture documentation, public API comments, and test notes with code changes. Keep current facts in one authoritative location; do not rewrite historical reviews as current status.
-- `VERSION.txt` is the source-version baseline. The root and every workspace `package.json` plus `package-lock.json` must match it. Source versions omit `v`; release tags use `v<version>`. The current development version is `0.1.0-alpha.1`; never reuse a published version, and record `0.x` breaking changes explicitly.
+- `VERSION.txt` is the source-version baseline. The root and every workspace `package.json` plus `package-lock.json` must match it. Source versions omit `v`; release tags use `v<version>`. The current development version is `0.1.0-alpha.2`; never reuse a published version, and record `0.x` breaking changes explicitly.
 - Record user-visible changes under `[Unreleased]` in `CHANGELOG.md`, categorized as `Added`, `Changed`, `Fixed`, or `Security`.
 - `CHANGELOG.md` must start with `# PureTerm`. After updating the source version and changelog, run `node scripts/convert-changelog.js` and `node scripts/convert-changelog.js --sync-version`; commit the generated `packages/ui/src/lib/changelog.ts` and `packages/ui/src/lib/version.ts`.
 - The root and every workspace version must match. Before a release run `npm run release:check -- --version <version>`, `npm run verify`, and `npm run verify:electron`.
