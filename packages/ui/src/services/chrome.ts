@@ -95,6 +95,12 @@ export class ClientChrome extends Service {
       locale.setAttribute('aria-label', t(current === 'zh' ? 'chrome.locale.to-en' : 'chrome.locale.to-zh'))
       locale.title = t('chrome.locale.title')
       translateDocument(view.document)
+      /*
+       * 主进程那边也有一批要看语言的界面：应用菜单、原生选私钥对话框、更新对话框。
+       * 它读不到这里的 localStorage，所以每次落定都告诉它一声。独立 Web 没有桥，
+       * 这一句是空操作。
+       */
+      view.window.puretermDesktop?.reportLocale(current)
     }
     const save = (): void => {
       // A storage denial costs the choice, not the session: the switch still

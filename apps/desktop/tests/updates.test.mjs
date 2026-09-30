@@ -5,6 +5,8 @@ import { createUpdateCoordinator } from '../dist/electron/runtime/updates.js'
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 const tick = () => new Promise(resolve => setImmediate(resolve))
+/** The coordinator hands over a catalog key plus params; render it the way a reader of the test can check it. */
+const said = (key, params) => params ? `${key} ${JSON.stringify(params)}` : key
 function fixture(t, overrides = {}) {
   const backend = new EventEmitter()
   const calls = []
@@ -13,7 +15,7 @@ function fixture(t, overrides = {}) {
   const coordinator = createUpdateCoordinator({ backend, enabled: true, initialDelayMs: 100_000,
     beforeInstall: async () => { calls.push('stop-host') },
     confirmInstall: async () => { calls.push('confirm'); return false },
-    message: value => { calls.push(value) }, ...overrides })
+    message: (key, params) => { calls.push(said(key, params)) }, ...overrides })
   t.after(() => coordinator.dispose())
   return { backend, calls, coordinator }
 }
@@ -30,7 +32,7 @@ test('concurrent manual checks share one network request and one result', async 
   pending.resolve()
   await a
   assert.equal(coordinator.phase, 'idle')
-  assert.deepEqual(calls, ['check', '当前已是最新版本。'])
+  assert.deepEqual(calls, ['check', 'desktop.update.up-to-date'])
   assert.equal(backend.autoInstallOnAppQuit, false)
 })
 
@@ -76,15 +78,15 @@ test('network failure is recoverable and disabled builds never make requests', a
   failed.backend.checkForUpdates = async () => { throw new Error('offline') }
   await failed.coordinator.check(true)
   assert.equal(failed.coordinator.phase, 'error')
-  assert.deepEqual(failed.calls, ['检查更新失败：offline'])
+  assert.deepEqual(failed.calls, ['desktop.update.check-failed {"detail":"offline"}'])
   failed.backend.checkForUpdates = async () => failed.backend.emit('update-not-available')
   await failed.coordinator.check(true)
   assert.equal(failed.coordinator.phase, 'idle')
-  const disabled = fixture(t, { enabled: false, unavailableReason: 'development build' })
+  const disabled = fixture(t, { enabled: false, unavailableReason: 'desktop.update.unavailable-development' })
   await disabled.coordinator.check()
   await disabled.coordinator.check(true)
   assert.equal(disabled.backend.eventNames().length, 0)
-  assert.deepEqual(disabled.calls, ['development build'])
+  assert.deepEqual(disabled.calls, ['desktop.update.unavailable-development'])
 })
 
 test('Host shutdown failure prevents updater quitAndInstall', async t => {
@@ -95,7 +97,7 @@ test('Host shutdown failure prevents updater quitAndInstall', async t => {
   backend.emit('update-downloaded', { version: '0.2.0' })
   await tick()
   assert.equal(coordinator.phase, 'error')
-  assert.deepEqual(calls, ['安装更新失败：Host is still running'])
+  assert.deepEqual(calls, ['desktop.update.install-failed {"detail":"Host is still running"}'])
 })
 
 test('download rejection is consumed and active downloads are cancelled on disposal', async t => {
@@ -111,7 +113,7 @@ test('download rejection is consumed and active downloads are cancelled on dispo
   assert.equal(cancelled, 1)
   download.reject(new Error('checksum mismatch'))
   await tick()
-  assert.deepEqual(calls, ['正在下载 PureTerm 0.2.0。'])
+  assert.deepEqual(calls, ['desktop.update.downloading {"version":"0.2.0"}'])
 })
 
 test('asynchronous installer errors remain observed after Host shutdown and recover once', async t => {
@@ -119,7 +121,7 @@ test('asynchronous installer errors remain observed after Host shutdown and reco
   const { coordinator, backend } = fixture(t, {
     confirmInstall: async () => true,
     beforeInstall: async () => { order.push('host-stopped') },
-    message: text => { order.push(text) },
+    message: (key, params) => { order.push(said(key, params)) },
     onInstallError: async () => { order.push('restart-current-version') },
   })
   backend.quitAndInstall = () => { order.push('install-requested') }
@@ -129,6 +131,6 @@ test('asynchronous installer errors remain observed after Host shutdown and reco
   backend.emit('error', new Error('signature rejected'))
   backend.emit('error', new Error('duplicate installer error'))
   await tick()
-  assert.deepEqual(order, ['host-stopped', 'install-requested', '安装更新失败：signature rejected', 'restart-current-version'])
+  assert.deepEqual(order, ['host-stopped', 'install-requested', 'desktop.update.install-failed {"detail":"signature rejected"}', 'restart-current-version'])
   assert.equal(coordinator.phase, 'error')
 })

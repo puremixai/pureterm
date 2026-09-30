@@ -2,7 +2,8 @@ import { app, dialog, ipcMain, protocol, safeStorage, session, type BrowserWindo
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import { DESKTOP_CHANNELS, type PickedPrivateKey, type RendererReadyPayload } from '@pureterm/protocol'
+import { DESKTOP_CHANNELS, HostError, toWireError, type PickedPrivateKey, type RendererReadyPayload } from '@pureterm/protocol'
+import { isLocale, setLocale, t } from '@pureterm/i18n'
 import type { CredentialProvider } from '@pureterm/host'
 import { createBootCheck } from '../diagnostics/boot-check.js'
 import { normalizeReadyPayload } from '@pureterm/transport/readiness'
@@ -72,20 +73,21 @@ for (const name of profileSwitches) app.commandLine.appendSwitch(name)
 const platform = selectPlatformStrategy()
 
 if (profileDisabled) {
-  console.log('[main] SSH_CORDIS_NO_LAUNCH_PROFILE=1：本次不读也不写启动档案。')
+  console.log('[main] SSH_CORDIS_NO_LAUNCH_PROFILE=1: skipping launch-profile reads and writes this run.')
 } else if (storedProfile) {
-  console.log(`[main] 读到启动档案：${describeLaunchProfile(storedProfile)}`)
+  console.log(`[main] launch profile: ${describeLaunchProfile(storedProfile)}`)
 } else {
-  console.log('[main] 没有可用的启动档案（首次运行，或档案损坏/版本不符）。')
+  console.log('[main] no usable launch profile (first run, or the file is corrupt / version-mismatched).')
 }
 
 if (profileSwitches.length) {
   console.warn(
     [
-      `[main] 档案显示这台机器上次是靠「${profileSwitches.map((name) => `--${name}`).join(' ')}」起来的，本次启动前直接带上，`,
-      '[main] 省掉「先失败一次、再自动重启一轮」。代价是操作系统级的进程隔离被放宽了——',
-      '[main] 渲染层仍有 contextIsolation + nodeIntegration:false + preload 白名单三重隔离。',
-      '[main] 想每次都走完整流程请设 SSH_CORDIS_NO_LAUNCH_PROFILE=1。',
+      `[main] the profile says this machine last came up with "${profileSwitches.map((name) => `--${name}`).join(' ')}"; adding it up front,`,
+      '[main] which skips the "fail once, then restart automatically" round. The cost is that OS-level process',
+      '[main] isolation is relaxed — the renderer still has contextIsolation + nodeIntegration:false + the',
+      '[main] preload allowlist.',
+      '[main] Set SSH_CORDIS_NO_LAUNCH_PROFILE=1 to take the full path every time.',
     ].join('\n'),
   )
 }
@@ -99,6 +101,14 @@ let disposing = false
 let shutdownTask: Promise<void> | undefined
 let updates: ReturnType<typeof createDesktopUpdates> | undefined
 let sandboxFallbackTried = false
+
+/**
+ * 菜单里「检查更新…」的动作。
+ *
+ * 单独提出来是因为菜单要按语言重建：重建发生在渲染层上报语言之后，那时
+ * bootstrap() 里那一次调用早就返回了，回调必须活得比它久。
+ */
+const checkUpdates = (): void => { void updates?.check(true) }
 
 /**
  * 就绪闸门：想在「应用真能用」之后做的事，必须注册到这里。
@@ -137,10 +147,10 @@ readiness.onReady((info) => {
   }
   try {
     writeLaunchProfile(launchProfileFile, profile)
-    console.log(`[main] 启动档案已更新（表面确认可用之后才写）：${launchProfileFile}`)
+    console.log(`[main] launch profile updated (written only after the surface confirmed usable): ${launchProfileFile}`)
   } catch (error) {
     // 写档案失败不该影响运行：它只是加速手段
-    console.error('[main] 启动档案写入失败（不影响本次运行）:', error)
+    console.error('[main] could not write the launch profile (this run is unaffected):', error)
   }
 })
 
@@ -155,17 +165,17 @@ readiness.onReady((info) => {
 function handleReady(payload: RendererReadyPayload): void {
   // 先打日志再进闸门：闸门的动作是同步执行的（比如提交启动档案），
   // 顺序反过来的话，「档案已更新」会出现在「收到上报」前面，读日志的人会懵。
-  console.log(`[main] 渲染层就绪上报：${JSON.stringify(payload)}`)
+  console.log(`[main] renderer-ready report: ${JSON.stringify(payload)}`)
   const result = readiness.report(payload)
   if (!result.accepted) {
-    console.log('[main] 该上报被忽略（闸门已经开过了）。')
+    console.log('[main] report ignored (the gate is already open).')
     return
   }
   if (!result.ready) {
-    console.log(`[main] 闸门保持关闭：渲染层报告自己不可用（${payload.error ?? '未给出原因'}）。`)
+    console.log(`[main] gate stays closed: the renderer reported itself unusable (${payload.error ?? 'no reason given'}).`)
     return
   }
-  console.log('[main] 闸门已打开：注册在闸门上的动作现在执行。')
+  console.log('[main] gate open: actions registered on the gate now run.')
   void bootCheck.finish(payload)
 }
 
@@ -191,7 +201,7 @@ function startGeneration(): ElectronShellGeneration {
     onLoadFailure: (reason) => fallbackToNoSandbox(reason),
   })
   shell = generation
-  console.log(`[main] 已创建 shell generation #${generation.id}`)
+  console.log(`[main] created shell generation #${generation.id}`)
   return generation
 }
 
@@ -214,12 +224,12 @@ function fallbackToNoSandbox(reason: string): void {
 
   console.error(
     [
-      `[main] 渲染进程起不来（${reason}）。`,
-      '[main] 最常见的原因是 Chromium 的进程沙箱在当前受限环境里无法初始化；',
-      '[main] 注意 GPU 进程崩溃往往只是它的表象，别误判成显卡问题。',
-      '[main] 将以 --no-sandbox 重启一次：渲染层仍有 contextIsolation + nodeIntegration:false +',
-      '[main] preload 白名单三重隔离，但少了操作系统级的进程隔离。',
-      '[main] 不想自动重启请设 SSH_CORDIS_NO_SANDBOX_FALLBACK=1。',
+      `[main] the renderer process would not start (${reason}).`,
+      "[main] The usual cause is that Chromium's process sandbox cannot initialize in this restricted environment;",
+      '[main] note that a GPU process crash is often just its symptom, not a graphics problem.',
+      '[main] Restarting once with --no-sandbox: the renderer still has contextIsolation + nodeIntegration:false +',
+      '[main] the preload allowlist, but OS-level process isolation is gone.',
+      '[main] Set SSH_CORDIS_NO_SANDBOX_FALLBACK=1 to turn the automatic restart off.',
     ].join('\n'),
   )
 
@@ -234,8 +244,8 @@ function fallbackToNoSandbox(reason: string): void {
     onFailure: (error) => {
       console.error(
         [
-          `[main] 自动重启失败：${error.message}`,
-          '[main] 当前进程继续运行（窗口可能是空的）。可以手动重试：',
+          `[main] automatic restart failed: ${error.message}`,
+          '[main] the current process keeps running (the window may be empty). Retry by hand:',
           '[main]   electron dist/electron/app/main.js --no-sandbox',
         ].join('\n'),
       )
@@ -295,7 +305,7 @@ async function pickPrivateKey(clientId: string): Promise<PickedPrivateKey | unde
   const parent = currentWindow()
 
   const dialogOptions: Electron.OpenDialogOptions = {
-    title: '选择私钥文件',
+    title: t('desktop.pick-key.title'),
     defaultPath: join(homedir(), '.ssh'),
     // 不设 filters：私钥常常没有扩展名（id_ed25519），加了过滤器反而看不见
     properties: ['openFile', 'showHiddenFiles'],
@@ -308,15 +318,38 @@ async function pickPrivateKey(clientId: string): Promise<PickedPrivateKey | unde
   try {
     content = readFileSync(path, 'utf8')
   } catch (error) {
-    return { path, error: `读不到这个文件：${(error as Error).message}` }
+    // 失败以**码**回渲染层：这句话要在渲染层用当前语言说出来，主进程不知道是哪门语言
+    return { path, error: toWireError(new HostError('ssh.key-file-unreadable',
+      { path, reason: (error as NodeJS.ErrnoException).code ?? 'unknown' }, `read ${path}: ${(error as Error).message}`)) }
   }
 
   if (!/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(content)) {
-    return { path, error: '这个文件看起来不是私钥（没有找到 PRIVATE KEY 头）。' }
+    return { path, error: toWireError(new HostError('ssh.key-unrecognized')) }
   }
   // OpenSSH 新格式的加密私钥带 kdf/bcrypt 标记；老 PEM 格式的头部含 ENCRYPTED
   const encrypted = /ENCRYPTED|bcrypt|kdf/i.test(content)
   return { path, encrypted }
+}
+
+// ─────────────────────────── 语言 ───────────────────────────
+
+/**
+ * 渲染层报来它此刻显示的语言。
+ *
+ * 偏好归渲染层：只有它有那个开关，也只有它存着（localStorage 主进程读不到）。
+ * 主进程这边另有一批要看语言的界面 —— 应用菜单、原生选私钥对话框、更新对话框 ——
+ * 所以由渲染层上报。
+ *
+ * 收到之后**立刻重建菜单**：菜单是这一侧唯一常驻可见的文字，晚一步重建就会留下
+ * 一个和页面说着不同语言的菜单。启动到上报之间菜单是英文，与「英文是目录的源语言」
+ * 一致。
+ *
+ * 值来自边界之外，所以先收窄再采信：收不窄就当没这回事，不改语言也不重建菜单。
+ */
+function applyLocale(locale: unknown): void {
+  if (!isLocale(locale)) return
+  setLocale(locale)
+  applyApplicationMenu(checkUpdates)
 }
 
 function assertApplicationSender(event: IpcMainEvent | IpcMainInvokeEvent): void {
@@ -344,7 +377,11 @@ function installDesktopBridge(): void {
   })
   ipcMain.on(DESKTOP_CHANNELS.ready, (event, payload: unknown) => {
     try { assertApplicationSender(event); handleReady(normalizeReadyPayload(payload)) }
-    catch (error) { console.error('[main] 拒绝就绪上报:', error instanceof Error ? error.message : String(error)) }
+    catch (error) { console.error('[main] rejected renderer-ready report:', error instanceof Error ? error.message : String(error)) }
+  })
+  ipcMain.on(DESKTOP_CHANNELS.locale, (event, locale: unknown) => {
+    try { assertApplicationSender(event); applyLocale(locale) }
+    catch (error) { console.error('[main] rejected locale report:', error instanceof Error ? error.message : String(error)) }
   })
   // The top bar draws its own minimize/maximize/close, so these three are the
   // only window commands in the app. Each one re-reads currentWindow() rather
@@ -356,7 +393,7 @@ function installDesktopBridge(): void {
         assertApplicationSender(event)
         const window = currentWindow()
         if (window) act(window)
-      } catch (error) { console.error('[main] 拒绝窗口命令:', error instanceof Error ? error.message : String(error)) }
+      } catch (error) { console.error('[main] rejected window command:', error instanceof Error ? error.message : String(error)) }
     })
   }
   windowCommand(DESKTOP_CHANNELS.windowMinimize, window => window.minimize())
@@ -386,9 +423,9 @@ async function bootstrap(): Promise<void> {
     pickPrivateKey,
     browserAccess: !webCarrierDisabled,
     onExit: error => {
-      console.error('[main] Host 子进程意外退出:', error)
+      console.error('[main] Host child exited unexpectedly:', error)
       if (!disposing && !bootCheckEnabled && !process.env.SSH_CORDIS_SMOKE) {
-        dialog.showErrorBox('PureTerm Host 已停止', 'SSH 服务进程意外退出，当前连接已关闭。请重新启动 PureTerm。')
+        dialog.showErrorBox(t('desktop.host-stopped.title'), t('desktop.host-stopped.body'))
       }
       void exitApplication(1)
     },
@@ -397,19 +434,19 @@ async function bootstrap(): Promise<void> {
   bootCheck.arm()
   host = await hostStarting
   if (disposing) return
-  if (webCarrierDisabled) console.log('[main] 普通浏览器入口已禁用；桌面使用内部 Web Host。')
-  else console.log(`[main] 载体已就绪：web（浏览器入口 ${host.url}）`)
+  if (webCarrierDisabled) console.log('[main] the plain-browser entry is disabled; Desktop uses its internal Web Host.')
+  else console.log(`[main] carrier ready: web (browser entry ${host.url})`)
   updates = createDesktopUpdates(() => shutdown(true), async () => {
     // Some platforms report installation failures asynchronously after quitAndInstall.
     // Keep the updater alive until then and restart the current version after the error dialog.
     app.relaunch()
     await exitApplication(1)
   })
-  applyApplicationMenu(() => { void updates?.check(true) })
-  console.log(`[main] Host 子进程已就绪 pid=${host.pid} parent=${process.pid}。数据目录：${dataDir}`)
+  applyApplicationMenu(checkUpdates)
+  console.log(`[main] Host child ready pid=${host.pid} parent=${process.pid}. Data directory: ${dataDir}`)
 
   if (app.commandLine.hasSwitch('no-sandbox')) {
-    console.warn('[main] 本次以 --no-sandbox 运行：Chromium 进程沙箱已关闭（渲染层隔离仍在）。')
+    console.warn('[main] running with --no-sandbox: the Chromium process sandbox is off (renderer isolation is not).')
   }
 
   if (process.env.SSH_CORDIS_SMOKE === '1') {
@@ -419,7 +456,7 @@ async function bootstrap(): Promise<void> {
 }
 
 app.whenReady().then(bootstrap).catch((error) => {
-  console.error('[main] 启动失败:', error)
+  console.error('[main] startup failed:', error)
   void exitApplication(1)
 })
 
@@ -436,7 +473,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', (event) => {
   if (disposing && !host) return
   event.preventDefault()
-  void shutdown().catch(error => console.error('[main] 退出清理失败:', error)).finally(() => app.quit())
+  void shutdown().catch(error => console.error('[main] shutdown cleanup failed:', error)).finally(() => app.quit())
 })
 
 function shutdown(preserveUpdater = false): Promise<void> {
@@ -449,7 +486,7 @@ function shutdown(preserveUpdater = false): Promise<void> {
     bootCheck.cancel()
     ipcMain.removeHandler(DESKTOP_CHANNELS.bootstrap)
     ipcMain.removeAllListeners(DESKTOP_CHANNELS.ready)
-    for (const channel of [DESKTOP_CHANNELS.windowMinimize, DESKTOP_CHANNELS.windowToggleMaximize, DESKTOP_CHANNELS.windowClose]) {
+    for (const channel of [DESKTOP_CHANNELS.locale, DESKTOP_CHANNELS.windowMinimize, DESKTOP_CHANNELS.windowToggleMaximize, DESKTOP_CHANNELS.windowClose]) {
       ipcMain.removeAllListeners(channel)
     }
     session.defaultSession.webRequest.onBeforeSendHeaders(null)
@@ -458,7 +495,7 @@ function shutdown(preserveUpdater = false): Promise<void> {
       const pending = host ?? await hostStarting?.catch(() => undefined)
       await pending?.dispose()
     } catch (error) {
-      console.error('[main] 宿主卸载失败:', error)
+      console.error('[main] could not dispose the Host:', error)
       throw error
     } finally {
       host = null

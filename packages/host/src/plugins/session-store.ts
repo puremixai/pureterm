@@ -159,7 +159,7 @@ export class SessionStore extends Service {
     // 先写密文再写元数据：中途失败也只会出现「密文在、元数据还指着旧的」，不会丢密码
     this.persistSecrets()
     this.persistHosts()
-    console.log(`[sessionStore] 已把 ${moved} 条密文从 hosts.json 迁移到 secrets.json。`)
+    console.log(`[sessionStore] moved ${moved} sealed secrets from hosts.json to secrets.json.`)
   }
 
   private persistHosts(hosts = this.hosts): void {

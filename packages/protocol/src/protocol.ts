@@ -51,6 +51,7 @@ export const NOTICES = {
 export const DESKTOP_CHANNELS = {
   bootstrap: 'desktop:bootstrap',
   ready: 'desktop:renderer-ready',
+  locale: 'desktop:locale',
   windowMinimize: 'desktop:window-minimize',
   windowToggleMaximize: 'desktop:window-toggle-maximize',
   windowClose: 'desktop:window-close',
@@ -122,11 +123,17 @@ export interface RendererReadyPayload {
   error?: string
 }
 
-/** 选私钥文件的结果。error 存在时界面直接显示，path 仍然回填，方便用户自己看。 */
+/**
+ * 选私钥文件的结果。`error` 存在时界面显示它，`path` 仍然回填，方便用户自己看。
+ *
+ * `error` 是**身份**而不是一句话：这个失败产生在主进程（对话框归它），渲染的却是
+ * 渲染层，而只有渲染层知道当前是哪门语言。码复用的是 Host 在连接那一刻现读同一把
+ * 私钥时用的那两个，所以「读不到」和「不是私钥」在两处说的是同一句话。
+ */
 export interface PickedPrivateKey {
   path: string
   encrypted?: boolean
-  error?: string
+  error?: WireError
 }
 
 export interface HostSaveRequest {
@@ -525,6 +532,21 @@ export interface DesktopBootstrap {
 export interface DesktopBridge {
   bootstrap(): Promise<DesktopBootstrap>
   signalReady(payload: RendererReadyPayload): void
+  /**
+   * The language the page is showing, so the main process can word its own
+   * surfaces — the application menu, the native file and update dialogs — the
+   * same way.
+   *
+   * The renderer owns this preference: it is the side with the control for it
+   * and the side that stores it, so it reports rather than asks. A report needs
+   * no answer, so this is a `send`; the menu is rebuilt synchronously.
+   *
+   * Typed as the two catalogues rather than as a string, so a third language
+   * added to `@pureterm/i18n` fails to compile at the call site instead of
+   * arriving here as a value the main process would have to guess at. The
+   * receiving end narrows it anyway, because it comes from outside the process.
+   */
+  reportLocale(locale: 'en' | 'zh'): void
   /**
    * The top bar's three self-drawn window buttons, where the platform draws none.
    *

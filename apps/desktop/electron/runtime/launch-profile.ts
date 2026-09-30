@@ -98,7 +98,7 @@ export function planProfileSwitches(input: PlanProfileSwitchesInput): string[] {
 
 /** 把档案说成人话，写进启动日志 */
 export function describeLaunchProfile(profile: LaunchProfile): string {
-  const switches = profile.switches.length ? profile.switches.join(' ') : '(无额外开关)'
-  const sandbox = profile.sandboxWeakened ? '放宽了进程沙箱' : '沙箱完好'
-  return `${switches}｜${sandbox}｜终端 ${profile.renderer.cols}x${profile.renderer.rows}｜主机 ${profile.hosts} 个｜记录于 ${profile.savedAt || '未知时间'}`
+  const switches = profile.switches.length ? profile.switches.join(' ') : '(no extra switches)'
+  const sandbox = profile.sandboxWeakened ? 'process sandbox relaxed' : 'sandbox intact'
+  return `${switches} | ${sandbox} | terminal ${profile.renderer.cols}x${profile.renderer.rows} | hosts ${profile.hosts} | saved ${profile.savedAt || 'unknown time'}`
 }

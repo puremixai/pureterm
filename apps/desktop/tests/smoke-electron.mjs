@@ -19,7 +19,7 @@ try {
     env: { SSH_CORDIS_SMOKE: '1', SSH_CORDIS_SMOKE_MONITOR: '1',
       SSH_CORDIS_SMOKE_HOST: server.host, SSH_CORDIS_SMOKE_PORT: String(server.port),
       SSH_CORDIS_SMOKE_USER: server.username, SSH_CORDIS_SMOKE_PASS: server.password, SSH_CORDIS_SMOKE_KEYCHAIN: server.hostKey.toString() },
-    requiredMarkers: ['[main] 闸门已打开', '启动档案已更新', '[WINDOW-CHROME-OK]', '[DESKTOP-BOUNDARY-OK]', '[KEYCHAIN-WEB-OK]', '[MONITOR-SMOKE-OK]'],
+    requiredMarkers: ['[main] gate open', 'launch profile updated', '[WINDOW-CHROME-OK]', '[DESKTOP-BOUNDARY-OK]', '[KEYCHAIN-WEB-OK]', '[MONITOR-SMOKE-OK]'],
     // 监控验收要在一条连接上等两轮探测（第二轮补齐 CPU 与网络），比原来的流程长。
     timeoutMs: 90_000,
     inspect: ({ dataDir, output }) => {
@@ -27,7 +27,7 @@ try {
       assert.equal(profile.version, 1)
       assert.ok(profile.renderer.cols > 0 && profile.renderer.rows > 0)
       assert.equal(profile.hosts, 0)
-      assert.ok(output.indexOf('渲染层就绪上报') < output.indexOf('启动档案已更新'), 'profile committed before renderer-ready')
+      assert.ok(output.indexOf('renderer-ready report') < output.indexOf('launch profile updated'), 'profile committed before renderer-ready')
       const line = output.split(/\r?\n/).find(item => item.startsWith('[SMOKE] '))
       assert.ok(line, 'missing structured SSH report')
       const report = JSON.parse(line.slice('[SMOKE] '.length))

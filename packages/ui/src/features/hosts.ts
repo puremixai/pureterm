@@ -530,7 +530,7 @@ export class ClientHosts extends Service {
       if (!this.scope.alive || !picked || !this.browserKey.isCurrent(revision)) return
       this.formRevision++
       this.input('key-path').value = picked.path
-      if (picked.error) { view.status(picked.error, 'err'); return }
+      if (picked.error) { view.status(errorText(picked.error), 'err'); return }
       if (picked.encrypted) { this.input('key-pass').focus(); view.status(t('error.ssh.key-passphrase-needed'), 'pending') }
       else { this.input('key-pass').value = ''; view.status(t('hosts.status.key-picked-plain'), 'ok') }
     }).catch(error => { if (this.scope.alive) view.status(errorText(error), 'err') })

@@ -51,7 +51,7 @@ export function createBootCheck(options: BootCheckOptions): BootCheck {
       if (!options.enabled || watchdog) return
       watchdog = setTimeout(() => {
         watchdog = undefined
-        console.error(`[boot] 超时：${options.timeoutMs / 1000} 秒内没收到渲染层的就绪上报。`)
+        console.error(`[boot] timed out: no renderer-ready report within ${options.timeoutMs / 1000}s.`)
         console.log('[BOOT-FAIL]')
         options.exit(1)
       }, options.timeoutMs)
@@ -69,9 +69,9 @@ export function createBootCheck(options: BootCheckOptions): BootCheck {
           await new Promise((resolve) => setTimeout(resolve, SETTLE_BEFORE_SHOT_MS))
           const image = await window.webContents.capturePage()
           writeFileSync(shotPath, image.toPNG())
-          console.log(`[boot] 已截图窗口内容：${shotPath}`)
+          console.log(`[boot] window captured to ${shotPath}`)
         } catch (error) {
-          console.error('[boot] 截图失败:', error)
+          console.error('[boot] screenshot failed:', error)
         }
       }
 

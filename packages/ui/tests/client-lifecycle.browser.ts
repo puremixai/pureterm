@@ -690,10 +690,12 @@ async function runChecks() {
     assert(!document.getElementById('window-controls'), '独立 Web 入口不该有窗口按钮，一个节点都不该有')
 
     const windowCalls: string[] = []
+    const reportedLocales: string[] = []
 
     window.puretermDesktop = {
       bootstrap: async () => ({ webSocketUrl: 'ws://127.0.0.1:1/ws' }),
       signalReady() {},
+      reportLocale: locale => { reportedLocales.push(locale) },
       windowControls: {
         minimize: () => windowCalls.push('minimize'),
         toggleMaximize: () => windowCalls.push('maximize'),
@@ -704,6 +706,10 @@ async function runChecks() {
     client = createClient({ api: chrome.api, terminalFactory: chrome.terminalFactory })
 
     assert((await client.ready).ok, 'desktop chrome client failed readiness')
+
+    // 主进程的菜单和原生对话框不在这份文档里，读不到这里的 localStorage，
+    // 所以语言每次落定都要上报一次；这一句就是那半边的唯一输入。
+    assert(reportedLocales.join() === 'en', 'the desktop bridge is told which language the page is showing')
 
     // 节点是等 desktop.css 落地之后才建的，所以这里等它而不是赌一个 tick 够用。
     const cluster = await waitFor(() => document.getElementById('window-controls'), 'the caption cluster')
@@ -724,6 +730,14 @@ async function runChecks() {
     click('window-close')
 
     assert(windowCalls.join(',') === 'minimize,maximize,close', 'each button must reach its own window command')
+
+    // 换一次语言，主进程要再被通知一次 —— 菜单是这一侧常驻可见的文字，
+    // 晚一步重建就会留下一个和页面说着不同语言的菜单。换回来让后续用例回到英文。
+    click('locale-toggle'); await tick()
+
+    click('locale-toggle'); await tick()
+
+    assert(reportedLocales.join() === 'en,zh,en', 'and it is told again on every switch, not only at startup')
 
     await client.dispose()
 

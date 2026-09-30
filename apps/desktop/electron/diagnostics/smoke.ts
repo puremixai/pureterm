@@ -129,7 +129,7 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           for (;;) {
             const seen = read();
             if (seen) return seen;
-            if (Date.now() > deadline) throw new Error('监控验收等待超时：' + what);
+            if (Date.now() > deadline) throw new Error('monitor smoke timed out waiting for: ' + what);
             await new Promise(resolve => setTimeout(resolve, 50));
           }
         };
@@ -146,15 +146,15 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           document.getElementById('pass').value = config.password;
           document.getElementById('host-label').value = 'Monitor fixture';
           document.getElementById('connect').click();
-          await wait(() => document.getElementById('session-state').className === 'connected' ? true : null, '会话连接');
-          const held = await wait(() => { const seen = facts(); return seen.cipher !== '—' && seen.key !== '—' ? seen : null; }, '握手事实');
+          await wait(() => document.getElementById('session-state').className === 'connected' ? true : null, 'session to connect');
+          const held = await wait(() => { const seen = facts(); return seen.cipher !== '—' && seen.key !== '—' ? seen : null; }, 'handshake facts');
           // 折叠是默认值：展开之前一次探测都不该发生，状态文字要说的是「暂停」而不是「读取中」。
           const collapsed = document.getElementById('monitor-body').hidden;
           const beforeExpand = visible();
           document.getElementById('monitor-toggle').click();
-          const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, '第一张快照');
+          const first = await wait(() => { const text = value('memory'); return text.includes('%') ? text : null; }, 'the first snapshot');
           const ready = await wait(() => visible() === 'Updated'
-            ? { cpu: value('cpu'), memory: value('memory'), load: value('load'), disk: value('disk'), net: value('net'), uptime: value('uptime') } : null, '第二轮快照');
+            ? { cpu: value('cpu'), memory: value('memory'), load: value('load'), disk: value('disk'), net: value('net'), uptime: value('uptime') } : null, 'the second snapshot');
           /*
            * 同一条连接：终端仍然收发。
            *
@@ -179,14 +179,14 @@ export async function runSmokeTest(window: BrowserWindow, exit: (code: number) =
           try {
             document.querySelector('.terminal-pane:not([hidden]) .xterm-helper-textarea').dispatchEvent(
               new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
-            await wait(() => echoed.includes('echo:monitor-alive') ? true : null, '终端回声');
+            await wait(() => echoed.includes('echo:monitor-alive') ? true : null, 'terminal echo');
           } finally { stopListening() }
           // 同一条连接：SFTP 仍然列目录。走面板按钮，和用户点的是同一个入口。
           document.getElementById('sftp-toggle').click();
-          const path = await wait(() => document.getElementById('sftp-path').value || null, 'SFTP 列目录');
+          const path = await wait(() => document.getElementById('sftp-path').value || null, 'SFTP listing');
           const files = document.querySelectorAll('#sftp-list .file-row').length;
           document.getElementById('disconnect').click();
-          await wait(() => document.getElementById('disconnect').disabled ? true : null, '断开连接');
+          await wait(() => document.getElementById('disconnect').disabled ? true : null, 'disconnected');
           return { collapsed, beforeExpand, facts: held, first, ready, path, files };
         } finally {
           delete document.hidden;
