@@ -12,7 +12,7 @@ const input = (overrides = {}) => ({
   ...overrides,
 })
 
-function fakeWindow() {
+function fakeWindow({ destroyed = false } = {}) {
   const sent = []
   const listeners = new Set()
   const webContents = {
@@ -22,7 +22,7 @@ function fakeWindow() {
     isDestroyed: () => false,
   }
   return {
-    window: { webContents, isDestroyed: () => false },
+    window: { webContents, isDestroyed: () => destroyed },
     sent,
     listenerCount: () => listeners.size,
     press(inputEvent) {
@@ -92,6 +92,16 @@ test('an old generation cannot receive commands or late context reports', () => 
   assert.equal(shortcuts.reportContext({ ...CONTEXT, modalOpen: true }), undefined)
   assert.equal(fake.press(input()), 0, 'the removed listener takes no key')
   assert.deepEqual(fake.sent, [], 'nothing reaches the renderer from a disposed generation')
+})
+
+test('disposing a window that is already gone does not throw', () => {
+  // 用户关窗或崩溃清理会在 release 之前销毁窗口，那时 `window.webContents` 这个取值本身
+  // 就会抛。释放路径必须自己扛住，否则一次正常退出会变成 uncaughtException。
+  const fake = fakeWindow({ destroyed: true })
+  const shortcuts = installDesktopShortcuts(fake.window, 'other')
+  shortcuts.reportContext({ ...CONTEXT })
+  assert.doesNotThrow(() => shortcuts.dispose())
+  assert.equal(shortcuts.dispatch('terminal.close'), false, 'a destroyed window dispatches nothing')
 })
 
 test('narrowShortcutContext accepts a full record and rejects anything else', () => {

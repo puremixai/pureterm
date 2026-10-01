@@ -8,7 +8,7 @@ import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { encodeWire, decodeWire, fromWireError } from '@pureterm/protocol'
-import { startHostProcess } from '../dist/electron/runtime/host-process.js'
+import { startHostProcess, HostStartupError } from '../dist/electron/runtime/host-process.js'
 import { createShutdownCoordinator } from '../dist/electron/runtime/shutdown.js'
 import { startFakeSshServer } from './fake-ssh-server.mjs'
 import { connection, rendererFixture, until } from './integration-helpers.mjs'
@@ -78,7 +78,7 @@ async function fixture(t, overrides = {}) {
     credentials: { persistent: true, credentialPersistence: 'encrypted',
       seal: async plain => crypto.seal(plain), unseal: async sealed => crypto.unseal(sealed) },
     pickPrivateKey: async clientId => { picked.push(clientId); return { path: '/fixture/id_ed25519', encrypted: true } },
-    onExit: error => exits.push(error),
+    onExit: (error, failure) => exits.push({ error, failure }),
     startupTimeoutMs: 3000, shutdownTimeoutMs: 500,
     ...overrides,
   }
@@ -278,6 +278,41 @@ test('child crash closes outstanding WebSocket work and reports one failure', { 
   released.resolve()
   await child.dispose()
   await child.dispose()
+})
+
+test('an unexpected child exit reports process facts, not just a message', { timeout: 10000 }, async t => {
+  const f = await fixture(t)
+  const child = await f.start()
+  process.kill(child.pid, 'SIGKILL')
+  await until(() => f.exits.length === 1, 'one failure report')
+  const { error, failure } = f.exits[0]
+  assert.ok(error instanceof Error)
+  assert.equal(failure.reason, 'unexpected-exit')
+  assert.equal(failure.pid, child.pid, 'the report names the process that failed')
+  assert.ok(failure.exitCode !== null || failure.signal !== null, 'a dead child is described by an exit code or a signal')
+  await child.dispose()
+})
+
+test('startup failures carry the reason a recovery decision needs', { timeout: 20000 }, async t => {
+  const f = await fixture(t)
+  const started = async (extra) => f.start(extra).then(() => undefined, error => error)
+
+  const stalled = await started({ entry: fixturePath('host-stalled-start.mjs'), startupTimeoutMs: 800, shutdownTimeoutMs: 50,
+    env: { ...process.env, PURETERM_TEST_CHILD_PID: join(f.directory, 'stalled.pid') } })
+  assert.ok(stalled instanceof HostStartupError, 'a startup failure is a HostStartupError, not a bare message')
+  assert.equal(stalled.failure.reason, 'startup-timeout')
+  assert.equal(stalled.failure.exitCode, null, 'the child was still alive when the handshake gave up')
+  assert.ok(stalled.failure.pid > 0)
+
+  const invalid = await started({ entry: fixturePath('host-stalled-start.mjs'), shutdownTimeoutMs: 50,
+    env: { ...process.env, PURETERM_TEST_CHILD_PID: join(f.directory, 'invalid.pid'), PURETERM_TEST_BAD_HANDSHAKE: '1' } })
+  assert.ok(invalid instanceof HostStartupError)
+  assert.equal(invalid.failure.reason, 'handshake-invalid')
+
+  const missing = await started({ execPath: join(f.directory, 'missing-node-executable'), startupTimeoutMs: 200, shutdownTimeoutMs: 50 })
+  assert.ok(missing instanceof HostStartupError)
+  assert.equal(missing.failure.reason, 'spawn-error')
+  assert.match(missing.message, /ENOENT|spawn/i, 'the original launch error is preserved')
 })
 
 test('a child that never acknowledges startup is terminated before start rejects', { timeout: 10000 }, async t => {

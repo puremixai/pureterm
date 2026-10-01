@@ -42,7 +42,10 @@ export function installDesktopShortcuts(window: BrowserWindow, platform: Shortcu
     dispose() {
       disposed = true
       context = undefined
-      if (!window.webContents.isDestroyed()) window.webContents.removeListener('before-input-event', onInput)
+      // 窗口可能在 release 之前就被销毁了（用户关窗、崩溃清理）。那时 `window.webContents`
+      // 这个取值本身就会抛「Object has been destroyed」，所以先问窗口，再问它的 webContents。
+      if (window.isDestroyed() || window.webContents.isDestroyed()) return
+      window.webContents.removeListener('before-input-event', onInput)
     },
   }
 }

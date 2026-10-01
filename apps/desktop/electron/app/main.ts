@@ -8,7 +8,9 @@ import type { CredentialProvider } from '@pureterm/host'
 import { createBootCheck } from '../diagnostics/boot-check.js'
 import { normalizeReadyPayload } from '@pureterm/transport/readiness'
 import { authorizeDesktopSocket, DESKTOP_PAGE, serveWebDocument } from '../runtime/web-document.js'
-import { startHostProcess, type DesktopHostProcess } from '../runtime/host-process.js'
+import { startHostProcess, HostStartupError, type DesktopHostProcess, type HostProcessFailure } from '../runtime/host-process.js'
+import { writeHostCrashReport, type HostFailurePhase, type HostFailureReport } from '../runtime/crash-report.js'
+import { createFatalRecoveryCoordinator, type FatalRecoveryCoordinator } from '../runtime/fatal-recovery.js'
 import { createDesktopUpdates } from './updates.js'
 import {
   LAUNCH_PROFILE_VERSION,
@@ -218,6 +220,80 @@ const shutdownCoordinator = createShutdownCoordinator({
     console.error(`[main] shutdown preparation failed during ${phase}:`, error)
   },
 })
+
+/** 把子进程的进程事实补齐成一份可落盘的诊断记录：版本、时间、平台、阶段。 */
+function hostFailureReport(phase: HostFailurePhase, failure: HostProcessFailure): HostFailureReport {
+  return {
+    version: 1,
+    timestamp: new Date().toISOString(),
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    architecture: process.arch,
+    phase,
+    reason: failure.reason,
+    ...(failure.pid === undefined ? {} : { pid: failure.pid }),
+    exitCode: failure.exitCode,
+    signal: failure.signal,
+  }
+}
+
+/**
+ * Host 故障之后的唯一恢复点。
+ *
+ * 隔离验收用 `SSH_CORDIS_RECOVERY_CHOICE` 回答，和退出确认同一个套路：隐藏窗口里
+ * 不该弹出一个没人能点的原生模态框。正常启动永不设置它。
+ *
+ * 清理走的就是普通退出那条 shutdown()：它停 Host、摘监听、释放这一代，因此重启
+ * 起来的新进程面对的是一个干净的数据目录。清理**先于**重启/退出，顺序由协调器保证。
+ */
+const fatalRecovery: FatalRecoveryCoordinator = createFatalRecoveryCoordinator({
+  record: report => writeHostCrashReport(join(app.getPath('userData'), 'diagnostics', 'host'), report),
+  choose: (report, reportPath) => {
+    const override = process.env.SSH_CORDIS_RECOVERY_CHOICE
+    if (override === 'restart') return Promise.resolve('restart')
+    if (override === 'quit') return Promise.resolve('quit')
+    // 无人值守的收尾（诊断运行、启动检查、渲染进程崩溃后的清理）不弹框。
+    if (disposing || bootCheckEnabled || process.env.SSH_CORDIS_SMOKE) return Promise.resolve('quit')
+    const window = currentWindow()
+    if (!window) return Promise.resolve('quit')
+    const title = t('desktop.host-stopped.title')
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'error',
+      title,
+      message: title,
+      detail: [
+        t('desktop.host-stopped.body'),
+        reportPath ? t('desktop.host-stopped.report', { path: reportPath }) : t('desktop.host-stopped.no-report'),
+        t('desktop.host-stopped.detail', { reason: report.reason, exit: report.signal ?? String(report.exitCode) }),
+      ].join('\n\n'),
+      buttons: [t('desktop.host-stopped.quit'), t('desktop.host-stopped.restart')],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    return Promise.resolve(choice === 1 ? 'restart' : 'quit')
+  },
+  cleanup: () => shutdown(),
+  // app.relaunch() 把重启排到退出之后；app.exit() 才真的让它发生，并保证新进程继承
+  // 同一份启动参数（数据目录、开关、profile）。
+  relaunch: () => {
+    console.log('[main] restarting after a Host failure')
+    app.relaunch()
+  },
+  exit: code => app.exit(code),
+})
+
+/**
+ * 一次 Host 故障的入口。三条路（exit/disconnect/close）会各报一次，协调器只认第一次。
+ * 在它做任何决定之前，先把在途的退出准备和这一代的快捷键适配器作废：这一代已经完了，
+ * 不能再让它替我们停 Host 或执行命令。
+ */
+function handleHostFailure(phase: HostFailurePhase, failure: HostProcessFailure): void {
+  shutdownCoordinator.dispose()
+  desktopShortcuts?.dispose()
+  desktopShortcuts = undefined
+  void fatalRecovery.handle(hostFailureReport(phase, failure))
+}
 
 /**
  * 受保护的普通退出。关窗、菜单退出、Cmd+Q 都走这里：
@@ -620,17 +696,25 @@ async function bootstrap(): Promise<void> {
     credentials: createCredentials(),
     pickPrivateKey,
     browserAccess: !webCarrierDisabled,
-    onExit: error => {
+    onExit: (error, failure) => {
       console.error('[main] Host child exited unexpectedly:', error)
-      if (!disposing && !bootCheckEnabled && !process.env.SSH_CORDIS_SMOKE) {
-        dialog.showErrorBox(t('desktop.host-stopped.title'), t('desktop.host-stopped.body'))
-      }
-      void exitApplication(1)
+      handleHostFailure('runtime', failure)
     },
   })
   const generation = startGeneration()
   bootCheck.arm()
-  host = await hostStarting
+  try {
+    host = await hostStarting
+  } catch (error) {
+    // 启动期失败发生在 onExit 生效之前，所以它只能靠抛出来。交给同一个恢复点，
+    // 而不是在这里直接退出：用户该有同样的「重启 / 退出」选择。
+    if (error instanceof HostStartupError) {
+      console.error('[main] Host failed to start:', error.message)
+      handleHostFailure('startup', error.failure)
+      return
+    }
+    throw error
+  }
   if (disposing) return
   if (webCarrierDisabled) console.log('[main] the plain-browser entry is disabled; Desktop uses its internal Web Host.')
   else console.log(`[main] carrier ready: web (browser entry ${host.url})`)
@@ -684,6 +768,10 @@ app.on('will-quit', (event) => {
   event.preventDefault()
   void shutdown().catch(error => console.error('[main] shutdown cleanup failed:', error)).finally(() => app.quit())
 })
+
+// 真正退出之后，恢复协调器不再有下一句话可说。放在这里而不是 shutdown()：清理本身
+// 是恢复流程的一步，在它中途把协调器释放掉，重启那一步就会被自己取消。
+app.on('quit', () => fatalRecovery.dispose())
 
 function shutdown(preserveUpdater = false): Promise<void> {
   if (!preserveUpdater) updates?.dispose()
