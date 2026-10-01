@@ -28,6 +28,7 @@ import { createShellGeneration, LOAD_WATCHDOG_MS, type ElectronShellGeneration }
 import { resolveDesktopPaths } from '../runtime/paths.js'
 import { claimDesktopSingleInstance } from '../runtime/single-instance.js'
 import { bindDesktopProfile, DesktopProfileError, sameDesktopProfilePath } from '../runtime/desktop-profile.js'
+import { createShutdownCoordinator, type ShutdownConfirmation } from '../runtime/shutdown.js'
 
 /*
  * Electron 入口拥有窗口、平台能力、资源协议和更新协调。
@@ -161,6 +162,85 @@ let bridgeInstalled = false
 let shutdownTask: Promise<void> | undefined
 let updates: ReturnType<typeof createDesktopUpdates> | undefined
 let sandboxFallbackTried = false
+// 一次被批准的退出：允许随后的 app.quit() 直接通过，不再重复问用户。
+let quitCommitted = false
+// 正在进行的受保护退出。同一个请求只问一次、只停一次 Host。
+let quitTask: Promise<void> | undefined
+
+/**
+ * 退出前的唯一确认点。原生对话框的文字来自目录（主进程知道当前语言），
+ * Cancel 是默认且取消按钮——「继续退出」必须是用户主动选的那一个。
+ *
+ * 隔离的 Electron 验收用一个环境变量回答，免得隐藏窗口里弹出一个没人点的原生框。
+ * 它只在测试启动器里设置，正常启动永不设置。
+ */
+async function confirmShutdown(request: ShutdownConfirmation): Promise<boolean> {
+  const override = process.env.SSH_CORDIS_QUIT_CONFIRM
+  if (override === 'accept') return true
+  if (override === 'cancel') return false
+  const window = currentWindow()
+  // 没有窗口可挂对话框：这是无人值守的退出（渲染进程崩溃、启动失败、诊断运行）。
+  // 此时做有界清理就好，绝不弹一个没人能点的原生模态框。
+  if (!window) return true
+  const title = request.intent === 'update'
+    ? t('desktop.shutdown.update-title', { version: request.version ?? '' })
+    : t('desktop.shutdown.title')
+  const body = request.phase === 'unknown'
+    ? t('desktop.shutdown.unknown')
+    : t('desktop.shutdown.body', {
+        sessions: String(request.activity?.activeSessions ?? 0),
+        connections: String(request.activity?.pendingConnections ?? 0),
+        files: String(request.activity?.pendingFileOperations ?? 0),
+        changes: String(request.activity?.pendingMutations ?? 0),
+      })
+  const options: Electron.MessageBoxOptions = {
+    type: 'warning',
+    title,
+    message: title,
+    detail: body,
+    buttons: [t('desktop.shutdown.cancel'), request.phase === 'force' ? t('desktop.shutdown.force-confirm') : t('desktop.shutdown.confirm')],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  }
+  const result = await dialog.showMessageBox(window, options)
+  return result.response === 1
+}
+
+const shutdownCoordinator = createShutdownCoordinator({
+  getHost: () => host ?? undefined,
+  getGeneration: () => shell?.id,
+  confirm: confirmShutdown,
+  onFailure: (error, phase) => {
+    console.error(`[main] shutdown preparation failed during ${phase}:`, error)
+  },
+})
+
+/**
+ * 受保护的普通退出。关窗、菜单退出、Cmd+Q 都走这里：
+ * 先让协调器检查活动、必要时问用户、停 Host，得到 ready 才提交 app.quit()。
+ * 取消或失败则什么都不做——窗口、WebSocket、会话原样留着。
+ */
+function requestOrdinaryQuit(): Promise<void> {
+  if (quitTask) return quitTask
+  quitTask = shutdownCoordinator.prepare('quit').then(async (decision) => {
+    if (decision.status === 'ready') {
+      // 清理放在这里而不是交给 will-quit：一次 preventDefault 后只再 app.quit() 一次，
+      // 避免 before-quit 和 will-quit 各自 preventDefault 造成「退不出去」的嵌套。
+      await shutdown()
+      quitCommitted = true
+      app.quit()
+      return
+    }
+    // 取消 / busy / 失败：留着窗口，下一次关闭再问。
+    quitTask = undefined
+    console.log(`[main] ordinary quit not committed (${decision.status}); the application stays open.`)
+  }).catch((error: unknown) => {
+    quitTask = undefined
+    console.error('[main] ordinary quit preparation threw:', error)
+  })
+  return quitTask
+}
 
 /**
  * 菜单里「检查更新…」的动作。
@@ -259,6 +339,17 @@ function startGeneration(): ElectronShellGeneration {
     autoHideMenuBar: platform.autoHideMenuBar,
     search: process.env.SSH_CORDIS_SMOKE ? 'smoke=1' : '',
     onLoadFailure: (reason) => fallbackToNoSandbox(reason),
+    /*
+     * Windows/Linux：关最后一个窗口等于退出应用，所以先接管这次关闭，走受保护的退出。
+     * macOS：关窗只释放这一代（页面及其 WebSocket 会话随之断开），Host 继续活着，
+     * 所以直接放行——Cmd+Q / 菜单退出另有应用级守卫。
+     */
+    onCloseRequested: () => {
+      if (platform.quitOnAllWindowsClosed === false) return true
+      if (quitCommitted || disposing) return true
+      void requestOrdinaryQuit()
+      return false
+    },
   })
   shell = generation
   console.log(`[main] created shell generation #${generation.id}`)
@@ -544,6 +635,17 @@ app.on('window-all-closed', () => {
   if (!disposing && platform.quitOnAllWindowsClosed) app.quit()
 })
 
+/*
+ * 应用级退出守卫。macOS 的 Cmd+Q / 菜单退出、以及任何 app.quit() 都会先到这里。
+ * 它和窗口关闭守卫共用同一个 requestOrdinaryQuit()，所以两条路只会问一次、停一次。
+ * `quitCommitted` 让被批准的那次 app.quit() 直接通过；`will-quit` 才是真正的清理。
+ */
+app.on('before-quit', (event) => {
+  if (quitCommitted || disposing) return
+  event.preventDefault()
+  void requestOrdinaryQuit()
+})
+
 // Release the page and bootstrap handlers, then stop the child Web Host before exiting.
 app.on('will-quit', (event) => {
   if (disposing && !host) return
@@ -555,6 +657,8 @@ function shutdown(preserveUpdater = false): Promise<void> {
   if (!preserveUpdater) updates?.dispose()
   if (shutdownTask) return shutdownTask
   disposing = true
+  // 提交退出决策：协调器不再保留「已 ready」的结果，也不再接受新的准备请求。
+  shutdownCoordinator.dispose()
   shutdownTask = Promise.resolve().then(async () => {
     shell?.release()
     shell = null
@@ -578,6 +682,7 @@ function shutdown(preserveUpdater = false): Promise<void> {
     } finally {
       host = null
     }
+    console.log('[main] Host stopped; exiting.')
   })
   return shutdownTask
 }

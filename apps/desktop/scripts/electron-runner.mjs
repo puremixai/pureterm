@@ -102,9 +102,9 @@ export async function runElectron({ entry, executable: suppliedExecutable, env =
     const outcome = decideElectronResult({ ...result, output, spawnError, timedOut: timedOut || interrupted, successMarker, requiredMarkers })
     if (outcome.code === 0 && inspect) {
       try { await inspect({ dataDir, output }) }
-      catch (error) { return { code: 1, reason: `post-run assertion failed: ${error.message}` } }
+      catch (error) { return { ...outcome, code: 1, reason: `post-run assertion failed: ${error.message}` } }
     }
-    return outcome
+    return { ...outcome, exitCode: result.exitCode, signal: result.signal }
   } finally {
     clearTimeout(timer); clearTimeout(cleanupTimer)
     process.removeListener('SIGINT', interrupt)
