@@ -18,12 +18,24 @@ app.setPath('userData', userData)
 const markerPath = join(userData, 'recovery-run-once')
 const resultPath = join(userData, 'recovery-relaunch.json')
 const relaunched = existsSync(markerPath)
-// A relaunched process is spawned by `app.relaunch()`, so its stdout is not the smoke's
-// pipe. This file is how the harness can still tell how far that instance got.
+// A durable, synchronous record of how far each instance got. The replacement's stdout is
+// only inherited because the hand-off uses relaunchSelf; keeping this file means the smoke
+// can still assert on the replacement's own log lines regardless of how it was spawned.
 const logPath = join(userData, 'recovery-entry.log')
 const log = message => { try { appendFileSync(logPath, `${new Date().toISOString()} pid=${process.pid} ${message}\n`) } catch { /* diagnostics only */ } }
+// Tee both streams into that file as well, so anything the production main process prints
+// is captured even when the pipe is already gone.
+for (const stream of [process.stdout, process.stderr]) {
+  const write = stream.write.bind(stream)
+  stream.write = (chunk, ...rest) => {
+    try { appendFileSync(logPath, chunk) } catch { /* diagnostics only */ }
+    return write(chunk, ...rest)
+  }
+}
 let window
 let deadline
+
+app.whenReady().then(() => log(`ready hasSingleInstanceLock=${app.hasSingleInstanceLock()}`))
 
 function fail(error) {
   clearTimeout(deadline)

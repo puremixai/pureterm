@@ -60,7 +60,7 @@ Desktop 对每个数据目录只准入一个档案。在读取启动档案或打
 
 普通退出（Windows/Linux 关掉最后一个窗口、菜单退出或 Cmd+Q）受保护：Desktop 读取 Host 已接受工作的计数，仅在确有活动或计数读不出来时才询问，用租约关掉准入，排空有限的已接受工作，再检查一次，然后停 Host。拒绝会原样保留窗口、它的 WebSocket 和每一个会话。只有 Host 确认一次干净、无信号的退出之后才安装更新；强杀、准备忙碌或对话框被取消，都会保留下载并保持当前 Host 可用。
 
-Host 意外退出、启动握手失败或关停超时，Desktop 会在 `diagnostics/host/` 下写一份报告 —— 只有版本、时间、平台、架构、阶段、原因和进程事实，不含主机名、路径、凭据、命令或终端输出 —— 然后给出原生选择：重启或退出。重启会用同一数据目录和开关重新拉起，但不恢复 SSH 会话或终端标签。
+Host 意外退出、启动握手失败或关停超时，Desktop 会在 `diagnostics/host/` 下写一份报告 —— 只有版本、时间、平台、架构、阶段、原因和进程事实，不含主机名、路径、凭据、命令或终端输出 —— 然后给出原生选择：重启或退出。重启会用同一数据目录和开关重新拉起，但不恢复 SSH 会话或终端标签。交棒是有序的、不是抢：新进程继承旧进程的输出、拿到旧进程的 pid，并**等旧进程退出之后**才认领单实例归属，因此不可能输给它正在替换的那个进程；旧进程只有确认新进程确实活着才退出，否则原地留下并以非零码退出。
 
 工作区快捷键只有一个属主。Desktop 与独立/附带浏览器解析同一份中立绑定，所以一次按键最多被消费一次；Ctrl/Cmd+W 关当前标签，Ctrl+Tab / Ctrl+Shift+Tab 在所有平台循环标签，Ctrl/Cmd+E 开文件，Ctrl/Cmd+` 聚焦终端，Ctrl/Cmd+K 聚焦主机搜索，Escape 收起主机编辑器。输入法正在组合或对话框掌管键盘时一概不占用，Alt/AltGr 原样放行，长按也不会重复触发破坏性关闭。
 
@@ -89,7 +89,7 @@ npm run verify
 npm run verify:electron
 ```
 
-`verify` 包含全部构建、类型与依赖约束，以及无需窗口的 Host 子进程、档案归属、Host 生命周期、关停协调、更新协调、崩溃报告、故障恢复、快捷键、UI、Web、SSH/SFTP/HTTP/WS 测试。根 `verify:electron` 检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 操作、附带 Desktop Web、渲染崩溃、更新下载、独立 Node Web、共享 Client 生命周期、两次真实启动之间的单一档案归属、可取消的退出保护和 Host 故障恢复。
+`verify` 包含全部构建、类型与依赖约束，以及无需窗口的 Host 子进程、档案归属、Host 生命周期、关停协调、更新协调、崩溃报告、故障恢复、快捷键、UI、Web、SSH/SFTP/HTTP/WS 测试。根 `verify:electron` 检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 操作、附带 Desktop Web、渲染崩溃、更新下载、独立 Node Web、共享 Client 生命周期、两次真实启动之间的单一档案归属、可取消的退出保护和 Host 故障恢复（含复用同一档案、不与上一个进程抢锁的有序交棒）。
 
 Desktop 的定向命令可在根使用 `npm run <命令> --workspace=@pureterm/desktop`：
 

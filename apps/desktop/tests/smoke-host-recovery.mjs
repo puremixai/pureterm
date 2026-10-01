@@ -147,6 +147,12 @@ try {
   assert.ok(Number.isSafeInteger(relaunched.hosts) && relaunched.hosts >= 0, 'the saved-host count must survive the restart')
   assert.equal(relaunched.tabs, 0, 'no SSH session may be restored by the restart')
 
+  // 交棒必须是「等旧进程退出再拿锁」，不是「抢锁」：新进程在 Linux 上曾经输给自己的
+  // 上一个进程，被当成普通第二实例静默让位——窗口没建、报告没写、用户面前什么都没剩。
+  const entryLog = readFileSync(join(user, 'recovery-entry.log'), 'utf8')
+  assert.match(entryLog, new RegExp(`hand-off from pid=${owner.child.pid} complete`),
+    'the replacement must wait for the process it is taking over from, not race it for the lock')
+
   // 诊断报告：有界、只含允许字段、不带路径或凭据。
   const reportDirectory = join(user, 'diagnostics', 'host')
   const names = readdirSync(reportDirectory).filter(name => name.endsWith('.json')).sort()

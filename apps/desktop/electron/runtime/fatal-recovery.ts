@@ -21,8 +21,13 @@ export interface FatalRecoveryOptions {
   choose(report: HostFailureReport, reportPath: string | undefined): Promise<FatalRecoveryChoice>
   /** 停 Host、释放这一代。必须在重启/退出之前完成。 */
   cleanup(): Promise<void>
-  /** 交棒给新进程；退出由实现负责（app.relaunch 之后还要 exit）。 */
+  /**
+   * 交棒给新进程。实现自己负责退出：只有新进程**确实活着**才以 0 退出当前进程，
+   * 起不来就留在原地（有日志、有非零退出码），绝不允许「既没起来新的、又把旧的关了」。
+   * 因此协调器不再替它补一次 `exit(0)`——那会立刻掐断交棒。
+   */
   relaunch(): void
+  /** 用户选择退出，或恢复无法进行时的退出码。 */
   exit(code: number): void
   log?(message: string): void
 }
@@ -60,7 +65,6 @@ export function createFatalRecoveryCoordinator(options: FatalRecoveryOptions): F
 
     if (choice === 'restart') {
       options.relaunch()
-      options.exit(0)
       return
     }
     options.exit(1)

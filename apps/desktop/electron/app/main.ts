@@ -25,7 +25,7 @@ import {
 import { collectSwitches } from '../runtime/platform-plan.js'
 import { applyApplicationMenu, selectPlatformStrategy } from './platform.js'
 import { createReadinessGate } from '../runtime/readiness.js'
-import { relaunchSelf } from '../runtime/relaunch.js'
+import { relaunchSelf, waitForHandoff, RELAUNCH_HANDOFF_ENV } from '../runtime/relaunch.js'
 import { createShellGeneration, LOAD_WATCHDOG_MS, type ElectronShellGeneration } from './shell.js'
 import { resolveDesktopPaths } from '../runtime/paths.js'
 import { claimDesktopSingleInstance } from '../runtime/single-instance.js'
@@ -60,6 +60,18 @@ if ((bootCheckEnabled || process.env.SSH_CORDIS_SMOKE) && process.env.SSH_CORDIS
 }
 
 // ─────────────────────────── 单实例与数据目录归属（必须早于档案/凭据/Host/窗口） ───────────────────────────
+
+/*
+ * 交棒重启：旧进程可能还握着单实例锁。任何「先 spawn 新进程、再退出旧进程」的重启都会
+ * 撞上这一点——新进程抢锁必然被拒，被当成普通第二实例静默让位，用户面前什么都没剩下。
+ * 旧进程把 pid 留在环境里，所以这里先等它退出，再去拿锁（见 relaunch.ts）。
+ * 读走就删，免得它被这一代再传给下一代。
+ */
+const handoffFrom = Number(process.env[RELAUNCH_HANDOFF_ENV])
+if (Number.isInteger(handoffFrom) && handoffFrom > 0) {
+  delete process.env[RELAUNCH_HANDOFF_ENV]
+  waitForHandoff(handoffFrom, { log: message => console.log(`[main] ${message}`) })
+}
 
 /**
  * 第二个实例要么聚焦既有窗口，要么被告知它请求的是另一个数据目录。
@@ -274,11 +286,26 @@ const fatalRecovery: FatalRecoveryCoordinator = createFatalRecoveryCoordinator({
     return Promise.resolve(choice === 1 ? 'restart' : 'quit')
   },
   cleanup: () => shutdown(),
-  // app.relaunch() 把重启排到退出之后；app.exit() 才真的让它发生，并保证新进程继承
-  // 同一份启动参数（数据目录、开关、profile）。
+  /*
+   * 交棒重启走 relaunchSelf，而不是 app.relaunch()：新进程继承 stdio（重启之后的日志
+   * 还在同一个终端 / 管道里），而且只有它确实活着才退当前进程。交棒标记让新进程等我们
+   * 退出后再拿单实例锁——否则它会输给自己的上一个进程，用户面前什么都不剩。
+   */
   relaunch: () => {
     console.log('[main] restarting after a Host failure')
-    app.relaunch()
+    relaunchSelf({
+      switches: [],
+      env: { ...process.env, [RELAUNCH_HANDOFF_ENV]: String(process.pid) },
+      onSuccess: (child) => {
+        child.unref()
+        app.exit(0)
+      },
+      onFailure: (error) => {
+        // Host 已经停了、窗口也没了，留在原地只会是一个看不见的僵尸进程。
+        console.error(`[main] restart failed; exiting instead: ${error.message}`)
+        app.exit(1)
+      },
+    })
   },
   exit: code => app.exit(code),
 })
@@ -688,7 +715,9 @@ function installDesktopBridge(): void {
 
 async function bootstrap(): Promise<void> {
   // 丢锁的实例、或归属校验失败的实例：绝不建 Host、绝不建窗口。
-  if (!startupAllowed) return
+  // `claimDesktopSingleInstance` 在 ready 之前就调了 `app.quit()`，那一次可能不生效；
+  // 到这里必须真的退出，否则一个没有窗口的进程会一直挂着。
+  if (!startupAllowed) { app.exit(0); return }
   installDesktopBridge()
   hostStarting = startHostProcess({
     entry: hostEntry,

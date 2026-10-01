@@ -44,8 +44,9 @@ test('three failure events yield one dialog, one cleanup and one relaunch', asyn
   assert.equal(h.state.choose, 1, 'one prompt')
   assert.equal(h.state.cleanup, 1, 'one cleanup')
   assert.equal(h.state.relaunch, 1, 'one relaunch')
-  assert.deepEqual(h.state.exits, [0], 'a restart hands over with exit code 0')
-  assert.deepEqual(h.order, ['record', 'choose', 'cleanup', 'relaunch', 'exit:0'])
+  // 交棒实现自己决定何时退出（只有新进程确实活着才退）；协调器补一次 exit(0) 会立刻掐断交棒。
+  assert.deepEqual(h.state.exits, [], 'the restart path never exits on its own')
+  assert.deepEqual(h.order, ['record', 'choose', 'cleanup', 'relaunch'])
 
   // 恢复已经发生过了：后面再来的通知不再弹第二个框。
   await h.coordinator.handle(failure)
@@ -91,14 +92,14 @@ test('relaunch waits for cleanup to finish', async () => {
     h.order.push('relaunch')
   }
   await h.coordinator.handle(report())
-  assert.deepEqual(h.order, ['record', 'choose', 'cleanup', 'relaunch', 'exit:0'])
+  assert.deepEqual(h.order, ['record', 'choose', 'cleanup', 'relaunch'])
 })
 
 test('a failed report, prompt or cleanup never blocks recovery', async () => {
   const unwritable = harness({ choose: async () => { unwritable.state.choose += 1; unwritable.order.push('choose'); return 'restart' } })
   unwritable.options.record = async () => { unwritable.state.record += 1; unwritable.order.push('record'); return undefined }
   await unwritable.coordinator.handle(report())
-  assert.deepEqual(unwritable.order, ['record', 'choose', 'cleanup', 'relaunch', 'exit:0'],
+  assert.deepEqual(unwritable.order, ['record', 'choose', 'cleanup', 'relaunch'],
     'an unwritable report directory still permits restart')
 
   const silent = harness()
@@ -112,4 +113,12 @@ test('a failed report, prompt or cleanup never blocks recovery', async () => {
   await stuck.coordinator.handle(report())
   assert.deepEqual(stuck.order, ['record', 'choose', 'cleanup', 'exit:1'],
     'a cleanup that throws still leaves a way out')
+})
+
+test('a restart hands over without deciding the exit, even when cleanup threw', async () => {
+  const h = harness({ choose: async () => { h.state.choose += 1; h.order.push('choose'); return 'restart' } })
+  h.options.cleanup = async () => { h.state.cleanup += 1; h.order.push('cleanup'); throw new Error('Host did not stop') }
+  await h.coordinator.handle(report())
+  assert.deepEqual(h.order, ['record', 'choose', 'cleanup', 'relaunch'])
+  assert.deepEqual(h.state.exits, [], 'the hand-off owns the exit; the coordinator must not race it')
 })

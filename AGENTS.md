@@ -59,7 +59,7 @@ Organize directories by entry point and capability. Do not copy deepseek-harness
 - One Desktop profile owns each SSH data directory. The binding record is created once before any store or Host access and is never auto-rewritten or auto-rebound; a non-matching launch stops and the loser never opens the Host or the store.
 - Ordinary quit and update hand-off are one serialized decision: close admission with a lease, drain finite accepted work, recheck, and stop. An update installs only after an acknowledged clean, signal-free Host exit; a cancelled or busy preparation keeps the download and the running Host.
 - Desktop and Web resolve one neutral shortcut binding table. A native/DOM pair must not execute one key twice, and IME composition, Alt/AltGr, and an open modal are never consumed.
-- Host failures retain only bounded, allowlisted diagnostics and offer an explicit restart or quit. A restart does not promise SSH/session restoration.
+- Host failures retain only bounded, allowlisted diagnostics and offer an explicit restart or quit. A restart does not promise SSH/session restoration. A restart is an ordered hand-off, never a race: the replacement inherits the predecessor's streams, is told the predecessor's process id, and waits for that process to exit before claiming single-instance ownership; the predecessor exits only once the replacement is confirmed alive, and otherwise stays put with a non-zero exit code.
 
 ## Commands
 
