@@ -56,6 +56,10 @@ Organize directories by entry point and capability. Do not copy deepseek-harness
 - Client, carriers, and Host expose explicit `dispose` paths. Page remounts, WebSocket disconnects, and unexpected Host exits must not leave sessions, listeners, or timers behind.
 - Both Web Hosts bind only to `127.0.0.1` and validate Origin/Host. Browser access uses a startup token and session cookie; Desktop injects a separate bearer credential from its main process. `SSH_CORDIS_NO_WEB_CARRIER=1` disables only attached browser access, never the internal Desktop Web Host. Do not add a public listening option.
 - Desktop credentials use an operating-system encryption provider. Where no usable one exists, the entry point reports session-only credentials and refuses to persist a secret rather than falling back to plaintext. Web stores host metadata and trusted fingerprints only, never passwords, passphrases, private-key content, or private-key paths, and uses a data directory separate from Desktop.
+- One Desktop profile owns each SSH data directory. The binding record is created once before any store or Host access and is never auto-rewritten or auto-rebound; a non-matching launch stops and the loser never opens the Host or the store.
+- Ordinary quit and update hand-off are one serialized decision: close admission with a lease, drain finite accepted work, recheck, and stop. An update installs only after an acknowledged clean, signal-free Host exit; a cancelled or busy preparation keeps the download and the running Host.
+- Desktop and Web resolve one neutral shortcut binding table. A native/DOM pair must not execute one key twice, and IME composition, Alt/AltGr, and an open modal are never consumed.
+- Host failures retain only bounded, allowlisted diagnostics and offer an explicit restart or quit. A restart does not promise SSH/session restoration.
 
 ## Commands
 

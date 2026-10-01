@@ -39,6 +39,8 @@ npm run start:desktop
 | `SSH_CORDIS_NO_WEB_CARRIER=1` | 仅关闭 Desktop 附带的普通浏览器入口；内部 Web Host 继续运行 |
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | 禁止 Desktop 启动档案读写 |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | 禁止 Electron 自动无沙箱回退 |
+| `SSH_CORDIS_QUIT_CONFIRM=accept\|cancel` | 仅供隔离的 Electron 验收回答退出确认对话框 |
+| `SSH_CORDIS_RECOVERY_CHOICE=restart\|quit` | 仅供隔离的 Electron 验收回答 Host 故障恢复对话框 |
 
 不要提交 `.env` 文件、密码、私钥、token、证书或真实主机记录。Desktop 凭据使用系统加密 provider；没有可用 provider 时它上报仅当前会话的凭据，并拒绝保存密钥，而不是退回明文。独立 Web 只保存主机元数据和已信任指纹；密码、口令和浏览器选中的私钥内容只存在当前页面。
 
@@ -74,6 +76,8 @@ npm run start:desktop
 
 Desktop 启动独立 Node 模式 Web Host 子进程。`pureterm-app://app/` 窗口通过子进程的回环 WebSocket 处理 SSH/SFTP、主机和 Keychain；私有父子 RPC 负责启动、关闭、系统加密和原生选钥。主进程拥有窗口、safeStorage、更新协调和子进程生命周期；独立 Web 在普通 Node 进程中装配自己的 Web Host。共享实现不代表共享会话或共享数据文件。
 
+Desktop 启动时会取得单实例锁，并在读取启动档案或打开 Host 之前，把数据目录绑定到一个档案（`<dataDir>/desktop-profile.json`）；这条记录永不自动改写。因此启动真实应用的测试必须给每次启动独立的 `SSH_CORDIS_DATA_DIR` 与 Chromium 用户数据目录，且不得指向用户日常数据目录。
+
 Client、载体和 Host 必须提供明确的释放路径。WebSocket 传输保留终端和 SFTP 字节，不提前转成字符串。WebSocket 断开和渲染进程失败时，必须释放该客户端拥有的会话。
 
 ## 界面文案
@@ -106,7 +110,7 @@ npm run release:check
 npm run verify
 ```
 
-`verify` 会执行干净构建、类型和边界检查、单元测试、Host 子进程、凭据、更新协调、打包隔离、UI、独立 Web 以及本机 SSH/SFTP/HTTP/WS 冒烟检查。单元测试中包含有界 exec 套件、纯 Linux 采集器、HostMonitor 调度测试，以及 Web dispatcher 的监控与 `session:facts` 路由测试。
+`verify` 会执行干净构建、类型和边界检查、单元测试、Host 子进程、凭据、档案归属、Host 生命周期/准入、关停协调、更新协调、崩溃报告与故障恢复、快捷键绑定、打包隔离、UI、独立 Web 以及本机 SSH/SFTP/HTTP/WS 冒烟检查。单元测试中包含有界 exec 套件、纯 Linux 采集器、HostMonitor 调度测试，以及 Web dispatcher 的监控与 `session:facts` 路由测试。
 
 涉及 Electron 窗口、IPC、preload、子进程、更新或资源路径时运行：
 
@@ -114,7 +118,7 @@ npm run verify
 npm run verify:electron
 ```
 
-该命令检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 行为、附带普通浏览器入口、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web 以及共享 Client 作用域生命周期。Desktop 与独立 Web 两条流程还会连上本机 SSH 夹具，在一条仍然承载终端与 SFTP 流量的连接上，断言通过真实界面渲染出的夹具资源快照与会话事实，以及终端工具轨的归属、注册的两颗按钮、文件/监控切换和它在管理页上不出现。另有一支独立样式布局检查：它加载构建出来的样式表、字体和真实 xterm，在六个视口、两种主题和两种语言下测量这条工具轨。Electron 显示环境不可用等已识别限制不算通过。
+该命令检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 行为、附带普通浏览器入口、渲染崩溃清理、更新下载和校验、真实浏览器中的独立 Node Web、共享 Client 作用域生命周期、两次真实启动之间的单一档案归属、可取消的退出保护以及 Host 故障恢复。Desktop 与独立 Web 两条流程还会连上本机 SSH 夹具，在一条仍然承载终端与 SFTP 流量的连接上，断言通过真实界面渲染出的夹具资源快照与会话事实，以及终端工具轨的归属、注册的两颗按钮、文件/监控切换和它在管理页上不出现。另有一支独立样式布局检查：它加载构建出来的样式表、字体和真实 xterm，在六个视口、两种主题和两种语言下测量这条工具轨。Electron 显示环境不可用等已识别限制不算通过。
 
 文档-only 修改至少运行 `npm run release:check` 和 `git diff --check`，并检查所改文档里的相对链接都能解析；这项链接检查靠人工，没有脚本会替你跑。在 PR 中报告实际运行的命令和结果。不要用旧 `dist/`、进程存在或历史通过次数代替成功证据。
 

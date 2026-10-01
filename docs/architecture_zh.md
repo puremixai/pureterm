@@ -68,19 +68,29 @@ services/plugins 保留原有业务分类，并不等于 Service/function plugin
 
 ## 生命周期
 
+在读取启动档案、打开凭据或启动 Host **之前**，Desktop 先取得单实例锁，并把 SSH 数据目录绑定到一个档案。这个绑定是一条持久记录 `<dataDir>/desktop-profile.json`，用排他创建只写一次，永不自动改写、自动改绑：若某次启动的 `userData` 与它不符，本次启动带着明确提示停止，而不是让两个进程写同一份 store；第二个实例要么聚焦属主，要么报告它请求的目录。把既有数据搬到另一个档案是一次刻意的数据/加密迁移，而不是静默改绑。
+
 Desktop 先应用平台策略、注册自定义 scheme 与限定范围的 WebSocket 鉴权，再启动 Node Web Host；Host 启动的同时创建 shell generation。页面立即加载；最小 preload 等待 Host 就绪后才取得回环 WebSocket URL。每代窗口、监听器与看门狗由 shell 幂等释放；使用窗口时读取当前代。当前主框架报告 renderer-ready 后，就绪闸门才允许提交启动档案，HTML 已加载不等于应用已可用。页面还会上报第二件独立的事实 —— 它当前显示的是哪门语言 —— 因为偏好存在渲染层，而外壳自己的菜单与原生对话框在文档之外；主进程先收窄再采信，并当场重建菜单，在第一次上报之前菜单是英文，也就是目录的源语言。
 
-私有父子 IPC 只负责启动、关闭、加解密和原生选钥。主进程持有独立的 Desktop bearer token，只在当前应用窗口的准确 Host WebSocket 请求中注入，并将 Origin 改写为回环 Host。该 token 不进入页面 URL、DOM、preload 启动信息、日志或存储。Host 意外退出会报告错误并结束应用。应用退出、启动失败、诊断结束与更新均等待子进程关闭；超过关停期限则终止进程。窗口关闭或渲染进程崩溃会关闭其 WebSocket 并释放会话；Host 仍运行时其他浏览器客户端继续使用。Windows/Linux 关闭最后一个窗口会退出应用，macOS 则保留 Host 供窗口重新激活。
+私有父子 IPC 只负责启动、关闭、加解密和原生选钥。主进程持有独立的 Desktop bearer token，只在当前应用窗口的准确 Host WebSocket 请求中注入，并将 Origin 改写为回环 Host。该 token 不进入页面 URL、DOM、preload 启动信息、日志或存储。应用退出、启动失败、诊断结束与更新均等待子进程关闭；超过关停期限则终止进程。窗口关闭或渲染进程崩溃会关闭其 WebSocket 并释放会话；Host 仍运行时其他浏览器客户端继续使用。Windows/Linux 关闭最后一个窗口会退出应用，macOS 则保留 Host 供窗口重新激活。
+
+Host 意外退出、启动握手失败或关停超时，会在 `<userData>/diagnostics/host/` 下写下一份有界、白名单化的报告，然后给出「重启应用」或「退出」的明确选择。报告只包含版本、时间、平台、架构、阶段、原因和进程事实 —— 绝不含主机名、路径、凭据、token、命令或终端输出 —— 以 0600 权限经临时文件加重命名写入，且只保留最新五份。重启会用同一数据目录和启动开关重新拉起进程，**不**恢复 SSH 会话或终端标签，所以它面对的是一个干净档案，而不是拆了一半的档案；释放旧会话的是客户端自己的收尾 —— socket 断开即结束每一个活动标签。
+
+普通退出 —— Windows/Linux 关掉最后一个窗口、菜单退出或 Cmd+Q —— 是唯一的决策点。它检查 Host 已接受工作的计数，仅在确有活动或计数读不出来时才询问用户，取一份关闭准入的关停租约，在有界预算内排空有限的已接受工作，在租约内再检查一次，然后才停 Host；取消、冲突请求或准备失败都会原样保留窗口、WebSocket 与会话，并恢复准入。更新走同一条路但规则更严：只有在 Host 确认一次干净、无信号的退出之后才算准备好，所以强杀永远不算安装成功；取消或忙碌的准备会保留下载并保持当前 Host 可用。
 
 独立 Web 将默认本次会话策略注入共享 Web Host，再监听本机端口；监听失败会卸载 Host。Ctrl+C/SIGTERM 关闭载体和全部 SSH 会话。WebSocket 断开会调用 `Host.releaseClient()`，及时关闭该客户端的安静会话，并取消尚未完成的 SSH 握手；其他客户端的会话继续运行。
 
 Host 创建失败会卸载此前装配的服务。关闭 Host 时先取消连接和解密等待、等候已接受的存储修改，再卸载插件树；关闭后拒绝新连接与修改。save/remove 串行执行，加密完成前不会提交新状态。opened 事件无法送到客户端时也会收尾，避免浏览器关闭与握手完成竞态留下连接。
 
-共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、terminal、session-tools、Keychain、hosts、SFTP、monitoring、chrome 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器、私钥草稿和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。Client 卸载会关闭 WebSocket 并释放 Host 中对应的会话。
+共享 Client 由 `createClient()` 创建 Cordis Context，依次装配 view、transport、shortcuts、terminal、session-tools、Keychain、hosts、SFTP、monitoring、chrome 和 application/readiness 服务，依赖通过 `inject` 声明。各 scope 通过 effect 释放 DOM 监听、传输订阅、ResizeObserver、定时器、私钥草稿和终端。根卸载后可重新挂载；依赖 scope 释放会同时卸载依赖者。Client 卸载会关闭 WebSocket 并释放 Host 中对应的会话。
 
 资源监控在 Host 上每个会话保留一个订阅，按探测完成时间调度而不是按固定节拍；客户端每个终端标签保留一份记录。客户端只在标签「被选中、已连接、页面可见、工具面板停在监控、未被手动暂停」时采集，其余状态一律退订，被替换的订阅会在新订阅开始前停掉。Host 的 `releaseClient`、依赖卸载与关闭各自清理自己持有的登记与定时器；缺少监控服务时返回受控的「不支持」，不会妨碍终端或 Host 的释放。
 
 Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_SANDBOX_FALLBACK=1` 禁止自动无沙箱回退及对应档案回填；`SSH_CORDIS_NO_LAUNCH_PROFILE=1` 禁止读写档案。档案未按 CI、容器或日常环境分区，测试使用临时目录。
+
+### 快捷键归属
+
+`ClientShortcuts` 是工作区命令唯一的注册表，`@pureterm/protocol` 里那张中立绑定表是它们唯一的定义，所以原生路径与 DOM 路径不可能各说各话、也不可能同时触发。Desktop 绑定一个按代创建的原生 `before-input-event` 适配器：渲染层上报上下文之前它一概不消费，只有同一张表把按键解析成命令时才吞掉；独立 Web 与附带浏览器则改为在捕获阶段听 `keydown`。两条路都按修饰键**完全相等**匹配（多按一个 Shift 就不算），把 Alt/AltGr 原样让给输入法和远端，不响应 keyup，并在输入法组合或模态框掌管键盘期间整块让路。打开主机编辑器时只把 Escape 留给工作区。命令在执行前会再查一次是否可用，因为原生路径手里的上下文可能已经旧了；帮助列表也用匹配器所用的同一份绑定渲染。绑定为：所有平台都用 Ctrl+Tab / Ctrl+Shift+Tab 循环标签，primary+W 关标签，primary+` 聚焦终端，primary+E 开文件，primary+K 搜索主机，Escape 收起主机编辑器；其中 primary 在 macOS 上是 Cmd，其他平台是 Ctrl。
 
 ### 终端标签的资源归属
 
@@ -94,7 +104,7 @@ Desktop 保留现有沙箱、GPU、启动档案与重启行为。`SSH_CORDIS_NO_
 
 ## 数据与入口能力
 
-Desktop 通过 `SSH_CORDIS_DATA_DIR` 覆盖数据目录。`hosts.json` 保存主机元数据以及私钥路径或 Keychain 密钥 ID；`secrets.json` 保存主机凭据密文；`known_hosts.json` 保存 TOFU 指纹；`launch-profile.json` 保存已就绪启动的配置。safeStorage 留在主进程，Host 的异步 CredentialProvider 经私有 IPC 请求加解密；没有可用系统加密后端时不退化为明文持久化。直接选择的私钥文件在连接时读取，不复制到主机存储。附带的本机浏览器入口使用相同加密能力和原生选钥。
+Desktop 通过 `SSH_CORDIS_DATA_DIR` 覆盖数据目录。`hosts.json` 保存主机元数据以及私钥路径或 Keychain 密钥 ID；`secrets.json` 保存主机凭据密文；`known_hosts.json` 保存 TOFU 指纹；`launch-profile.json` 保存已就绪启动的配置；`desktop-profile.json` 是把该目录绑定到一个 `userData` 的归属记录；`diagnostics/host/` 存放有界的 Host 故障报告。safeStorage 留在主进程，Host 的异步 CredentialProvider 经私有 IPC 请求加解密；没有可用系统加密后端时不退化为明文持久化。直接选择的私钥文件在连接时读取，不复制到主机存储。附带的本机浏览器入口使用相同加密能力和原生选钥。
 
 Keychain 导入使用独立 `keychain.json` 密钥库：每条记录包含不透明 ID，以及由系统加密的 JSON（元数据、私钥、可选口令）。写入使用同目录临时文件（0600）和原子重命名；加密或写入失败保留原密钥库。启动时解密以建立公开元数据，认证时在 Host 内部解密所选记录；列表及保存响应均不包含私密内容。Host 将密钥及主机修改放在同一队列中，拒绝无效关联、阻止删除被引用的密钥，并在关闭前完成已接受的写入。`keys:list/save/remove` 经过共享分发器及 WebSocket 载体。SSH 证书和硬件密钥不在本次实现范围内。
 
@@ -112,7 +122,7 @@ SFTP 复用已建立的 SSH 会话，支持目录浏览、单文件上传/下载
 
 ## 验证与上游关系
 
-根 `verify` 构建全部项目，执行类型、边界、Host 子进程/凭据、更新协调、打包隔离、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试，其中包括有界 exec 与 Linux 采集器套件、以及 Web 侧监控路由测试。根 `verify:electron` 覆盖 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 请求、通过真实 Desktop 与独立 Web 界面渲染出的夹具资源快照与会话事实、附带 Desktop Web、渲染崩溃回收、真实更新器的本机下载及校验、独立 Node Web 和 Client 作用域生命周期。两个入口流程还会断言终端工具轨——它在工作区里的归属、注册的两颗按钮、工作区内容之上只有一条横带、文件/监控之间的切换，以及它在管理页上不出现。另有一支独立样式布局检查：它加载构建出来的样式表、字体和真实 xterm，在六个视口、两种主题和两种语言下测量工具轨——52px 宽度、按钮尺寸、归属、沿当前轴向的面板切换、面板各自的滚动，以及开关面板前后同一会话拿到正数终端尺寸。独立 Web 流程中 Electron 只充当测试浏览器，Web 服务仍由普通 Node 启动。
+根 `verify` 构建全部项目，执行类型、边界、Host 子进程/凭据、档案归属、Host 生命周期/准入、关停协调、更新协调、崩溃报告、故障恢复、快捷键、打包隔离、UI 逻辑、独立 Web 及 SSH/SFTP/HTTP/WS 协议测试，其中包括有界 exec 与 Linux 采集器套件、以及 Web 侧监控路由测试。根 `verify:electron` 覆盖 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 请求、通过真实 Desktop 与独立 Web 界面渲染出的夹具资源快照与会话事实、附带 Desktop Web、渲染崩溃回收、真实更新器的本机下载及校验、独立 Node Web、Client 作用域生命周期、两次真实启动之间的单一档案归属、可取消的退出保护和 Host 故障恢复。两个入口流程还会断言终端工具轨——它在工作区里的归属、注册的两颗按钮、工作区内容之上只有一条横带、文件/监控之间的切换，以及它在管理页上不出现。另有一支独立样式布局检查：它加载构建出来的样式表、字体和真实 xterm，在六个视口、两种主题和两种语言下测量工具轨——52px 宽度、按钮尺寸、归属、沿当前轴向的面板切换、面板各自的滚动，以及开关面板前后同一会话拿到正数终端尺寸。独立 Web 流程中 Electron 只充当测试浏览器，Web 服务仍由普通 Node 启动。
 
 Electron 检查使用隔离的用户目录、受控窗口和严格的成功/失败/退出/超时判定，并回收测试进程。验证禁用自动无沙箱回退，因此不覆盖两代真实 Electron 的自动回退。GUI 鼠标键盘验收不在上述命令内，本机 ssh2 夹具也不代表所有真实 sshd 的兼容性覆盖。
 

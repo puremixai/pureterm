@@ -39,6 +39,8 @@ Useful environment variables:
 | `SSH_CORDIS_NO_WEB_CARRIER=1` | Disable only Desktop’s attached ordinary-browser entry; its internal Web Host remains active |
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | Disable Desktop launch-profile reads and writes |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | Disable automatic Electron no-sandbox fallback |
+| `SSH_CORDIS_QUIT_CONFIRM=accept\|cancel` | Answer the quit-confirmation dialog for isolated Electron checks only |
+| `SSH_CORDIS_RECOVERY_CHOICE=restart\|quit` | Answer the Host-failure recovery dialog for isolated Electron checks only |
 
 Do not commit `.env` files, passwords, private keys, tokens, certificates, or real host records. Desktop credentials use the operating-system encryption provider; where no usable one exists it reports session-only credentials and refuses to persist a secret rather than falling back to plaintext. Standalone Web stores host metadata and trusted fingerprints only; passwords, passphrases, and browser-selected private-key content stay in the current page.
 
@@ -74,6 +76,8 @@ The allowed dependency direction is enforced by `npm run check:boundaries` and `
 
 Desktop starts an independent Node-mode Web Host child process. The `pureterm-app://app/` window uses the child’s loopback WebSocket for SSH/SFTP, hosts, and Keychain; private parent/child RPC handles startup, shutdown, system encryption, and native key selection. The parent owns the window, safeStorage, update coordinator, and child lifecycle. Standalone Web assembles its own Web Host in an ordinary Node process. Shared code does not mean shared sessions or shared data files.
 
+A Desktop launch claims a single-instance lock and binds its data directory to one profile in `<dataDir>/desktop-profile.json` before it reads a launch profile or opens a Host; the record is never rewritten automatically. Tests that start the real app must therefore give each launch its own `SSH_CORDIS_DATA_DIR` and Chromium user-data directory, and must not point at a normal user data directory.
+
 Client, carrier, and Host must expose explicit disposal paths. WebSocket transport preserves terminal and SFTP bytes without converting them to strings prematurely. WebSocket disconnects and renderer failures must release the sessions owned by that client.
 
 ## User-facing text
@@ -106,7 +110,7 @@ Before merging code, dependency, or build-script changes, run the full Node veri
 npm run verify
 ```
 
-`verify` performs a clean build, type and boundary checks, unit tests, Host child-process checks, credential tests, update-coordinator tests, packaging-isolation tests, UI tests, standalone Web tests, and local SSH/SFTP/HTTP/WS smoke checks. The unit tests include the bounded-exec suite, the pure Linux collector, the HostMonitor scheduling tests, and the Web dispatcher’s monitoring and `session:facts` routing tests.
+`verify` performs a clean build, type and boundary checks, unit tests, Host child-process checks, credential tests, profile-ownership tests, Host lifecycle/admission tests, shutdown-coordinator tests, update-coordinator tests, crash-report and fatal-recovery tests, shortcut-binding tests, packaging-isolation tests, UI tests, standalone Web tests, and local SSH/SFTP/HTTP/WS smoke checks. The unit tests include the bounded-exec suite, the pure Linux collector, the HostMonitor scheduling tests, and the Web dispatcher’s monitoring and `session:facts` routing tests.
 
 Changes involving Electron windows, IPC, preload, child processes, update behavior, or resource paths require:
 
@@ -114,7 +118,7 @@ Changes involving Electron windows, IPC, preload, child processes, update behavi
 npm run verify:electron
 ```
 
-This command verifies Desktop custom-scheme boot, WebSocket SSH/Keychain behavior, the attached browser entry, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, and shared Client scope lifecycle. The Desktop and standalone Web flows also connect to the local SSH fixture and assert a fixture resource snapshot with its session facts rendered through the real UI, on a connection that still carries terminal and SFTP traffic, plus the terminal tool rail’s ancestry, its two registered buttons, Files/Monitor switching and its absence on management pages. A separate styled-layout check serves the built stylesheet, fonts and a real xterm and measures that rail across six viewports, both themes and both languages. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
+This command verifies Desktop custom-scheme boot, WebSocket SSH/Keychain behavior, the attached browser entry, renderer-crash cleanup, update download/checksum handling, standalone Node Web in a real browser, shared Client scope lifecycle, single-profile ownership between two real launches, cancellable quit protection, and Host-failure recovery. The Desktop and standalone Web flows also connect to the local SSH fixture and assert a fixture resource snapshot with its session facts rendered through the real UI, on a connection that still carries terminal and SFTP traffic, plus the terminal tool rail’s ancestry, its two registered buttons, Files/Monitor switching and its absence on management pages. A separate styled-layout check serves the built stylesheet, fonts and a real xterm and measures that rail across six viewports, both themes and both languages. A recognized environment limitation, such as an unavailable Electron display, is not a passing result.
 
 Documentation-only changes must run `npm run release:check` and `git diff --check`, and check that relative links in the documents they touched resolve; the link check is manual because no script performs it. Report the actual commands and results in the pull request. Do not use an old `dist/` directory, process existence, or a historical pass count as evidence of success.
 
