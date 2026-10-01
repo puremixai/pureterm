@@ -26,6 +26,8 @@ import { createReadinessGate } from '../runtime/readiness.js'
 import { relaunchSelf } from '../runtime/relaunch.js'
 import { createShellGeneration, LOAD_WATCHDOG_MS, type ElectronShellGeneration } from './shell.js'
 import { resolveDesktopPaths } from '../runtime/paths.js'
+import { claimDesktopSingleInstance } from '../runtime/single-instance.js'
+import { bindDesktopProfile, DesktopProfileError, sameDesktopProfilePath } from '../runtime/desktop-profile.js'
 
 /*
  * Electron 入口拥有窗口、平台能力、资源协议和更新协调。
@@ -51,6 +53,63 @@ if ((bootCheckEnabled || process.env.SSH_CORDIS_SMOKE) && process.env.SSH_CORDIS
     window.hide()
     window.on('show', () => window.hide())
   })
+}
+
+// ─────────────────────────── 单实例与数据目录归属（必须早于档案/凭据/Host/窗口） ───────────────────────────
+
+/**
+ * 第二个实例要么聚焦既有窗口，要么被告知它请求的是另一个数据目录。
+ * 它**绝不**切换正在运行的 Host——两个 Desktop 进程同时写一份 SSH 目录是数据损坏，
+ * 而「切换」在语义上等于把正在跑的会话连同归属一起换掉。
+ */
+let pendingFocus = false
+function focusOwnerWindow(): void {
+  const window = currentWindow()
+  if (!window) {
+    // 启动还没走到窗口那一步：记下来，等窗口建好再聚焦（见 startGeneration）。
+    pendingFocus = true
+    return
+  }
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+}
+function handleSecondInstance(requestedDataDir: string): void {
+  if (!sameDesktopProfilePath(requestedDataDir, dataDir)) {
+    dialog.showErrorBox(
+      t('desktop.second-instance.title'),
+      t('desktop.second-instance.other-dir', { dataDir: requestedDataDir }),
+    )
+    return
+  }
+  focusOwnerWindow()
+}
+
+const ownsInstance = claimDesktopSingleInstance(app, dataDir, handleSecondInstance)
+let startupAllowed = ownsInstance
+
+if (!ownsInstance) {
+  console.log('[main] another PureTerm instance already owns this profile; this launch exits without starting a Host.')
+}
+
+/*
+ * 绑定要在读档案、建凭据、开 Host、建窗口**之前**做完，而且必须失败即停：
+ * 归属记录一旦与当前 userData 不符，继续启动就是两个进程写同一份 store。
+ */
+if (ownsInstance) {
+  try {
+    bindDesktopProfile(dataDir, app.getPath('userData'))
+  } catch (error) {
+    const code = error instanceof DesktopProfileError ? error.code : 'profile-io'
+    const detail = error instanceof Error ? error.message : String(error)
+    const body = code === 'profile-mismatch'
+      ? t('desktop.profile.mismatch.body', { dataDir, detail })
+      : t('desktop.profile.invalid.body', { dataDir, detail })
+    console.error(`[main] refusing to start: ${detail}`)
+    dialog.showErrorBox(t('desktop.profile.title'), body)
+    app.quit()
+    startupAllowed = false
+  }
 }
 
 // ─────────────────────────── 启动决策（必须早于任何窗口创建） ───────────────────────────
@@ -98,6 +157,7 @@ let shell: ElectronShellGeneration | null = null
 let host: DesktopHostProcess | null = null
 let hostStarting: Promise<DesktopHostProcess> | undefined
 let disposing = false
+let bridgeInstalled = false
 let shutdownTask: Promise<void> | undefined
 let updates: ReturnType<typeof createDesktopUpdates> | undefined
 let sandboxFallbackTried = false
@@ -202,6 +262,11 @@ function startGeneration(): ElectronShellGeneration {
   })
   shell = generation
   console.log(`[main] created shell generation #${generation.id}`)
+  // 第二次启动可能在窗口存在之前就到了；那时 focusOwnerWindow 只记了标记。
+  if (pendingFocus) {
+    pendingFocus = false
+    focusOwnerWindow()
+  }
   return generation
 }
 
@@ -372,6 +437,7 @@ function assertApplicationSender(event: IpcMainEvent | IpcMainInvokeEvent): void
 
 /** Only bootstrap and readiness cross renderer IPC; business traffic uses the shared Web Host. */
 function installDesktopBridge(): void {
+  bridgeInstalled = true
   protocol.handle('pureterm-app', request => serveWebDocument(request, rendererDir))
   ipcMain.handle(DESKTOP_CHANNELS.bootstrap, async event => {
     assertApplicationSender(event)
@@ -422,6 +488,8 @@ function installDesktopBridge(): void {
 // ─────────────────────────── 启动 / 退出 ───────────────────────────
 
 async function bootstrap(): Promise<void> {
+  // 丢锁的实例、或归属校验失败的实例：绝不建 Host、绝不建窗口。
+  if (!startupAllowed) return
   installDesktopBridge()
   hostStarting = startHostProcess({
     entry: hostEntry,
@@ -497,7 +565,10 @@ function shutdown(preserveUpdater = false): Promise<void> {
       ipcMain.removeAllListeners(channel)
     }
     session.defaultSession.webRequest.onBeforeSendHeaders(null)
-    protocol.unhandle('pureterm-app')
+    if (bridgeInstalled) {
+      bridgeInstalled = false
+      protocol.unhandle('pureterm-app')
+    }
     try {
       const pending = host ?? await hostStarting?.catch(() => undefined)
       await pending?.dispose()
