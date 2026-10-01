@@ -13,12 +13,13 @@ function fixture(t, overrides = {}) {
   backend.checkForUpdates = async () => { calls.push('check'); backend.emit('update-not-available') }
   backend.quitAndInstall = () => { calls.push('install') }
   const coordinator = createUpdateCoordinator({ backend, enabled: true, initialDelayMs: 100_000,
-    beforeInstall: async () => { calls.push('stop-host') },
-    confirmInstall: async () => { calls.push('confirm'); return false },
+    // The default preparation is a prepared, graceful shutdown.
+    prepareInstall: async (version) => { calls.push(`prepare:${version}`); return { intent: 'update', status: 'ready' } },
     message: (key, params) => { calls.push(said(key, params)) }, ...overrides })
   t.after(() => coordinator.dispose())
   return { backend, calls, coordinator }
 }
+const installs = calls => calls.filter(call => call === 'install').length
 
 test('concurrent manual checks share one network request and one result', async t => {
   const { coordinator, backend, calls } = fixture(t)
@@ -36,41 +37,110 @@ test('concurrent manual checks share one network request and one result', async 
   assert.equal(backend.autoInstallOnAppQuit, false)
 })
 
-test('downloaded update waits for consent and complete Host shutdown before installing', async t => {
-  let accept = false
-  const stopped = deferred()
+test('a downloaded update installs only after a prepared graceful stop', async t => {
   const order = []
+  const prepared = deferred()
   const { coordinator, backend } = fixture(t, {
-    confirmInstall: async () => { order.push('confirm'); return accept },
-    beforeInstall: async () => { order.push('stopping'); await stopped.promise; order.push('stopped') },
+    prepareInstall: async (version) => {
+      order.push(`prepare:${version}`)
+      await prepared.promise
+      order.push('prepared')
+      return { intent: 'update', status: 'ready' }
+    },
   })
   backend.quitAndInstall = (...args) => { assert.deepEqual(args, [false, true]); order.push('install') }
   backend.emit('update-downloaded', { version: '0.2.0' })
   await tick()
-  assert.equal(coordinator.phase, 'downloaded')
-  assert.deepEqual(order, ['confirm'])
-  accept = true
-  const a = coordinator.check(true)
-  const b = coordinator.install()
-  assert.equal(a, b)
-  await tick()
-  assert.deepEqual(order, ['confirm', 'confirm', 'stopping'])
-  stopped.resolve()
-  await a
-  assert.deepEqual(order, ['confirm', 'confirm', 'stopping', 'stopped', 'install'])
+  assert.deepEqual(order, ['prepare:0.2.0'], 'the coordinator asks for preparation, not a bare confirmation')
+  assert.equal(coordinator.phase, 'downloaded', 'the phase stays downloaded until the Host is stopped')
+  prepared.resolve()
+  await coordinator.install()
+  assert.deepEqual(order, ['prepare:0.2.0', 'prepared', 'install'])
 })
 
-test('disposed coordinator removes all subscriptions and ignores a pending confirmation', async t => {
-  const consent = deferred()
-  const { coordinator, backend, calls } = fixture(t, { confirmInstall: () => consent.promise })
+test('a cancelled preparation keeps the downloaded version retryable', async t => {
+  let answer = { intent: 'update', status: 'cancelled' }
+  const { coordinator, backend, calls } = fixture(t, { prepareInstall: async () => answer })
+  backend.emit('update-downloaded', { version: '0.2.0' })
+  await tick()
+  assert.equal(coordinator.phase, 'downloaded')
+  assert.equal(installs(calls), 0, 'a cancelled preparation must not install')
+  answer = { intent: 'update', status: 'ready' }
+  await coordinator.install()
+  assert.equal(installs(calls), 1, 'the retained download can be installed on a later attempt')
+})
+
+test('work admitted during confirmation is caught and re-prepared before installing', async t => {
+  let attempt = 0
+  const { coordinator, backend, calls } = fixture(t, {
+    // The first preparation meets work admitted while the user was confirming: the
+    // shutdown coordinator reports failed and keeps the Host usable.
+    prepareInstall: async () => (++attempt === 1 ? { intent: 'update', status: 'failed' } : { intent: 'update', status: 'ready' }),
+  })
+  backend.emit('update-downloaded', { version: '0.2.0' })
+  await tick()
+  assert.equal(installs(calls), 0, 'a failed preparation must not install')
+  assert.equal(coordinator.phase, 'downloaded')
+  await coordinator.install()
+  assert.equal(installs(calls), 1, 'the retry re-prepares rather than trusting the stale result')
+})
+
+test('a busy ordinary quit does not install', async t => {
+  const { coordinator, backend, calls } = fixture(t, { prepareInstall: async () => ({ intent: 'update', status: 'busy' }) })
+  backend.emit('update-downloaded', { version: '0.2.0' })
+  await tick()
+  assert.equal(installs(calls), 0)
+  assert.equal(coordinator.phase, 'downloaded', 'the download stays available for a later attempt')
+})
+
+test('a drain failure unlocks without stopping and keeps the download', async t => {
+  const { coordinator, backend, calls } = fixture(t, { prepareInstall: async () => ({ intent: 'update', status: 'failed' }) })
+  backend.emit('update-downloaded', { version: '0.2.0' })
+  await tick()
+  assert.equal(installs(calls), 0)
+  assert.equal(coordinator.phase, 'downloaded')
+  assert.ok(!calls.includes('desktop.update.install-failed'), 'a preparation failure is not an installer failure')
+})
+
+test('a forced termination never invokes the installer', async t => {
+  // The shutdown coordinator reports `failed` when an update cannot stop the Host
+  // gracefully, so a forced kill can never reach quitAndInstall.
+  const { coordinator, backend, calls } = fixture(t, { prepareInstall: async () => ({ intent: 'update', status: 'failed' }) })
+  backend.emit('update-downloaded', { version: '0.2.0' })
+  await tick()
+  assert.equal(installs(calls), 0)
+})
+
+test('disposal while a preparation is pending never installs', async t => {
+  const gate = deferred()
+  const { coordinator, backend, calls } = fixture(t, { prepareInstall: () => gate.promise })
   backend.emit('update-downloaded', { version: '0.2.0' })
   await tick()
   coordinator.dispose()
   assert.equal(backend.eventNames().length, 0)
-  consent.resolve(true)
+  gate.resolve({ intent: 'update', status: 'ready' })
   await tick()
-  await coordinator.check(true)
-  assert.deepEqual(calls, [])
+  assert.equal(installs(calls), 0, 'a late ready result must not install after disposal')
+})
+
+test('a new download invalidates an older confirmation', async t => {
+  const gate = deferred()
+  const { coordinator, backend, calls } = fixture(t, { prepareInstall: () => gate.promise })
+  backend.emit('update-downloaded', { version: '0.2.0' })
+  await tick()
+  backend.emit('update-downloaded', { version: '0.3.0' })
+  await tick()
+  gate.resolve({ intent: 'update', status: 'ready' })
+  await tick()
+  assert.equal(installs(calls), 0, 'a stale confirmation must not install the newer download')
+  assert.equal(coordinator.phase, 'downloaded')
+})
+
+test('an ordinary-quit decision is never accepted as an update preparation', async t => {
+  const { coordinator, backend, calls } = fixture(t, { prepareInstall: async () => ({ intent: 'quit', status: 'ready' }) })
+  backend.emit('update-downloaded', { version: '0.2.0' })
+  await tick()
+  assert.equal(installs(calls), 0, 'the update requires a same-intent ready decision')
 })
 
 test('network failure is recoverable and disabled builds never make requests', async t => {
@@ -87,17 +157,6 @@ test('network failure is recoverable and disabled builds never make requests', a
   await disabled.coordinator.check(true)
   assert.equal(disabled.backend.eventNames().length, 0)
   assert.deepEqual(disabled.calls, ['desktop.update.unavailable-development'])
-})
-
-test('Host shutdown failure prevents updater quitAndInstall', async t => {
-  const { coordinator, backend, calls } = fixture(t, {
-    confirmInstall: async () => true,
-    beforeInstall: async () => { throw new Error('Host is still running') },
-  })
-  backend.emit('update-downloaded', { version: '0.2.0' })
-  await tick()
-  assert.equal(coordinator.phase, 'error')
-  assert.deepEqual(calls, ['desktop.update.install-failed {"detail":"Host is still running"}'])
 })
 
 test('download rejection is consumed and active downloads are cancelled on disposal', async t => {
@@ -119,8 +178,7 @@ test('download rejection is consumed and active downloads are cancelled on dispo
 test('asynchronous installer errors remain observed after Host shutdown and recover once', async t => {
   const order = []
   const { coordinator, backend } = fixture(t, {
-    confirmInstall: async () => true,
-    beforeInstall: async () => { order.push('host-stopped') },
+    prepareInstall: async () => { order.push('host-stopped'); return { intent: 'update', status: 'ready' } },
     message: (key, params) => { order.push(said(key, params)) },
     onInstallError: async () => { order.push('restart-current-version') },
   })

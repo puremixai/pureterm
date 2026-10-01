@@ -2,7 +2,7 @@ import { app, dialog, ipcMain, protocol, safeStorage, session, type BrowserWindo
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import { DESKTOP_CHANNELS, HostError, toWireError, type PickedPrivateKey, type RendererReadyPayload } from '@pureterm/protocol'
+import { DESKTOP_CHANNELS, HostError, toWireError, type PickedPrivateKey, type RendererReadyPayload, type ShutdownDecision } from '@pureterm/protocol'
 import { isLocale, setLocale, t } from '@pureterm/i18n'
 import type { CredentialProvider } from '@pureterm/host'
 import { createBootCheck } from '../diagnostics/boot-check.js'
@@ -240,6 +240,23 @@ function requestOrdinaryQuit(): Promise<void> {
     console.error('[main] ordinary quit preparation threw:', error)
   })
   return quitTask
+}
+
+/**
+ * 更新安装前的准备：走和普通退出**同一条**协调器，只是 intent 是 'update'。
+ * 只有 graceful 停稳（ready）才提交清理并关掉普通退出守卫，随后由更新协调器调用
+ * quitAndInstall。取消 / busy / 失败一律保留下载、保持当前 Host 可用。
+ */
+async function prepareInstall(version: string): Promise<ShutdownDecision> {
+  const decision = await shutdownCoordinator.prepare('update', version)
+  if (decision.status === 'ready') {
+    // 保留 updater（quitAndInstall 还要用它），提交其余清理并让后续 app.quit() 直接通过。
+    await shutdown(true)
+    quitCommitted = true
+  } else {
+    console.log(`[main] update install not prepared (${decision.status}); keeping the download and the running Host.`)
+  }
+  return decision
 }
 
 /**
@@ -602,7 +619,7 @@ async function bootstrap(): Promise<void> {
   if (disposing) return
   if (webCarrierDisabled) console.log('[main] the plain-browser entry is disabled; Desktop uses its internal Web Host.')
   else console.log(`[main] carrier ready: web (browser entry ${host.url})`)
-  updates = createDesktopUpdates(() => shutdown(true), async () => {
+  updates = createDesktopUpdates(prepareInstall, async () => {
     // Some platforms report installation failures asynchronously after quitAndInstall.
     // Keep the updater alive until then and restart the current version after the error dialog.
     app.relaunch()

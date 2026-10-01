@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { encodeWire, decodeWire, fromWireError } from '@pureterm/protocol'
 import { startHostProcess } from '../dist/electron/runtime/host-process.js'
+import { createShutdownCoordinator } from '../dist/electron/runtime/shutdown.js'
 import { startFakeSshServer } from './fake-ssh-server.mjs'
 import { connection, rendererFixture, until } from './integration-helpers.mjs'
 
@@ -448,4 +449,54 @@ test('dispose can follow stop without a second signal', { timeout: 10000 }, asyn
   assert.equal(first.graceful, true)
   assert.equal(await child.dispose(), undefined)
   assert.equal(processExists(child.pid), false)
+})
+
+test('an update preparation keeps a live session until it is ready and cancels without stopping', { timeout: 20000 }, async t => {
+  const server = await startFakeSshServer({ greeting: false })
+  t.after(() => server.close())
+  const f = await fixture(t)
+  const child = await f.start()
+  const client = await f.client(child)
+  await client.call('ssh:open', [connection(server)])
+  const confirmations = []
+  let answer = false
+  const coordinator = createShutdownCoordinator({
+    getHost: () => child,
+    getGeneration: () => 1,
+    confirm: request => { confirmations.push(request); return Promise.resolve(answer) },
+    onFailure: () => {},
+  })
+  t.after(() => coordinator.dispose())
+
+  // Cancelled update: the live SSH session and the Host must both survive.
+  const cancelled = await coordinator.prepare('update', '1.2.3')
+  assert.equal(cancelled.status, 'cancelled')
+  assert.deepEqual({ intent: confirmations.at(-1).intent, version: confirmations.at(-1).version, phase: confirmations.at(-1).phase },
+    { intent: 'update', version: '1.2.3', phase: 'initial' })
+  assert.equal((await child.lifecycle.inspectActivity()).activeSessions, 1, 'a cancelled update keeps the session')
+  assert.equal(processExists(child.pid), true)
+
+  // Accepted update: only a graceful stop yields ready, and then the child is gone.
+  answer = true
+  const ready = await coordinator.prepare('update', '1.2.3')
+  assert.equal(ready.status, 'ready')
+  assert.equal(processExists(child.pid), false, 'a ready update has already stopped the Host')
+})
+
+test('an update preparation fails honestly when the Host dies mid-flight', { timeout: 15000 }, async t => {
+  const f = await fixture(t)
+  const child = await f.start()
+  process.kill(child.pid, 'SIGKILL')
+  await until(() => !processExists(child.pid), 'killed child exit')
+  const phases = []
+  const coordinator = createShutdownCoordinator({
+    getHost: () => child,
+    getGeneration: () => 1,
+    confirm: () => Promise.resolve(true),
+    onFailure: (_error, phase) => { phases.push(phase) },
+  })
+  t.after(() => coordinator.dispose())
+  const decision = await coordinator.prepare('update', '1.2.3')
+  assert.equal(decision.status, 'failed', 'a dead Host cannot yield a prepared update')
+  assert.ok(phases.length > 0, 'the failure is reported with a phase')
 })
