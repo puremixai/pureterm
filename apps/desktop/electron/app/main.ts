@@ -29,6 +29,7 @@ import { resolveDesktopPaths } from '../runtime/paths.js'
 import { claimDesktopSingleInstance } from '../runtime/single-instance.js'
 import { bindDesktopProfile, DesktopProfileError, sameDesktopProfilePath } from '../runtime/desktop-profile.js'
 import { createShutdownCoordinator, type ShutdownConfirmation } from '../runtime/shutdown.js'
+import { installDesktopShortcuts, narrowShortcutContext } from './shortcuts.js'
 
 /*
  * Electron 入口拥有窗口、平台能力、资源协议和更新协调。
@@ -162,6 +163,8 @@ let bridgeInstalled = false
 let shutdownTask: Promise<void> | undefined
 let updates: ReturnType<typeof createDesktopUpdates> | undefined
 let sandboxFallbackTried = false
+// 当前这一代窗口的原生快捷键适配器；跨 generation 不许复用。
+let desktopShortcuts: ReturnType<typeof installDesktopShortcuts> | undefined
 // 一次被批准的退出：允许随后的 app.quit() 直接通过，不再重复问用户。
 let quitCommitted = false
 // 正在进行的受保护退出。同一个请求只问一次、只停一次 Host。
@@ -367,8 +370,11 @@ function startGeneration(): ElectronShellGeneration {
       void requestOrdinaryQuit()
       return false
     },
+    onRelease: () => { desktopShortcuts?.dispose(); desktopShortcuts = undefined },
   })
   shell = generation
+  // 原生快捷键适配器绑定这一代窗口；上一代已在 release() 里摘掉，不会跨代残留。
+  desktopShortcuts = installDesktopShortcuts(generation.window, platform.platform === 'darwin' ? 'mac' : 'other')
   console.log(`[main] created shell generation #${generation.id}`)
   // 第二次启动可能在窗口存在之前就到了；那时 focusOwnerWindow 只记了标记。
   if (pendingFocus) {
@@ -564,6 +570,15 @@ function installDesktopBridge(): void {
     try { assertApplicationSender(event); applyLocale(locale) }
     catch (error) { console.error('[main] rejected locale report:', error instanceof Error ? error.message : String(error)) }
   })
+  // 快捷键上下文来自渲染层，但只有**当前窗口的主 frame** 报的才算数：一个浏览器标签页
+  // 或别的 frame 不该决定桌面应用哪些快捷键可用。形状不合法就整份丢弃。
+  ipcMain.on(DESKTOP_CHANNELS.shortcutContext, (event, context: unknown) => {
+    try {
+      assertApplicationSender(event)
+      const narrowed = narrowShortcutContext(context)
+      if (narrowed) desktopShortcuts?.reportContext(narrowed)
+    } catch (error) { console.error('[main] rejected shortcut context report:', error instanceof Error ? error.message : String(error)) }
+  })
   // The top bar draws its own minimize/maximize/close, so these three are the
   // only window commands in the app. Each one re-reads currentWindow() rather
   // than closing over a window: a generation swap between the click and the
@@ -682,7 +697,7 @@ function shutdown(preserveUpdater = false): Promise<void> {
     bootCheck.cancel()
     ipcMain.removeHandler(DESKTOP_CHANNELS.bootstrap)
     ipcMain.removeAllListeners(DESKTOP_CHANNELS.ready)
-    for (const channel of [DESKTOP_CHANNELS.locale, DESKTOP_CHANNELS.windowMinimize, DESKTOP_CHANNELS.windowToggleMaximize, DESKTOP_CHANNELS.windowClose]) {
+    for (const channel of [DESKTOP_CHANNELS.locale, DESKTOP_CHANNELS.shortcutContext, DESKTOP_CHANNELS.windowMinimize, DESKTOP_CHANNELS.windowToggleMaximize, DESKTOP_CHANNELS.windowClose]) {
       ipcMain.removeAllListeners(channel)
     }
     session.defaultSession.webRequest.onBeforeSendHeaders(null)

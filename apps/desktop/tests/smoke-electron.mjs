@@ -29,6 +29,13 @@ try {
       assert.equal(profile.version, 1)
       assert.ok(profile.renderer.cols > 0 && profile.renderer.rows > 0)
       assert.equal(profile.hosts, 0)
+      /*
+       * 快捷键上下文只认当前应用窗口的主 frame。另一个窗口（即使拿到了完整的 preload
+       * 桥）报上来的上下文必须被主进程整份丢掉 —— 这就是「未拥有的 frame 不能上报
+       * 快捷键上下文」的验收面：拒绝发生在主进程，日志是它唯一的对外证据。
+       */
+      assert.ok(output.includes('[main] rejected shortcut context report:'),
+        'an unowned frame must not be able to report a shortcut context')
       assert.ok(output.indexOf('renderer-ready report') < output.indexOf('launch profile updated'), 'profile committed before renderer-ready')
       const line = output.split(/\r?\n/).find(item => item.startsWith('[SMOKE] '))
       assert.ok(line, 'missing structured SSH report')

@@ -26,7 +26,7 @@ interface FileState {
 
 /** Every session retains its directory, requests and busy state; the panel slot, the tool selection and the splitter are shared. */
 export class ClientSftp extends Service {
-  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientSessionTools']
+  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientSessionTools', 'clientShortcuts']
   readonly scope: ClientScope
   private readonly panel: SftpView
   private readonly states = new Map<string, FileState>()
@@ -62,15 +62,13 @@ export class ClientSftp extends Service {
       element.hidden = true
     })
     // Ctrl/Cmd+E 归这里，因为「文件」这个语义是这个功能的。开合本身交给共享服务，
-    // 所以面板收起／展开和点击图标走的是同一条路。
-    this.scope.listen(view.document, 'keydown', event => {
-      const key = event as KeyboardEvent
-      if (!(key.ctrlKey || key.metaKey) || key.key.toLowerCase() !== 'e') return
-      if (view.element<HTMLDialogElement>('shortcuts-dialog').open || !ctx.clientTerminal.sessionId) return
-      key.preventDefault()
-      key.stopPropagation()
-      ctx.clientSessionTools.toggle('files')
-    }, true)
+    // 所以面板收起／展开和点击图标走的是同一条路。按键的裁决交给统一的快捷键注册表
+    // （Desktop 走原生、Web 走 DOM），这里只声明「有连接的会话时才可用」。
+    this.scope.onDispose(ctx.clientShortcuts.register(
+      'sftp.toggle',
+      () => ctx.clientSessionTools.toggle('files'),
+      () => !!ctx.clientTerminal.sessionId,
+    ))
     ctx.on('client/session-change', () => this.sync())
     ctx.on('client/connection-change', () => this.sync())
     // 换语言：整块面板重画一遍。提示行存的是 key，所以它会跟着变；行上的按钮、

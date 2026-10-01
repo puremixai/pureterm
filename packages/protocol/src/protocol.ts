@@ -5,13 +5,16 @@
  * Web. Electron IPC carries only bootstrap and renderer readiness. Keeping both
  * channel sets here prevents the UI, Host and Desktop shell from drifting.
  *
- * This file imports only its sibling `lifecycle` module — never an external
- * module — so browser, Node and Electron consumers can share it.
+ * This file imports only its sibling `lifecycle` and `shortcuts` modules — never
+ * an external module — so browser, Node and Electron consumers can share it.
  * The WebSocket carrier assigns opaque client IDs; Host never interprets a
  * webContents ID.
  */
 
+import type { ShortcutCommand, ShortcutContext } from './shortcuts.js'
+
 export * from './lifecycle.js'
+export * from './shortcuts.js'
 
 /** 请求/响应：客户端发方法 + 参数，服务端回值或抛错。 */
 export const METHODS = {
@@ -58,6 +61,8 @@ export const DESKTOP_CHANNELS = {
   windowMinimize: 'desktop:window-minimize',
   windowToggleMaximize: 'desktop:window-toggle-maximize',
   windowClose: 'desktop:window-close',
+  shortcutContext: 'desktop:shortcut-context',
+  shortcutCommand: 'desktop:shortcut-command',
 } as const
 
 /** 服务端推给客户端的事件。客户端只订阅，不回应。 */
@@ -566,6 +571,18 @@ export interface DesktopBridge {
     minimize(): void
     toggleMaximize(): void
     close(): void
+  }
+  /**
+   * 工作区快捷键的原生一侧。有它的时候（Electron Desktop），按键由主进程的
+   * `before-input-event` 统一裁决，渲染层只上报上下文、接收命令；没有它的时候
+   * （独立 Web / 浏览器入口），渲染层自己听 DOM keydown。
+   *
+   * 两条路用同一张绑定表（见 shortcuts.ts），所以同一次按键只可能执行一次命令。
+   */
+  shortcuts?: {
+    platform: 'mac' | 'other'
+    reportContext(context: ShortcutContext): void
+    onCommand(listener: (command: ShortcutCommand) => void): () => void
   }
 }
 

@@ -70,7 +70,7 @@ declare module 'cordis' {
 
 /** Each tab owns one terminal and one SSH session. Hosts is a persistent, separate page. */
 export class ClientTerminal extends Service {
-  static inject = ['clientView', 'clientTransport', 'clientToasts']
+  static inject = ['clientView', 'clientTransport', 'clientToasts', 'clientShortcuts']
   readonly scope: ClientScope
   private readonly owned = new Map<string, OwnedTab>()
   private readonly bySession = new Map<string, OwnedTab>()
@@ -148,6 +148,23 @@ export class ClientTerminal extends Service {
       ctx.emit('client/edit-connection', { ...tab.request }, tab.title)
     })
     this.scope.listen(view.element('failure-copy'), 'click', () => void this.copyLogs())
+    /*
+     * 工作区快捷键不再各功能自己听 keydown：统一注册到 clientShortcuts，
+     * 由它按同一张绑定表裁决（Desktop 走原生 before-input-event，Web 走 DOM）。
+     * 这里只留标签栏**内部**的方向键导航——那是控件自己的键盘行为，不是全局命令。
+     */
+    const shortcuts = ctx.clientShortcuts
+    const cycle = (step: number): void => {
+      const ids = [null, ...this.owned.keys()]
+      const next = (ids.indexOf(this.activeId) + step + ids.length) % ids.length
+      this.select(ids[next]!, this.libraryPage)
+      ;(this.active ? this.owned.get(this.active.id)!.button : view.element('workspace-home')).focus()
+    }
+    this.scope.onDispose(shortcuts.register('terminal.next', () => cycle(1), () => this.owned.size > 0))
+    this.scope.onDispose(shortcuts.register('terminal.previous', () => cycle(-1), () => this.owned.size > 0))
+    this.scope.onDispose(shortcuts.register('terminal.close', () => { if (this.active) this.closeTab(this.active.id) }, () => !!this.active))
+    // Ctrl+` 不是 readline 的绑定，所以从终端手里拿走它不需要代价。
+    this.scope.onDispose(shortcuts.register('terminal.focus', () => this.active?.terminal.focus(), () => !!this.active))
     this.scope.listen(view.element('workspace-tabs'), 'keydown', event => {
       const key = event as KeyboardEvent
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key.key)) return
@@ -159,25 +176,6 @@ export class ClientTerminal extends Service {
       this.select(ids[next]!, this.libraryPage)
       ;(this.active ? this.owned.get(this.active.id)!.button : view.element('workspace-home')).focus()
     })
-    this.scope.listen(view.document, 'keydown', event => {
-      const key = event as KeyboardEvent
-      if (!(key.ctrlKey || key.metaKey) || view.element<HTMLDialogElement>('shortcuts-dialog').open) return
-      if (key.key === 'Tab') {
-        key.preventDefault()
-        key.stopPropagation()
-        const ids = [null, ...this.owned.keys()]
-        this.select(ids[(ids.indexOf(this.activeId) + (key.shiftKey ? -1 : 1) + ids.length) % ids.length]!, this.libraryPage)
-      } else if (key.key.toLowerCase() === 'w' && this.active) {
-        key.preventDefault()
-        key.stopPropagation()
-        this.closeTab(this.active.id)
-      } else if (key.key === '`' && this.active) {
-        // Ctrl+` 不是 readline 的绑定，所以从终端手里拿走它不需要代价。
-        key.preventDefault()
-        key.stopPropagation()
-        this.active.terminal.focus()
-      }
-    }, true)
     ctx.effect(() => {
       const observer = new ResizeObserver(() => this.fit())
       observer.observe(view.element('terminal'))
@@ -262,7 +260,17 @@ export class ClientTerminal extends Service {
     ;(id ? this.owned.get(id)!.strip : this.ctx.clientView.element('workspace-home')).scrollIntoView({ block: 'nearest', inline: 'nearest' })
     this.ctx.emit('client/session-change', this.sessionId)
     this.ctx.emit('client/connection-change')
+    this.syncShortcuts()
     void this.settleLayout()
+  }
+
+  /** 把终端的标签/活动/连接状态推给快捷键注册表（它不反向注入终端，避免成环）。 */
+  private syncShortcuts(): void {
+    this.ctx.clientShortcuts.updateContext({
+      terminalTabs: this.owned.size,
+      activeTerminal: !!this.active,
+      connectedTerminal: this.active?.state === 'connected',
+    })
   }
 
   private render(): void {
@@ -367,6 +375,7 @@ export class ClientTerminal extends Service {
     this.render()
     if (tab.id === this.activeId) this.ctx.emit('client/session-change', this.sessionId)
     this.ctx.emit('client/connection-change')
+    this.syncShortcuts()
   }
 
   async open(request: TerminalOpenRequest, title = request.host): Promise<TerminalOpenResult | undefined> {
@@ -456,7 +465,7 @@ export class ClientTerminal extends Service {
     if (sessionId) this.ctx.clientTransport.api.close(sessionId)
     this.ctx.emit('client/tab-closed', id)
     if (this.activeId === id) this.select(ids[index + 1] ?? ids[index - 1] ?? null)
-    else this.render()
+    else { this.render(); this.syncShortcuts() }
   }
 
   fit(): void {

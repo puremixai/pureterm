@@ -145,8 +145,9 @@ export const en = {
   'shortcuts.close-tab': 'Close the current session tab',
   'shortcuts.focus-terminal': 'Focus the terminal',
   'shortcuts.toggle-files': 'Toggle the file panel',
+  'shortcuts.search-hosts': 'Search saved hosts',
   'shortcuts.collapse-editor': 'Collapse the host editor',
-  'shortcuts.note': 'On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Host cards: single-click selects, Edit opens the editor, double-click connects. Closing a tab disconnects that session; switching tabs does not. The browser may claim some shortcuts, in which case use the tab-bar buttons.',
+  'shortcuts.note': 'Host cards: single-click selects, Edit opens the editor, double-click connects. Closing a tab disconnects that session; switching tabs does not. The browser may claim some shortcuts, in which case use the tab-bar buttons.',
   'shortcuts.close': 'Got it',
 
   // ── top bar switches and status bar ───────────────────────────────

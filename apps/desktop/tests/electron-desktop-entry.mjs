@@ -66,6 +66,25 @@ app.on('browser-window-created', (_event, window) => {
           socket.onerror = () => resolve(false);
         })`)
         assert.equal(accepted, false, 'another window must not receive Desktop authorization')
+        /*
+         * 快捷键上下文只认**当前应用窗口的主 frame**。这个窗口拿到了完整的 preload 桥
+         * （它也是 pureterm-app://app 的主 frame），但它不是应用窗口：它报上来的上下文
+         * 必须被主进程整份丢掉 —— smoke 那边断言那条拒绝日志。于是它不能替真正的应用
+         * 决定哪些快捷键生效。
+         */
+        const bridge = await unauthorized.webContents.executeJavaScript(`({
+          platform: window.puretermDesktop.shortcuts.platform,
+          report: typeof window.puretermDesktop.shortcuts.reportContext,
+          onCommand: typeof window.puretermDesktop.shortcuts.onCommand,
+        })`)
+        assert.equal(bridge.report === 'function' && bridge.onCommand === 'function',
+          true, 'the native shortcut bridge must reach the preload of an owned document')
+        assert.equal(bridge.platform, process.platform === 'darwin' ? 'mac' : 'other',
+          'the bridge reports the platform the native matcher will use')
+        await unauthorized.webContents.executeJavaScript(`window.puretermDesktop.shortcuts.reportContext({
+          terminalTabs: 1, activeTerminal: true, connectedTerminal: true,
+          libraryVisible: true, editorOpen: false, modalOpen: false, composing: false })`)
+        await new Promise(resolve => setTimeout(resolve, 200))
       } finally { unauthorized.destroy() }
       console.log('[DESKTOP-BOUNDARY-OK]')
     })().catch(error => console.error('[WINDOW-CHROME-FAIL]', error))

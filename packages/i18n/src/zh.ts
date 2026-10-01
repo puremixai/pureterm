@@ -141,8 +141,9 @@ export const zh: Record<MessageKey, string> = {
   'shortcuts.close-tab': '关闭当前会话标签',
   'shortcuts.focus-terminal': '聚焦终端',
   'shortcuts.toggle-files': '切换文件面板',
+  'shortcuts.search-hosts': '搜索已保存的主机',
   'shortcuts.collapse-editor': '收起主机编辑面板',
-  'shortcuts.note': 'macOS 上把 <kbd>Ctrl</kbd> 换成 <kbd>⌘</kbd>。主机卡片：单击选中，点击「编辑」打开编辑面板，双击连接。关闭标签会断开该连接；切换标签不会断开。浏览器可能占用部分快捷键，此时请使用标签栏按钮。',
+  'shortcuts.note': '主机卡片：单击选中，点击「编辑」打开编辑面板，双击连接。关闭标签会断开该连接；切换标签不会断开。浏览器可能占用部分快捷键，此时请使用标签栏按钮。',
   'shortcuts.close': '知道了',
 
   // ── top bar switches and status bar ───────────────────────────────
