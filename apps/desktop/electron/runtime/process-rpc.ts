@@ -1,10 +1,19 @@
+import { fromWireError, isWireError, toWireError, type WireError } from '@pureterm/protocol'
+
 /** Private, versioned IPC between the Electron shell and its Node Host. */
 export interface ProcessChannel {
   send(message: unknown, onError: (error: Error | null) => void): void
   listen(listener: (message: unknown) => void): () => void
 }
 
-type Envelope = { version: 1; kind: 'call' | 'reply' | 'notice'; id?: number; method?: string; args?: unknown[]; value?: unknown; error?: string }
+/*
+ * The reply keeps a human-readable `error` string for generic/older replies and
+ * adds an optional structured `wireError`. The structured form carries the
+ * lifecycle error *codes* across the private channel, so the parent can tell
+ * `host.lifecycle-drain-timeout` apart from an arbitrary failure instead of
+ * matching on a message.
+ */
+type Envelope = { version: 1; kind: 'call' | 'reply' | 'notice'; id?: number; method?: string; args?: unknown[]; value?: unknown; error?: string; wireError?: WireError }
 export interface ProcessRpc {
   call<T = unknown>(method: string, args?: unknown[], timeoutMs?: number): Promise<T>
   notify(method: string, args?: unknown[]): boolean
@@ -40,7 +49,9 @@ export function createProcessRpc(options: {
       if (!task) return
       pending.delete(message.id!)
       clearTimeout(task.timer)
-      if (typeof message.error === 'string') task.reject(new Error(message.error))
+      // Prefer the structured identity; fall back to the string for generic/older replies.
+      if (isWireError(message.wireError)) task.reject(fromWireError(message.wireError))
+      else if (typeof message.error === 'string') task.reject(new Error(message.error))
       else task.resolve(message.value)
       return
     }
@@ -51,7 +62,11 @@ export function createProcessRpc(options: {
     } else if (message.kind === 'call' && Number.isSafeInteger(message.id)) {
       void Promise.resolve().then(() => options.request(message.method!, message.args!)).then(
         value => send({ version: 1, kind: 'reply', id: message.id, value }),
-        error => send({ version: 1, kind: 'reply', id: message.id, error: error instanceof Error ? error.message : String(error) }),
+        error => send({
+          version: 1, kind: 'reply', id: message.id,
+          error: error instanceof Error ? error.message : String(error),
+          wireError: toWireError(error),
+        }),
       )
     }
   })

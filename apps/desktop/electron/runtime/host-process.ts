@@ -1,12 +1,17 @@
 import { fork } from 'node:child_process'
 import type { CredentialProvider } from '@pureterm/host'
-import type { PickedPrivateKey } from '@pureterm/protocol'
+import type { HostActivitySnapshot, HostStopResult, PickedPrivateKey, RemoteHostLifecycle } from '@pureterm/protocol'
 import { createProcessRpc } from './process-rpc.js'
 
 export interface DesktopHostProcess {
   readonly pid: number
   readonly url: string
   readonly desktopToken: string
+  /** Accepted-work facts and the shutdown admission lease, over the private channel. */
+  readonly lifecycle: RemoteHostLifecycle
+  /** Bounded stop; reports whether the child acknowledged and exited cleanly. */
+  stop(): Promise<HostStopResult>
+  /** Compatible cleanup wrapper around the same idempotent stop operation. */
   dispose(): Promise<void>
 }
 
@@ -21,6 +26,8 @@ export async function startHostProcess(options: {
   env?: NodeJS.ProcessEnv
   startupTimeoutMs?: number
   shutdownTimeoutMs?: number
+  /** Inspection/preparation/cancellation RPC budget. Drain adds a 1s margin. */
+  lifecycleTimeoutMs?: number
 }): Promise<DesktopHostProcess> {
   const env: NodeJS.ProcessEnv = { ...(options.env ?? process.env), ELECTRON_RUN_AS_NODE: '1' }
   for (const key of Object.keys(env)) {
@@ -32,10 +39,12 @@ export async function startHostProcess(options: {
   })
   child.stdout?.on('data', chunk => process.stdout.write(`[host] ${chunk}`))
   child.stderr?.on('data', chunk => process.stderr.write(`[host] ${chunk}`))
-  let stopping: Promise<void> | undefined
+  let stopping: Promise<HostStopResult> | undefined
   let exited = false
   let started = false
   let failureReported = false
+  let exitCode: number | null = null
+  let exitSignal: string | null = null
   let finishExit!: () => void
   const exit = new Promise<void>(resolve => { finishExit = resolve })
   const rpc = createProcessRpc({
@@ -68,6 +77,8 @@ export async function startHostProcess(options: {
   child.once('disconnect', () => fail(new Error('Desktop Host disconnected')))
   child.once('exit', (code, signal) => {
     exited = true
+    exitCode = code
+    exitSignal = signal
     finishExit()
     fail(new Error(`Desktop Host exited (${signal ?? code})`))
   })
@@ -78,12 +89,18 @@ export async function startHostProcess(options: {
     finishExit()
     fail(new Error('Desktop Host failed to start'))
   })
-  function dispose(): Promise<void> {
+  /**
+   * Bounded stop. Records whether the child acknowledged and how it exited, so a
+   * forced or dead child is never reported as a graceful completion. Multiple
+   * stop/dispose calls share one operation.
+   */
+  function stop(): Promise<HostStopResult> {
     if (stopping) return stopping
     // Schedule the body after assigning stopping: a synchronous disconnect must be expected.
     stopping = Promise.resolve().then(async () => {
+      let acknowledged = false
       if (!exited && child.connected) {
-        await rpc.call('host:shutdown', [], options.shutdownTimeoutMs ?? 5_000).catch(() => {})
+        acknowledged = await rpc.call('host:shutdown', [], options.shutdownTimeoutMs ?? 5_000).then(() => true, () => false)
       }
       if (!exited && !await waitForExit(exit, 500)) {
         child.kill('SIGTERM')
@@ -91,8 +108,30 @@ export async function startHostProcess(options: {
         if (!await waitForExit(exit, 2_000)) throw new Error('Desktop Host did not terminate')
       }
       rpc.close(new Error('Desktop Host stopped'))
+      return { graceful: acknowledged && exitCode === 0 && exitSignal === null, exitCode, signal: exitSignal }
     })
     return stopping
+  }
+  function dispose(): Promise<void> {
+    return stop().then(() => undefined)
+  }
+  const lifecycleTimeout = options.lifecycleTimeoutMs ?? 2_000
+  const lifecycle: RemoteHostLifecycle = {
+    async inspectActivity() {
+      return asActivity(await rpc.call('host:inspect-activity', [], lifecycleTimeout))
+    },
+    async prepareShutdown(leaseId) {
+      return asActivity(await rpc.call('host:prepare-shutdown', [leaseId], lifecycleTimeout))
+    },
+    async drainAccepted(leaseId, timeoutMs) {
+      // Give the child's own budget the last word: the RPC timeout only bounds a stuck child.
+      return asActivity(await rpc.call('host:drain-accepted', [leaseId, timeoutMs], timeoutMs + 1_000))
+    },
+    async cancelShutdown(leaseId) {
+      const value = await rpc.call('host:cancel-shutdown', [leaseId], lifecycleTimeout)
+      if (typeof value !== 'boolean') throw new Error('Invalid Host lifecycle reply')
+      return value
+    },
   }
   let ready: { pid: number; url: string; desktopToken: string }
   try {
@@ -107,7 +146,23 @@ export async function startHostProcess(options: {
     await dispose().catch(cleanupError => console.error('[host-process] Startup cleanup failed:', cleanupError))
     throw error
   }
-  return { pid: child.pid!, url: ready.url, desktopToken: ready.desktopToken, dispose }
+  return { pid: child.pid!, url: ready.url, desktopToken: ready.desktopToken, lifecycle, stop, dispose }
+}
+
+/** The activity reply must be exactly four finite nonnegative integers. */
+function asActivity(value: unknown): HostActivitySnapshot {
+  const record = value as Record<string, unknown> | null
+  if (!record || typeof record !== 'object' || Array.isArray(record)) throw new Error('Invalid Host activity reply')
+  for (const key of ['activeSessions', 'pendingConnections', 'pendingFileOperations', 'pendingMutations']) {
+    const count = record[key]
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) throw new Error('Invalid Host activity reply')
+  }
+  return {
+    activeSessions: record.activeSessions as number,
+    pendingConnections: record.pendingConnections as number,
+    pendingFileOperations: record.pendingFileOperations as number,
+    pendingMutations: record.pendingMutations as number,
+  }
 }
 
 function isLoopbackWebHostUrl(value: unknown, browserAccess: boolean): value is string {

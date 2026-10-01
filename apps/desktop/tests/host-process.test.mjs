@@ -349,3 +349,103 @@ test('abrupt parent termination leaves no Host child or SSH socket behind', { ti
   await until(() => !processExists(hostPid), 'orphan Host termination', 7000)
   await until(() => server.connections === 0, 'orphan SSH socket cleanup')
 })
+
+test('private activity is not available over the business WebSocket', { timeout: 10000 }, async t => {
+  const f = await fixture(t)
+  const child = await f.start()
+  const client = await f.client(child)
+  await assert.rejects(client.call('host:inspect-activity'), error => {
+    assert.equal(error.code, 'dispatch.unknown-request')
+    return true
+  })
+  await child.stop()
+})
+
+test('child returns four-field counts for attached browser work', { timeout: 15000 }, async t => {
+  const server = await startFakeSshServer({ greeting: false })
+  t.after(() => server.close())
+  const f = await fixture(t)
+  const child = await f.start()
+  const client = await f.client(child)
+  const session = await client.call('ssh:open', [connection(server)])
+  const snapshot = await child.lifecycle.inspectActivity()
+  assert.deepEqual(Object.keys(snapshot).sort(), ['activeSessions', 'pendingConnections', 'pendingFileOperations', 'pendingMutations'])
+  for (const value of Object.values(snapshot)) assert.ok(Number.isSafeInteger(value) && value >= 0, 'facts are finite nonnegative integers')
+  assert.equal(snapshot.activeSessions, 1, 'a browser/Desktop client session is counted')
+  client.notice('ssh:close', [session.sessionId])
+  await until(async () => (await child.lifecycle.inspectActivity()).activeSessions === 0, 'session release')
+  await child.stop()
+})
+
+test('cancel after a timed-out prepare uses the known lease', { timeout: 15000 }, async t => {
+  const f = await fixture(t)
+  const entered = f.gate()
+  const released = f.gate()
+  f.options.credentials.seal = async plain => { entered.resolve(); await released.promise; return f.crypto.seal(plain) }
+  const child = await f.start({ lifecycleTimeoutMs: 1000 })
+  const client = await f.client(child)
+  const saving = client.call('hosts:save', [{ host: 'slow.example', username: 'demo', password: 'slow-secret', rememberPassword: true }]).catch(() => undefined)
+  await entered.promise
+  await child.lifecycle.prepareShutdown('lease-a')
+  await assert.rejects(child.lifecycle.drainAccepted('lease-a', 50), error => {
+    assert.equal(error.code, 'host.lifecycle-drain-timeout', 'the drain timeout survives as a code, not a message match')
+    return true
+  })
+  assert.equal(await child.lifecycle.cancelShutdown('stale-lease'), false)
+  assert.equal(await child.lifecycle.cancelShutdown('lease-a'), true)
+  released.resolve()
+  await saving
+  const [saved] = await client.call('hosts:list')
+  assert.equal(saved.host, 'slow.example', 'the in-flight save persisted after the cancelled prepare')
+  assert.equal(saved.username, 'demo')
+  assert.equal(saved.hasSecret, true, 'the encrypted secret reached the store')
+  await child.stop()
+})
+
+test('graceful stop requires an acknowledgement and a zero exit', { timeout: 10000 }, async t => {
+  const f = await fixture(t)
+  const child = await f.start()
+  const result = await child.stop()
+  assert.deepEqual(result, { graceful: true, exitCode: 0, signal: null })
+  assert.equal(processExists(child.pid), false)
+  assert.deepEqual(f.exits, [], 'an expected stop is not an unexpected-exit recovery event')
+})
+
+test('a forced stop is reported as non-graceful', { timeout: 10000 }, async t => {
+  const f = await fixture(t)
+  const child = await f.start()
+  process.kill(child.pid, 'SIGKILL')
+  await until(() => !processExists(child.pid), 'killed child exit')
+  const result = await child.stop()
+  assert.equal(result.graceful, false)
+  // Windows reports a terminated process as a non-zero code with no POSIX signal.
+  assert.ok(result.exitCode !== 0 || result.signal !== null, 'a killed child did not exit cleanly')
+})
+
+test('pending lifecycle RPCs reject when the child disconnects', { timeout: 15000 }, async t => {
+  const f = await fixture(t)
+  const entered = f.gate()
+  const released = f.gate()
+  f.options.credentials.seal = async plain => { entered.resolve(); await released.promise; return f.crypto.seal(plain) }
+  const child = await f.start()
+  const client = await f.client(child)
+  const saving = client.call('hosts:save', [{ host: 'pending.example', username: 'demo', password: 'pending-secret', rememberPassword: true }]).catch(() => undefined)
+  await entered.promise
+  await child.lifecycle.prepareShutdown('lease-a')
+  const pending = child.lifecycle.drainAccepted('lease-a', 5000)
+  process.kill(child.pid, 'SIGKILL')
+  await assert.rejects(pending, /disconnected|exited|IPC|stopped/i)
+  await until(() => !processExists(child.pid), 'killed child exit')
+  released.resolve()
+  await saving
+  await child.dispose()
+})
+
+test('dispose can follow stop without a second signal', { timeout: 10000 }, async t => {
+  const f = await fixture(t)
+  const child = await f.start()
+  const first = await child.stop()
+  assert.equal(first.graceful, true)
+  assert.equal(await child.dispose(), undefined)
+  assert.equal(processExists(child.pid), false)
+})
