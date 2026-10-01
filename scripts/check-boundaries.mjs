@@ -70,7 +70,11 @@ export function checkBoundaries(root) {
       if ((specifier === 'electron' || specifier.startsWith('electron/')) && !isElectronAdapter(file)) {
         fail(node, 'Electron is restricted to app, IPC/preload and diagnostics adapters.')
       }
-      if (area === 'packages/protocol/src') {
+      if (area === 'packages/protocol/src' && !specifier.startsWith('.')) {
+        // The shared protocol must stay environment-neutral: no local package,
+        // Node, Electron, or UI dependency. A relative import to a sibling module
+        // inside the same package is allowed (and the within-package check below
+        // keeps it there).
         fail(node, 'Shared protocol must not import another module.')
         return
       }

@@ -5,10 +5,13 @@
  * Web. Electron IPC carries only bootstrap and renderer readiness. Keeping both
  * channel sets here prevents the UI, Host and Desktop shell from drifting.
  *
- * This file has no imports so browser, Node and Electron consumers can share it.
+ * This file imports only its sibling `lifecycle` module — never an external
+ * module — so browser, Node and Electron consumers can share it.
  * The WebSocket carrier assigns opaque client IDs; Host never interprets a
  * webContents ID.
  */
+
+export * from './lifecycle.js'
 
 /** 请求/响应：客户端发方法 + 参数，服务端回值或抛错。 */
 export const METHODS = {
@@ -719,6 +722,10 @@ export const HOST_ERROR_CODES = [
   'host.closed-mutation',
   'host.closed-monitor',
   'host.shutdown',
+  'host.preparing-shutdown',
+  'host.lifecycle-busy',
+  'host.lifecycle-lease-invalid',
+  'host.lifecycle-drain-timeout',
   'host.client-closed',
   'host.client-gone',
   'host.client-disconnected',

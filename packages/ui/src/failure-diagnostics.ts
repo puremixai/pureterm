@@ -178,6 +178,11 @@ const CODE_INFO: Record<HostErrorCode, { stage: Stage | null; cause: Cause | nul
   'host.closed-mutation': { stage: null, cause: null },
   'host.closed-monitor': { stage: null, cause: null },
   'host.shutdown': { stage: 'local', cause: 'cancelled' },
+  // Shutdown admission is not a connection failure: the app is closing, not the route.
+  'host.preparing-shutdown': { stage: null, cause: null },
+  'host.lifecycle-busy': { stage: null, cause: null },
+  'host.lifecycle-lease-invalid': { stage: null, cause: null },
+  'host.lifecycle-drain-timeout': { stage: null, cause: null },
   'host.client-closed': { stage: null, cause: null },
   'host.client-gone': { stage: null, cause: null },
   'host.client-disconnected': { stage: 'local', cause: 'cancelled' },
