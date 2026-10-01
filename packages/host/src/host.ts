@@ -2,12 +2,14 @@ import { Context } from 'cordis'
 import { dirname, join } from 'node:path'
 import {
   HostError,
+  type HostLifecycle,
   type KeyRecord,
   type KeySaveRequest,
   type MonitorStartRequest,
   type MonitorStartResult,
   type MonitorStopResult,
 } from '@pureterm/protocol'
+import { HostActivityTracker } from './lifecycle.js'
 import { RendererService, type RendererBridge } from './services/renderer.js'
 import { SshService, type SshServiceConfig } from './services/ssh.js'
 import { SessionStore, assertSessionStoreCompatible, type HostInput, type HostRecord } from './plugins/session-store.js'
@@ -89,6 +91,11 @@ export interface Host {
    */
   startMonitor(request: MonitorStartRequest, clientId: string): Promise<MonitorStartResult>
   stopMonitor(subscriptionId: string, clientId: string): Promise<MonitorStopResult>
+  /**
+   * Accepted-work facts and the shutdown admission lease. Counts only; safe to
+   * show a user and to forward over the private parent/child RPC unchanged.
+   */
+  readonly lifecycle: HostLifecycle
   /** 卸载整棵插件树（关掉所有连接）。可重复调用。 */
   dispose(): Promise<void>
   /**
@@ -143,6 +150,8 @@ export async function createHost(options: HostOptions): Promise<Host> {
   // One queue protects host/key references from save/delete races and drains on shutdown.
   let mutations: Promise<void> = Promise.resolve()
   const sessionKeys = new Map<string, Map<string, string>>()
+  // Counts accepted user work and closes admission once shutdown preparation begins.
+  const activity = new HostActivityTracker(() => root.terminal.size)
   function clientKeys(clientId: string): Map<string, string> {
     let keys = sessionKeys.get(clientId)
     if (!keys) sessionKeys.set(clientId, keys = new Map())
@@ -150,13 +159,23 @@ export async function createHost(options: HostOptions): Promise<Host> {
   }
   function mutate<T>(operation: () => T | Promise<T>, clientId?: string): Promise<T> {
     if (disposed) return Promise.reject(new HostError('host.closed-mutation'))
+    // Reject before admission so a refused write has no side effect on the queue.
+    try { activity.assertAdmitted() } catch (error) { return Promise.reject(error) }
     const owner = !storeConfig.credentials.persistent && clientId !== undefined ? clientKeys(clientId) : undefined
+    // Count from enqueue (not from run) so a drain waits for waiting mutations too.
+    activity.begin('mutation')
     const result = mutations.then(() => {
       if (owner && sessionKeys.get(clientId!) !== owner) throw new HostError('host.client-closed')
       return operation()
     })
     mutations = result.then(() => undefined, () => undefined)
-    return result
+    return result.finally(() => activity.end('mutation'))
+  }
+  /** Admit a finite SFTP operation synchronously, then count it until settlement. */
+  function fileOperation<T>(operation: () => Promise<T>): Promise<T> {
+    // Reject as a promise so every public SFTP method keeps returning a promise.
+    try { activity.assertAdmitted() } catch (error) { return Promise.reject(error) }
+    return activity.track('file', operation)
   }
   function listHosts(clientId = ''): HostRecord[] {
     return root.sessionStore.list().map(record => {
@@ -177,16 +196,24 @@ export async function createHost(options: HostOptions): Promise<Host> {
   return {
     openTerminal: async (payload) => {
       if (disposed) throw new HostError('host.closed')
-      const sessionKey = payload.hostId && !payload.privateKey && !payload.privateKeyPath ? sessionKeys.get(payload.clientId)?.get(payload.hostId) : undefined
-      const opening = root.terminal.open({ ...payload, keyId: payload.keyId ?? sessionKey })
-      openings.add(opening)
-      try {
-        return await opening
-      } finally {
-        openings.delete(opening)
-      }
+      activity.assertAdmitted()
+      return activity.track('connection', async () => {
+        const sessionKey = payload.hostId && !payload.privateKey && !payload.privateKeyPath ? sessionKeys.get(payload.clientId)?.get(payload.hostId) : undefined
+        const opening = root.terminal.open({ ...payload, keyId: payload.keyId ?? sessionKey })
+        openings.add(opening)
+        try {
+          return await opening
+        } finally {
+          openings.delete(opening)
+        }
+      })
     },
-    input: (sessionId, data) => root.terminal.input(sessionId, data),
+    input: (sessionId, data) => {
+      // Input is a notice: a rejection crosses as the carrier's existing error path,
+      // not as an invented notice reply. Resize and close stay allowed during drain.
+      activity.assertAdmitted()
+      root.terminal.input(sessionId, data)
+    },
     resize: (sessionId, cols, rows) => root.terminal.resize(sessionId, cols, rows),
     close: (sessionId) => root.terminal.close(sessionId, new HostError('host.user-disconnected')),
     releaseClient: (clientId) => {
@@ -235,13 +262,14 @@ export async function createHost(options: HostOptions): Promise<Host> {
       if (listHosts(clientId).some(host => host.keyId === id)) throw new HostError('host.key-in-use')
       return root.keychain.remove(id, clientId)
     }, clientId),
-    sftpList: (sessionId, path) => root.sftp.list(sessionId, path),
-    sftpRead: (sessionId, path) => root.sftp.read(sessionId, path),
-    sftpWrite: (sessionId, dir, name, bytes) => root.sftp.write(sessionId, dir, name, bytes),
-    sftpMkdir: (sessionId, dir, name) => root.sftp.mkdir(sessionId, dir, name),
-    sftpRemove: (sessionId, path) => root.sftp.remove(sessionId, path),
+    sftpList: (sessionId, path) => fileOperation(() => root.sftp.list(sessionId, path)),
+    sftpRead: (sessionId, path) => fileOperation(() => root.sftp.read(sessionId, path)),
+    sftpWrite: (sessionId, dir, name, bytes) => fileOperation(() => root.sftp.write(sessionId, dir, name, bytes)),
+    sftpMkdir: (sessionId, dir, name) => fileOperation(() => root.sftp.mkdir(sessionId, dir, name)),
+    sftpRemove: (sessionId, path) => fileOperation(() => root.sftp.remove(sessionId, path)),
     startMonitor: async (request, clientId) => {
       if (disposed) throw new HostError('host.closed-monitor')
+      activity.assertAdmitted()
       // 没有监控插件是一种**可预期的**状态，不是异常：给一个稳定的错误码，
       // 界面据此渲染「此环境不支持监控」，而不是去猜一句人话。
       const monitor = monitorOf()
@@ -254,6 +282,7 @@ export async function createHost(options: HostOptions): Promise<Host> {
       if (!monitor) return { stopped: false }
       return monitor.stop(subscriptionId, clientId)
     },
+    lifecycle: activity,
     dispose: () => {
       if (disposing) return disposing
       disposed = true

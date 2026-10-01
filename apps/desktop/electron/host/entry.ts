@@ -54,10 +54,41 @@ const rpc = createProcessRpc({
       await starting
       return { pid: process.pid, url: host!.url, desktopToken }
     }
+    if (method.startsWith('host:')) return lifecycleRequest(method, args)
     throw new Error(`Unknown Host request: ${method}`)
   },
   onError: error => console.error('[host]', error.message),
 })
+
+/** Validate a lease id coming across the private channel. */
+function asLease(value: unknown): string {
+  if (typeof value !== 'string' || !value || value.length > 128) throw new Error('Invalid lifecycle lease')
+  return value
+}
+
+/** Validate a drain budget (milliseconds). */
+function asBudget(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error('Invalid drain budget')
+  return value
+}
+
+/** Private lifecycle calls; available only after the Web Host is assembled. */
+function lifecycleRequest(method: string, args: unknown[]): unknown {
+  if (!host) throw new Error('Desktop Host is not running')
+  const lifecycle = host.lifecycle
+  switch (method) {
+    case 'host:inspect-activity':
+      return lifecycle.inspectActivity()
+    case 'host:prepare-shutdown':
+      return lifecycle.prepareShutdown(asLease(args[0]))
+    case 'host:drain-accepted':
+      return lifecycle.drainAccepted(asLease(args[0]), asBudget(args[1]))
+    case 'host:cancel-shutdown':
+      return lifecycle.cancelShutdown(asLease(args[0]))
+    default:
+      throw new Error(`Unknown Host request: ${method}`)
+  }
+}
 
 function shutdown(): Promise<void> {
   if (stopping) return stopping

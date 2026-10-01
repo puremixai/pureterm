@@ -6,6 +6,8 @@ import { ClientTransport } from '../src/services/transport.js'
 
 import { ClientSessionTools } from '../src/services/session-tools.js'
 
+import { ClientShortcuts } from '../src/services/shortcuts.js'
+
 import { VERSION } from '../src/lib/version.js'
 
 import { HostError, type HostRecord, type HostSaveRequest, type KeyRecord, type KeySaveRequest, type MonitorSnapshot, type SftpDir, type TerminalOpenResult, type TerminalOpenRequest } from '@pureterm/protocol'
@@ -43,6 +45,26 @@ function hostAction(id: string, action = '.host-main') { document.querySelector<
 function editHost(id: string) { hostAction(id, '[data-act="edit"]') }
 
 function change(id: string, value: string) { input(id).value = value; input(id).dispatchEvent(new Event('input', { bubbles: true })) }
+
+/*
+ * 工作区快捷键的两个观测面。
+ *
+ * `press` 走真实的 DOM 捕获路径（document 上的 keydown 监听），返回这次按键**是否被
+ * 工作区消费**：这是「这个键归工作区所有」最直接、也不依赖内部状态的证据。组合状态
+ * 也从真实的事件来 —— 不支持的 isComposing 用 defineProperty 补上，而不是给产品开
+ * 一个测试专用的开关。
+ */
+function press(options: KeyboardEventInit & { composing?: boolean }): boolean {
+  const { composing, ...init } = options
+  const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
+  if (composing !== undefined) Object.defineProperty(event, 'isComposing', { value: composing, configurable: true })
+  document.body.dispatchEvent(event)
+  return event.defaultPrevented
+}
+
+function compose(type: 'compositionstart' | 'compositionend'): void {
+  document.dispatchEvent(new CompositionEvent(type, { bubbles: true }))
+}
 
 /*
  * 监控条的观测面。全部按 DOM 读，不碰 ClientMonitor 的内部状态：这个 harness 剥掉了
@@ -2408,6 +2430,183 @@ async function runChecks() {
     await client.dispose()
 
     checks.push('session facts fill the cipher and host-key cells, survive a rekey and ignore stale revisions')
+
+    /*
+     * 工作区快捷键。这个 harness 是普通 BrowserWindow、没有 Desktop 桥，所以
+     * ClientShortcuts 走的是**独立 Web / 浏览器**那条 DOM 路径 —— 正是「有桥时不再听
+     * DOM」之外的另一半。断言落在界面上（事件是否被消费、焦点、标签数、面板可见性），
+     * 不读注册表内部。
+     */
+    const keys = fixture()
+
+    client = createClient({ api: keys.api, terminalFactory: keys.terminalFactory })
+
+    assert((await client.ready).ok, 'shortcut client failed readiness')
+
+    const shortcuts = client.context.clientShortcuts
+
+    // 这台机器是 mac 还是其他，绑定表自己知道；测试跟着它走，于是 macOS 的 Cmd+W 和
+    // 「Ctrl+Tab 仍然是字面 Ctrl」也在 CI 上被真的走一遍。
+    const mac = shortcuts.shortcutsPlatform === 'mac'
+
+    const primary = mac ? { metaKey: true } : { ctrlKey: true }
+
+    const sessionTabs = (): number => document.querySelectorAll('.session-tab').length
+
+    fill(); click('connect'); await tick()
+
+    assert(sessionTabs() === 1 && shortcuts.context.activeTerminal, 'a live session gives the shortcut context an active terminal')
+
+    // Ctrl/Cmd+K 只属于主机库那一屏：会话开着的时候，终端里的 Ctrl+K 是 readline 的删到行尾。
+    assert(!press({ key: 'k', code: 'KeyK', ...primary }), 'Ctrl/Cmd+K is not claimed while a session owns the screen')
+
+    assert(document.activeElement !== input('host-search'), 'the terminal keeps Ctrl+K for itself')
+
+    click('nav-hosts'); await tick()
+
+    assert(!input('hosts-panel').hidden && shortcuts.context.libraryVisible, 'the host library is the screen where search is claimed')
+
+    assert(press({ key: 'k', code: 'KeyK', ...primary }), 'Ctrl/Cmd+K is claimed on the visible host library')
+
+    assert(document.activeElement === input('host-search'), 'the shortcut moves focus into the search box')
+
+    // 帮助列表来自**同一张绑定表**：改了绑定，帮助不可能和真正生效的按键各说各话。
+    click('nav-shortcuts'); await tick()
+
+    const helpRows = [...document.querySelectorAll('#shortcuts-list > div')]
+
+    const helpKeys = (row: Element): string => [...row.querySelectorAll('kbd')].map(kbd => kbd.textContent).join('+')
+
+    assert(helpRows.length === shortcuts.bindings.length, 'the help list draws one row per binding, from the same table')
+
+    assert(helpRows.some(row => helpKeys(row) === (mac ? '⌘+W' : 'Ctrl+W')),
+      'the help shows the platform primary modifier the matcher actually uses')
+
+    assert(helpRows.some(row => helpKeys(row) === 'Ctrl+Tab'),
+      'Ctrl+Tab stays literal Ctrl on every platform, including macOS')
+
+    click('shortcuts-close'); await tick()
+
+    const firstSessionTab = client.context.clientTerminal.tabs[0]!.id
+
+    assert(press({ key: 'Tab', code: 'Tab', ctrlKey: true }), 'Ctrl+Tab is claimed whenever a terminal tab exists')
+
+    assert(client.context.clientTerminal.active?.id === firstSessionTab, 'Ctrl+Tab cycles from Home into the terminal tab')
+
+    assert(press({ key: 'Tab', code: 'Tab', ctrlKey: true, shiftKey: true }), 'Ctrl+Shift+Tab is claimed too')
+
+    assert(client.context.clientTerminal.active === undefined, 'Ctrl+Shift+Tab cycles back to Home')
+
+    // 没有活动终端：Primary+W 既不关窗口也不被消费，后台标签也不动。
+    assert(!press({ key: 'w', code: 'KeyW', ...primary }), 'Primary+W is not claimed without an active terminal')
+
+    assert(sessionTabs() === 1, 'and it leaves the background tab alone')
+
+    click('workspace-home'); click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+
+    assert(sessionTabs() === 2, 'a second session adds a second tab')
+
+    assert(press({ key: 'w', code: 'KeyW', ...primary }), 'Primary+W is claimed with an active terminal')
+
+    assert(sessionTabs() === 1, 'Primary+W closes the active tab')
+
+    // 长按不重复触发破坏性动作：按住不放不该把后面的标签也一起关掉。
+    assert(!press({ key: 'w', code: 'KeyW', ...primary, repeat: true }), 'a held key is not a fresh close')
+
+    assert(sessionTabs() === 1, 'holding Primary+W does not close a second tab')
+
+    // 输入法组合期间整块让路，组合一结束立刻恢复。
+    compose('compositionstart')
+
+    assert(!press({ key: 'Tab', code: 'Tab', ctrlKey: true }), 'composition owns the keyboard')
+
+    assert(!press({ key: 'Tab', code: 'Tab', ctrlKey: true, composing: true }), 'a composing keydown stays with the IME')
+
+    compose('compositionend')
+
+    assert(press({ key: 'Tab', code: 'Tab', ctrlKey: true }), 'the binding is live again once composition ends')
+
+    // AltGr / Alt 一律放行给输入法和远端。
+    assert(!press({ key: 'Tab', code: 'Tab', ctrlKey: true, altKey: true }), 'AltGr/Alt is never a workspace key')
+
+    // 编辑器打开：除「收起编辑器」外，工作区快捷键让给输入。
+    click('host-new'); await tick()
+
+    assert(!input('connection-workspace').hidden && shortcuts.context.editorOpen, 'New Host opens the editor')
+
+    assert(!press({ key: 'Tab', code: 'Tab', ctrlKey: true }), 'the editor keeps Ctrl+Tab for itself')
+
+    assert(!press({ key: 'k', code: 'KeyK', ...primary }), 'and keeps Ctrl/Cmd+K')
+
+    assert(press({ key: 'Escape', code: 'Escape' }), 'Escape collapses the editor')
+
+    assert(input('connection-workspace').hidden, 'and the editor is gone')
+
+    // 模态框（快捷键帮助）打开：整块让路。
+    click('nav-shortcuts'); await tick()
+
+    assert(shortcuts.context.modalOpen, 'the shortcut dialog reports a modal')
+
+    assert(!press({ key: 'k', code: 'KeyK', ...primary }), 'a modal owns every workspace key')
+
+    click('shortcuts-close'); await tick()
+
+    // 已连接的会话上，Ctrl/Cmd+E 开合文件面板；Primary+` 把焦点交回终端。
+    click('nav-hosts'); click('host-new'); fill(); click('connect'); await tick()
+
+    assert(shortcuts.context.connectedTerminal, 'a live session reports itself connected')
+
+    assert(press({ key: 'e', code: 'KeyE', ...primary }), 'Ctrl/Cmd+E is claimed on a connected session')
+
+    assert(!input('sftp').hidden, 'Ctrl/Cmd+E opens the Files panel')
+
+    assert(press({ key: '`', code: 'Backquote', ...primary }), 'Primary+Backquote is claimed with an active terminal')
+
+    await client.dispose()
+
+    assert(!press({ key: 'Tab', code: 'Tab', ctrlKey: true }), 'a disposed Client leaves no live key listener behind')
+
+    checks.push('workspace shortcuts follow one binding table and respect IME, editor and modal context')
+
+    /*
+     * 重新挂载。卸载快捷键服务本身、再挂回去：注入它的终端/主机/文件会跟着卸载并重新
+     * 装配。页面上必须**只剩一个** keydown 监听，否则一次 Ctrl+Tab 会走两步 —— 用
+     * 「一次按键恰好前进一格」来证明，而不是去数内部监听器。
+     */
+    const remount = fixture()
+
+    client = createClient({ api: remount.api, terminalFactory: remount.terminalFactory })
+
+    assert((await client.ready).ok, 'remount client failed readiness')
+
+    await client.scopes.shortcuts.dispose()
+
+    assert(!press({ key: 'Tab', code: 'Tab', ctrlKey: true }), 'the unloaded shortcut service owns no key')
+
+    await client.context.plugin(ClientShortcuts)
+
+    for (let index = 0; index < 20 && !client.context.clientApplication; index++) await tick()
+
+    assert((await client.context.clientApplication.ready).ok, 'features failed to reactivate with the shortcut service')
+
+    fill(); click('connect'); await tick()
+
+    click('workspace-home'); click('host-new'); fill(); input('host').value = 'second.example'; click('connect'); await tick()
+
+    assert(document.querySelectorAll('.session-tab').length === 2, 'two tabs for the one-step proof')
+
+    const order = [null, ...client.context.clientTerminal.tabs.map(tab => tab.id)]
+
+    const from = order.indexOf(client.context.clientTerminal.active?.id ?? null)
+
+    assert(press({ key: 'Tab', code: 'Tab', ctrlKey: true }), 'Ctrl+Tab is claimed after the remount')
+
+    assert((client.context.clientTerminal.active?.id ?? null) === order[(from + 1) % order.length],
+      'one press moves exactly one step: a duplicate listener would move two')
+
+    await client.dispose()
+
+    checks.push('unloading and remounting the shortcut service leaves exactly one key listener')
 
     return checks
 

@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 /*
  * 以新配置重启自己，并且**真的管住这个子进程**。
  *
- * 两条纪律：
+ * 三条纪律：
  *
  * 1. 不用 app.relaunch()。它不让新进程继承 stdio，重启后的日志从终端里消失，
  *    等于把问题藏起来——用户和 CI 都看不到后续发生了什么。
@@ -14,8 +14,19 @@ import { spawn, type ChildProcess } from 'node:child_process'
  *    「既没起来新的，又把旧的关了」——用户面前什么都没了，还没有任何输出。
  *    现在的顺序是：等 'spawn' → 宽限期内确认还活着 → 才 onSuccess。
  *
+ * 3. 交棒的那一份要**等我们退出再拿单实例锁**（见 waitForHandoff）。任何「先 spawn
+ *    新进程、再退出旧进程」的重启都会让新进程抢不到锁、被当成普通第二实例静默让位
+ *    ——用户面前同样什么都没剩下，而且一句日志都没有（app.relaunch() 在 Linux 上
+ *    就是这么把 Host 故障恢复变成「什么都不剩」的）。
+ *
  * 不 import electron：退出行为由调用方通过 onSuccess/onFailure 注入，因此可以单测。
  */
+
+/**
+ * 交棒时旧进程留给新进程的环境变量：值是即将退出的那个进程的 pid。
+ * 新进程靠它知道「单实例锁现在还在别人手里，但那个人正在退出」。
+ */
+export const RELAUNCH_HANDOFF_ENV = 'SSH_CORDIS_RELAUNCH_FROM'
 
 export interface RelaunchOptions {
   /** 追加到当前命令行的开关，例如 ['--no-sandbox'] */
@@ -98,4 +109,63 @@ export function relaunchSelf(options: RelaunchOptions): void {
     settled = true
     options.onFailure(error)
   })
+}
+
+export interface HandoffWaitOptions {
+  /** 最多等多久。超时就不等了，照常去抢锁（抢不到就按普通第二实例让位）。 */
+  budgetMs?: number
+  /** 两次检查之间的间隔。 */
+  intervalMs?: number
+  /** 判断进程是否还在；默认 `process.kill(pid, 0)`。注入是为了单测。 */
+  isAlive?(pid: number): boolean
+  now?(): number
+  sleep?(ms: number): void
+  log?(message: string): void
+}
+
+/** `kill(pid, 0)` 只问「还在不在」，不真的发信号；EPERM 说明进程还在，只是我们没权限问。 */
+function defaultIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+// 同步睡眠：这条路径必须发生在 Electron 的 ready 之前（见下），不能用 await。
+const sleepCell = new Int32Array(new SharedArrayBuffer(4))
+function sleepSync(ms: number): void { Atomics.wait(sleepCell, 0, 0, ms) }
+
+/**
+ * 等交棒给我们的那个旧进程退出，然后才轮到我们去拿单实例锁。
+ *
+ * 锁不是「抢」来的，是等它空出来自然拿到的：旧进程一退出，Electron 就释放锁，
+ * 新进程的第一次 `requestSingleInstanceLock()` 就能成功。
+ *
+ * 同步等待是刻意的。它必须发生在读档案、`appendSwitch`、建窗口之前，而 Electron 的
+ * `ready` 可能在那之前就到达；阻塞主线程期间消息循环不转，正好保证这些顺序。
+ * 超时（默认 5s）不是错误：那说明旧进程没按时退出，我们照常去抢锁，抢不到就让位。
+ */
+export function waitForHandoff(pid: number, options: HandoffWaitOptions = {}): boolean {
+  const budgetMs = options.budgetMs ?? 5_000
+  const intervalMs = options.intervalMs ?? 25
+  const isAlive = options.isAlive ?? defaultIsAlive
+  const now = options.now ?? Date.now
+  const sleep = options.sleep ?? sleepSync
+  const log = options.log ?? (() => {})
+  if (!Number.isInteger(pid) || pid <= 0) return true
+
+  const deadline = now() + budgetMs
+  let waited = 0
+  while (isAlive(pid)) {
+    if (now() >= deadline) {
+      log(`[relaunch] the process we are taking over from (pid=${pid}) is still alive after ${waited}ms; trying the lock anyway.`)
+      return false
+    }
+    sleep(intervalMs)
+    waited += intervalMs
+  }
+  log(`[relaunch] hand-off from pid=${pid} complete after ~${waited}ms`)
+  return true
 }

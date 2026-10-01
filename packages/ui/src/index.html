@@ -347,16 +347,9 @@
     </div>
     <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
       <h2 id="shortcuts-title" data-i18n="shortcuts.title">Workspace shortcuts</h2>
-      <dl>
-        <div><dt data-i18n="shortcuts.next-tab">Next tab</dt><dd><kbd>Ctrl</kbd> <kbd>Tab</kbd></dd></div>
-        <div><dt data-i18n="shortcuts.prev-tab">Previous tab</dt><dd><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Tab</kbd></dd></div>
-        <div><dt data-i18n="shortcuts.close-tab">Close the current session tab</dt><dd><kbd>Ctrl</kbd> <kbd>W</kbd></dd></div>
-        <div><dt data-i18n="shortcuts.focus-terminal">Focus the terminal</dt><dd><kbd>Ctrl</kbd> <kbd>`</kbd></dd></div>
-        <div><dt data-i18n="shortcuts.toggle-files">Toggle the file panel</dt><dd><kbd>Ctrl</kbd> <kbd>E</kbd></dd></div>
-        <div><dt data-i18n="shortcuts.collapse-editor">Collapse the host editor</dt><dd><kbd>Esc</kbd></dd></div>
-      </dl>
+      <dl id="shortcuts-list"></dl>
       <div class="shortcuts-foot">
-        <p data-i18n-html="shortcuts.note">On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Host cards: single-click selects, Edit opens the editor, double-click connects. Closing a tab disconnects that session; switching tabs does not. The browser may claim some shortcuts, in which case use the tab-bar buttons.</p>
+        <p data-i18n-html="shortcuts.note">Host cards: single-click selects, Edit opens the editor, double-click connects. Closing a tab disconnects that session; switching tabs does not. The browser may claim some shortcuts, in which case use the tab-bar buttons.</p>
         <button type="button" id="shortcuts-close" class="primary" data-i18n="shortcuts.close">Got it</button>
       </div>
     </dialog>

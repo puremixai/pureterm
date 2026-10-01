@@ -63,7 +63,7 @@ function createFiles(initial, symlinks, home) {
   }
 }
 
-function attachSftp(stream, files, stats) {
+function attachSftp(stream, files, stats, gate) {
   stats.channels++
   let counter = 0
   const handles = new Map()
@@ -76,7 +76,15 @@ function attachSftp(stream, files, stats) {
   }
   const on = (name, handler) => stream.on(name, (id, ...args) => {
     stats.requests.push(name)
-    try { handler(id, ...args) } catch (error) { stream.status(id, error.code ?? STATUS.FAILURE) }
+    // Test-only gate: lets a case hold one SFTP request in flight. When no gate is
+    // supplied the synchronous path is kept exactly as before.
+    if (!gate) {
+      try { handler(id, ...args) } catch (error) { stream.status(id, error.code ?? STATUS.FAILURE) }
+      return
+    }
+    void (async () => {
+      try { await gate(name); handler(id, ...args) } catch (error) { stream.status(id, error.code ?? STATUS.FAILURE) }
+    })()
   })
   on('REALPATH', (id, path) => {
     const full = files.resolve(path)
@@ -192,7 +200,7 @@ export async function startFakeSshServer(options = {}) {
       const session = accept()
       session.on('pty', (acceptPty, _reject, info) => { terminal.ptys.push(info); acceptPty?.() })
       session.on('window-change', (acceptWindow, _reject, info) => { terminal.windows.push(info); acceptWindow?.() })
-      session.on('sftp', (acceptSftp) => attachSftp(acceptSftp(), files, sftp))
+      session.on('sftp', (acceptSftp) => attachSftp(acceptSftp(), files, sftp, options.sftpGate))
       /*
        * 非交互命令通道。监控探测走的就是这一条，所以它必须存在：没有它的话
        * 对 fixture 发 exec 会直接 CHANNEL_FAILURE，下游任务连不上任何东西。

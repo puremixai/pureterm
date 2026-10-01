@@ -1,4 +1,5 @@
 import type { MessageKey, MessageParams } from '@pureterm/i18n'
+import type { ShutdownDecision } from '@pureterm/protocol'
 
 export type UpdatePhase = 'disabled' | 'idle' | 'checking' | 'downloading' | 'downloaded' | 'installing' | 'error'
 export interface UpdateBackend {
@@ -18,14 +19,18 @@ const detailOf = (error: unknown): string => error instanceof Error ? error.mess
  *
  * 它**不认语言**：每句要说的话都以目录键 + 参数交给 `message`，由桌面适配器
  * 在弹框那一刻用当前语言说出来。协调器只管「什么时候该说哪一句」。
+ *
+ * 准备安装是**一次**调用：`prepareInstall(version)` 既负责确认（带版本与中断事实），
+ * 也负责停 Host，返回 `ShutdownDecision`。只有 intent 相同且 `ready`（也就是 Host
+ * 已经 graceful 停稳）才交给 `quitAndInstall`；取消、busy、准备失败都**保留**已下载的
+ * 更新、保持当前 Host 可用，绝不把「准备失败」当成「安装失败」。
  */
 export function createUpdateCoordinator(options: {
   backend: UpdateBackend
   enabled: boolean
   unavailableReason?: MessageKey
-  beforeInstall(): Promise<void>
+  prepareInstall(version: string): Promise<ShutdownDecision>
   onInstallError?(): void | Promise<void>
-  confirmInstall(version: string): Promise<boolean>
   message(key: MessageKey, params?: MessageParams): void | Promise<void>
   onState?(phase: UpdatePhase, detail?: string): void
   initialDelayMs?: number
@@ -66,10 +71,25 @@ export function createUpdateCoordinator(options: {
     if (installing) return installing
     if (disposed || phase !== 'downloaded') return Promise.resolve()
     recovering = undefined
+    const requested = version
     installing = Promise.resolve().then(async () => {
-      if (!await options.confirmInstall(version) || disposed) return
+      let decision: ShutdownDecision
+      try {
+        decision = await options.prepareInstall(requested)
+      } catch (error) {
+        // 准备阶段的异常是「没准备好」，不是「安装失败」：保留下载，不触发恢复。
+        console.error('[updates] install preparation failed:', error)
+        if (!disposed && version === requested) setState('downloaded', version)
+        return
+      }
+      // 迟到的答复什么也不许装：协调器可能已被释放，或更新的下载已取代这一次。
+      if (disposed) return
+      if (version !== requested) { setState('downloaded', version); return }
+      if (decision.intent !== 'update' || decision.status !== 'ready') {
+        console.log(`[updates] install not prepared (${decision.status}); the download is kept and the Host stays usable.`)
+        return
+      }
       setState('installing')
-      await options.beforeInstall()
       backend.quitAndInstall(false, true)
     }).catch(installFailed).finally(() => { installing = undefined })
     return installing

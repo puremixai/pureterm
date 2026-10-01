@@ -1,6 +1,6 @@
 import { Service, type Context } from 'cordis'
-import type { AuthMethod, HostRecord, HostSaveRequest, RuntimeCapabilities, TerminalOpenRequest } from '@pureterm/protocol'
-import { t, tPlural } from '@pureterm/i18n'
+import { shortcutKeyLabel, shortcutModifierLabels, type AuthMethod, type HostRecord, type HostSaveRequest, type RuntimeCapabilities, type ShortcutCommand, type TerminalOpenRequest } from '@pureterm/protocol'
+import { t, tPlural, type MessageKey } from '@pureterm/i18n'
 import { ClientScope } from '../client-runtime.js'
 import { errorText } from '../failure-diagnostics.js'
 import { createHostList, type HostListView } from '../host-list.js'
@@ -8,9 +8,20 @@ import { BrowserPrivateKeySelection, connectionCredentials, savedCredentials, re
 
 declare module 'cordis' { interface Context { clientHosts: ClientHosts } }
 
+/** 每个工作区命令在帮助里用的说明键。顺序由绑定表决定，不在这里重复。 */
+const SHORTCUT_LABELS: Record<ShortcutCommand, MessageKey> = {
+  'terminal.next': 'shortcuts.next-tab',
+  'terminal.previous': 'shortcuts.prev-tab',
+  'terminal.close': 'shortcuts.close-tab',
+  'terminal.focus': 'shortcuts.focus-terminal',
+  'sftp.toggle': 'shortcuts.toggle-files',
+  'hosts.search': 'shortcuts.search-hosts',
+  'hosts.dismiss-editor': 'shortcuts.collapse-editor',
+}
+
 /** Host metadata, credential form and native/browser key selection belong to one feature scope. */
 export class ClientHosts extends Service {
-  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientKeychain', 'clientToasts']
+  static inject = ['clientView', 'clientTransport', 'clientTerminal', 'clientKeychain', 'clientToasts', 'clientShortcuts']
   readonly scope: ClientScope
   readonly ready: Promise<void>
   private readonly list: HostListView
@@ -62,22 +73,16 @@ export class ClientHosts extends Service {
     // 只有导航轨道上那一个入口。工具栏里原来还有一个「快捷键」图标钮，原型那一行
     // 只收一个图标，而且轨道上那个做的是同一件事 —— 同一个动作两处入口，只会让
     // 用户猜它们是不是不一样。
-    this.scope.listen(view.element('nav-shortcuts'), 'click', () => shortcuts.showModal())
-    this.scope.listen(view.element('shortcuts-close'), 'click', () => shortcuts.close())
+    this.scope.listen(view.element('nav-shortcuts'), 'click', () => { shortcuts.showModal(); ctx.clientShortcuts.sync() })
+    this.scope.listen(view.element('shortcuts-close'), 'click', () => { shortcuts.close(); ctx.clientShortcuts.sync() })
     this.scope.onDispose(() => shortcuts.close())
-    this.scope.listen(view.document, 'keydown', event => {
-      const key = event as KeyboardEvent
-      if (shortcuts.open) return
-      // Ctrl/Cmd+K 只属于主机库那一屏：会话开着的时候 hosts-panel 是 hidden 的，
-      // 于是终端里的 Ctrl+K（readline 的删到行尾）不会被这条抢走。
-      if ((key.ctrlKey || key.metaKey) && key.key.toLowerCase() === 'k' && !view.element('hosts-panel').hidden) {
-        key.preventDefault()
-        this.input('host-search').focus()
-        this.input('host-search').select()
-        return
-      }
-      if (key.key === 'Escape' && !view.element('connection-workspace').hidden) this.closeWorkspace()
-    }, true)
+    // Ctrl/Cmd+K 只属于主机库那一屏：会话开着的时候 hosts-panel 是 hidden 的，
+    // 于是终端里的 Ctrl+K（readline 的删到行尾）不会被这条抢走。Escape 只收起主机编辑器。
+    this.scope.onDispose(ctx.clientShortcuts.register('hosts.search', () => {
+      this.input('host-search').focus()
+      this.input('host-search').select()
+    }, () => !view.element('hosts-panel').hidden))
+    this.scope.onDispose(ctx.clientShortcuts.register('hosts.dismiss-editor', () => this.closeWorkspace(), () => !view.element('connection-workspace').hidden))
     ctx.on('client/edit-connection', (request, title) => this.editConnection(request, title))
     this.scope.listen(view.element('host-search'), 'input', () => {
       this.query = this.input('host-search').value.trim().toLocaleLowerCase()
@@ -140,7 +145,9 @@ export class ClientHosts extends Service {
       this.syncMode()
       this.renderAddressHint()
       if (this.loaded) this.renderHostList()
+      this.renderShortcuts()
     })
+    this.renderShortcuts()
     this.clearForm()
     this.updateButtons()
     this.ready = this.initialize()
@@ -239,12 +246,38 @@ export class ClientHosts extends Service {
     view.element('app').classList.add('inspector-open')
     view.element('connection-workspace').hidden = false
     view.element('status').hidden = false
+    this.ctx.clientShortcuts.sync()
   }
 
   private closeWorkspace(): void {
     const view = this.ctx.clientView
     view.element('app').classList.remove('inspector-open')
     view.element('connection-workspace').hidden = true
+    this.ctx.clientShortcuts.sync()
+  }
+
+  /**
+   * 快捷键帮助从**同一张绑定表**渲染：命令、修饰键、按键都来自 clientShortcuts.bindings，
+   * 只有说明文字来自目录。于是帮助不会和真正生效的按键各说各话——包括 macOS 上
+   * 「Ctrl+Tab 仍然是 Ctrl」这个曾经写错的细节。
+   */
+  private renderShortcuts(): void {
+    const view = this.ctx.clientView
+    const platform = this.ctx.clientShortcuts.shortcutsPlatform
+    const rows = this.ctx.clientShortcuts.bindings.map(binding => {
+      const row = view.document.createElement('div')
+      const term = view.document.createElement('dt')
+      term.textContent = t(SHORTCUT_LABELS[binding.command])
+      const keys = view.document.createElement('dd')
+      for (const label of [...shortcutModifierLabels(binding, platform), shortcutKeyLabel(binding)]) {
+        const kbd = view.document.createElement('kbd')
+        kbd.textContent = label
+        keys.append(kbd)
+      }
+      row.append(term, keys)
+      return row
+    })
+    view.element('shortcuts-list').replaceChildren(...rows)
   }
 
   private editConnection(request: TerminalOpenRequest, title: string): void {

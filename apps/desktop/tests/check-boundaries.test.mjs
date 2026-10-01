@@ -37,7 +37,8 @@ test('accepts Electron adapters and type-only access through the Host facade', (
     'packages/i18n/src/index.ts': "import type { WireError } from '@pureterm/protocol'; import { en } from './en.js'",
     'apps/desktop/electron/app/menu.ts': "import { t } from '@pureterm/i18n'",
     'apps/web/src/main.ts': "import { setLocale } from '@pureterm/i18n'",
-    'packages/protocol/src/protocol.ts': "export interface SshApi {} // import 'electron' is a comment",
+    'packages/protocol/src/lifecycle.ts': "export interface HostActivitySnapshot {}",
+    'packages/protocol/src/protocol.ts': "export * from './lifecycle.js'; export interface SshApi {} // import 'electron' is a comment",
   })
   assert.equal(result.status, 0, result.output)
 })
@@ -67,6 +68,8 @@ const violations = [
   ['packages/ui/src/app.ts', "import type { ReadStream } from 'fs'", 'Browser must not import'],
   ['packages/ui/src/app.ts', "import type { Host } from '@pureterm/host'", 'allowed public export'],
   ['packages/protocol/src/protocol.ts', "import type { Host } from '@pureterm/host'", 'Shared protocol must not import'],
+  // A relative module inside the package is allowed, but it must stay inside it.
+  ['packages/protocol/src/protocol.ts', "export * from '../../host/src/host.js'", 'Relative source imports'],
   ['packages/transport/src/carrier-http.ts', "import type { RendererHandle } from '../../src/services/renderer.js'", 'Relative source imports'],
   ['packages/transport/src/dispatch.ts', "import '../app/main.js'", 'Relative source imports'],
   ['apps/desktop/electron/runtime/plan.ts', "import '../carriers/preload.js'", 'Runtime may only import'],

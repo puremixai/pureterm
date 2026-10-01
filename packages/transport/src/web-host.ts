@@ -1,5 +1,5 @@
 import { createHost, type CredentialProvider, type Host } from '@pureterm/host'
-import type { PickedPrivateKey, RendererReadyPayload, RuntimeCapabilities } from '@pureterm/protocol'
+import type { HostLifecycle, PickedPrivateKey, RendererReadyPayload, RuntimeCapabilities } from '@pureterm/protocol'
 import { createCompositeBridge, type Carrier } from './carrier.js'
 import { createHttpCarrier } from './carrier-http.js'
 import { createDispatcher } from './dispatch.js'
@@ -21,6 +21,11 @@ export interface WebHostOptions {
 export interface WebHost {
   readonly url: string
   readonly port: number
+  /**
+   * Accepted-work facts and the shutdown admission lease, forwarded from the
+   * public Host API — never recovered from `internals`.
+   */
+  readonly lifecycle: HostLifecycle
   dispose(): Promise<void>
   /**
    * 内部视图。**只给测试与诊断脚本**，与 `Host.internals` 同一条约定：
@@ -71,6 +76,7 @@ export async function startWebHost(options: WebHostOptions): Promise<WebHost> {
     return {
       url: carrier.url,
       port: carrier.port,
+      lifecycle: host.lifecycle,
       internals: { host },
       dispose() {
         disposal ??= (async () => {

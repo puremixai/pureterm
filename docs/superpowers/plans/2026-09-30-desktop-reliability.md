@@ -12,6 +12,25 @@
 
 [中文版本](2026-09-30-desktop-reliability_zh.md)
 
+## Execution status
+
+Executed on 2026-10-01 in dependency order on branch `feat/desktop-reliability`, preserving the Electron Node-mode, shared Web Host, and business-WebSocket boundaries.
+
+| Task | Status | Commit |
+| --- | --- | --- |
+| T01 | Done | `ffe3b1c` |
+| T02 | Done | `7cacae0` |
+| T03 | Done | `6c1a0ab` |
+| T04 | Done | `620cf43` |
+| T05 | Done | `ba6e708` |
+| T06 | Done | `adff991` |
+| T07 | Done | `fc636d5` |
+| T08 | **Skipped** — background window retention was not selected; the base phase keeps macOS close semantics and Windows/Linux guarded close | — |
+| T09 | **Skipped** — no local executable or PATH-dependent feature requires a login-shell environment yet | — |
+| T10 | Done — documentation and integration commit on this branch | — |
+
+T08 and T09 remain conditional and unshipped; no current document describes their proposed behavior as implemented.
+
 ## Global Constraints
 
 - Baseline: PureTerm `c7816bfbc3a1d1e338bb80d2608ed31152c2ca4a`, version `0.1.0-alpha.2`; reference `639ed015397290b3745d163aafe02ffee4aa3f84`, tag `dsh-v0.2.0-rc.2`, checked on 2026-09-30.

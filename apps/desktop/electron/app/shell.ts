@@ -31,6 +31,12 @@ export interface ShellGenerationOptions {
   search?: string
   /** 页面没能起来（超时 / 加载失败 / 渲染进程崩溃）。只在「还没加载完」时触发。 */
   onLoadFailure(reason: string): void
+  /**
+   * 窗口收到关闭请求。返回 true 直接放行；返回 false 表示调用方**接管**了这次关闭
+   * （已经 preventDefault），稍后由它调用 closeNow() 完成或干脆不完成。
+   * 异步的退出守卫（要先问用户、停 Host）必须走这条路——Electron 的 close 事件是同步的。
+   */
+  onCloseRequested?(): boolean
   /** HTML 解析完成时通知一声。注意这**不等于**应用可用。 */
   onLoaded?(): void
   onRelease?(): void
@@ -45,6 +51,11 @@ export interface ElectronShellGeneration {
   readonly released: boolean
   /** 幂等释放：摘掉所有监听器、清掉看门狗、销毁窗口。重复调用是空操作。 */
   release(): void
+  /**
+   * 放行并关闭这一代窗口，绕过关闭守卫。守卫接管一次关闭后，在异步决策完成时调用它；
+   * 决策是「留下」就永远不调用，窗口照旧活着。
+   */
+  closeNow(): void
 }
 
 let generationCounter = 0
@@ -169,6 +180,25 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
     release()
   })
 
+  /*
+   * 关闭守卫。Windows/Linux 上「关最后一个窗口」等于退出应用，而退出前要先问用户、
+   * 停 Host；Electron 的 close 事件却必须同步回答。于是这里只做一件事：把同步的
+   * 关闭请求交给调用方，由它 preventDefault 后异步决策，再用 closeNow() 放行。
+   * macOS 上调用方直接放行（关窗只是释放这一代的会话，Host 继续活着）。
+   */
+  let closeAllowed = false
+  on(window, 'close', (event: Electron.Event) => {
+    if (closeAllowed || !options.onCloseRequested) return
+    if (options.onCloseRequested()) return
+    event.preventDefault()
+  })
+
+  function closeNow(): void {
+    if (released) return
+    closeAllowed = true
+    if (!window.isDestroyed()) window.close()
+  }
+
   function release(): void {
     if (released) return
     released = true
@@ -204,5 +234,6 @@ export function createShellGeneration(options: ShellGenerationOptions): Electron
       return released
     },
     release,
+    closeNow,
   }
 }

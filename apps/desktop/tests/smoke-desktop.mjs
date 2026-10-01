@@ -4,7 +4,7 @@ import test from 'node:test'
 import { once } from 'node:events'
 import { resolvePlatformPlan, collectSwitches, drawsOwnWindowControls } from '../dist/electron/runtime/platform-plan.js'
 import { createReadinessGate, normalizeReadyPayload } from '../dist/electron/runtime/readiness.js'
-import { relaunchSelf } from '../dist/electron/runtime/relaunch.js'
+import { relaunchSelf, waitForHandoff, RELAUNCH_HANDOFF_ENV } from '../dist/electron/runtime/relaunch.js'
 import { createFrameDecoder, encodeFrame, OPCODES, WsProtocolError } from '@pureterm/transport/ws-frame'
 import { encodeWire, decodeWire, isWireCall, isWireNotice } from '@pureterm/protocol'
 
@@ -119,6 +119,53 @@ test('relaunch reports missing executable and early exit without handing off own
   const early = await launch({ execPath: process.execPath, argv: ['-e', 'process.exit(17)'], graceMs: 300 })
   assert.match(early.error.message, /exitCode=17/)
   assert.equal(early.child, undefined)
+})
+
+/*
+ * 交棒：旧进程把 pid 留在环境里，新进程在拿单实例锁之前等它退出。
+ * 这里只验决策，不真的等——时间由注入的 now/sleep 提供。
+ */
+function handoffClock(aliveSequence) {
+  let alive = 0
+  let elapsed = 0
+  return {
+    isAlive: () => {
+      const answer = aliveSequence[Math.min(alive, aliveSequence.length - 1)]
+      alive += 1
+      return answer
+    },
+    now: () => elapsed,
+    sleep: ms => { elapsed += ms },
+    elapsed: () => elapsed,
+  }
+}
+
+test('a hand-off waits for the predecessor and then stops waiting', () => {
+  const clock = handoffClock([true, true, false])
+  assert.equal(waitForHandoff(4242, { ...clock, budgetMs: 5_000, intervalMs: 25 }), true)
+  assert.equal(clock.elapsed(), 50, 'it stops as soon as the predecessor is gone')
+
+  const gone = handoffClock([false])
+  assert.equal(waitForHandoff(4242, { ...gone, budgetMs: 5_000 }), true)
+  assert.equal(gone.elapsed(), 0, 'an already-dead predecessor costs nothing')
+})
+
+test('a hand-off gives up at its budget instead of blocking startup forever', () => {
+  const clock = handoffClock([true])
+  assert.equal(waitForHandoff(4242, { ...clock, budgetMs: 100, intervalMs: 25 }), false)
+  assert.ok(clock.elapsed() >= 100 && clock.elapsed() <= 125, `bounded wait, saw ${clock.elapsed()}ms`)
+})
+
+test('a hand-off with no usable pid never waits', () => {
+  for (const pid of [Number.NaN, 0, -1, 1.5]) {
+    const clock = handoffClock([true])
+    assert.equal(waitForHandoff(pid, { ...clock, budgetMs: 5_000 }), true, `pid=${pid}`)
+    assert.equal(clock.elapsed(), 0, `pid=${pid} must not block startup`)
+  }
+})
+
+test('the hand-off signal is one named environment variable', () => {
+  assert.equal(RELAUNCH_HANDOFF_ENV, 'SSH_CORDIS_RELAUNCH_FROM')
 })
 
 // Browser frames must be masked. This fixture is independent from the production encoder,

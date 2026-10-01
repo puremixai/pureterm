@@ -36,6 +36,8 @@ npm run start:desktop
 | `keychain.json` | 原子写入的系统加密导入密钥库，不含私钥明文 |
 | `known_hosts.json` | 已信任 SSH 主机指纹；密钥改变时拒绝连接 |
 | `launch-profile.json` | renderer 就绪后提交的启动配置 |
+| `desktop-profile.json` | 把该目录绑定到一个 Desktop 档案的归属记录；永不自动改写 |
+| `diagnostics/host/` | 有界的 Host 故障报告（白名单化、0600、只保留最新五份） |
 
 Desktop 内部 Web Host 始终只监听 `127.0.0.1`。Host 启动期间，应用窗口已通过 `pureterm-app://app/` 加载界面文件。最小的 `window.puretermDesktop` preload API 等待 Host 就绪后提供回环 WebSocket URL，页面则回传两件事：渲染层已就绪，以及它当前显示的是哪门语言，应用菜单与原生对话框据此跟随语言开关。SSH、SFTP、主机和 Keychain 操作走 WebSocket，不走 Electron 业务 IPC。Electron 主进程仅向该窗口的准确 WebSocket 请求注入独立 bearer token，不向页面暴露。启用附带浏览器访问时，启动日志提供另一条带 token 的本机地址，浏览器可换取会话 cookie。附带浏览器和 Desktop 窗口共享 Host 进程、加密存储与原生选钥能力；各客户端分别拥有自己的 SSH 会话。
 
@@ -47,8 +49,20 @@ Desktop 内部 Web Host 始终只监听 `127.0.0.1`。Host 启动期间，应用
 | `SSH_CORDIS_NO_WEB_CARRIER=1` | 仅关闭 Desktop 本次附带的普通浏览器入口；内部 Web Host 和 Desktop 窗口继续工作 |
 | `SSH_CORDIS_NO_LAUNCH_PROFILE=1` | 禁止读写启动档案 |
 | `SSH_CORDIS_NO_SANDBOX_FALLBACK=1` | 禁止自动无沙箱回退及对应档案回填 |
+| `SSH_CORDIS_QUIT_CONFIRM=accept\|cancel` | 为隔离的 Electron 验收回答退出确认对话框；正常启动永不设置 |
+| `SSH_CORDIS_RECOVERY_CHOICE=restart\|quit` | 为隔离的 Electron 验收回答 Host 故障恢复对话框；正常启动永不设置 |
 
 沙箱、GPU 和启动回退保留既有行为；档案不区分容器、CI 与日常环境。测试使用临时目录，避免影响日常配置。
+
+## 可靠性与恢复
+
+Desktop 对每个数据目录只准入一个档案。在读取启动档案或打开 Host 之前，它先取得单实例锁，并写入或核对 `desktop-profile.json`；对同一目录的第二次启动会聚焦属主（或报告它请求的是另一个目录），而 Chromium `userData` 与记录不符的启动会带着明确提示停止，而不是让两个进程写同一份 store。PureTerm 不会替你改绑或「修复」这条记录：把既有数据搬到另一个档案需要一次刻意的数据/加密迁移，报错文案也是这么说的。要并行运行两个档案，请给各自独立的 `SSH_CORDIS_DATA_DIR` 和 Chromium 用户数据目录。
+
+普通退出（Windows/Linux 关掉最后一个窗口、菜单退出或 Cmd+Q）受保护：Desktop 读取 Host 已接受工作的计数，仅在确有活动或计数读不出来时才询问，用租约关掉准入，排空有限的已接受工作，再检查一次，然后停 Host。拒绝会原样保留窗口、它的 WebSocket 和每一个会话。只有 Host 确认一次干净、无信号的退出之后才安装更新；强杀、准备忙碌或对话框被取消，都会保留下载并保持当前 Host 可用。
+
+Host 意外退出、启动握手失败或关停超时，Desktop 会在 `diagnostics/host/` 下写一份报告 —— 只有版本、时间、平台、架构、阶段、原因和进程事实，不含主机名、路径、凭据、命令或终端输出 —— 然后给出原生选择：重启或退出。重启会用同一数据目录和开关重新拉起，但不恢复 SSH 会话或终端标签。交棒是有序的、不是抢：新进程继承旧进程的输出、拿到旧进程的 pid，并**等旧进程退出之后**才认领单实例归属，因此不可能输给它正在替换的那个进程；旧进程只有确认新进程确实活着才退出，否则原地留下并以非零码退出。
+
+工作区快捷键只有一个属主。Desktop 与独立/附带浏览器解析同一份中立绑定，所以一次按键最多被消费一次；Ctrl/Cmd+W 关当前标签，Ctrl+Tab / Ctrl+Shift+Tab 在所有平台循环标签，Ctrl/Cmd+E 开文件，Ctrl/Cmd+` 聚焦终端，Ctrl/Cmd+K 聚焦主机搜索，Escape 收起主机编辑器。输入法正在组合或对话框掌管键盘时一概不占用，Alt/AltGr 原样放行，长按也不会重复触发破坏性关闭。
 
 ## 代码与构建
 
@@ -75,7 +89,7 @@ npm run verify
 npm run verify:electron
 ```
 
-`verify` 包含全部构建、类型与依赖约束，以及无需窗口的 Host 子进程、更新协调、UI、Web、SSH/SFTP/HTTP/WS 测试。根 `verify:electron` 检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 操作、附带 Desktop Web、渲染崩溃、更新下载、独立 Node Web 和共享 Client 生命周期。
+`verify` 包含全部构建、类型与依赖约束，以及无需窗口的 Host 子进程、档案归属、Host 生命周期、关停协调、更新协调、崩溃报告、故障恢复、快捷键、UI、Web、SSH/SFTP/HTTP/WS 测试。根 `verify:electron` 检查 Desktop 自定义 scheme 启动、WebSocket SSH/Keychain 操作、附带 Desktop Web、渲染崩溃、更新下载、独立 Node Web、共享 Client 生命周期、两次真实启动之间的单一档案归属、可取消的退出保护和 Host 故障恢复（含复用同一档案、不与上一个进程抢锁的有序交棒）。
 
 Desktop 的定向命令可在根使用 `npm run <命令> --workspace=@pureterm/desktop`：
 
@@ -96,4 +110,4 @@ Electron 验证使用受控窗口与临时用户目录，关闭自动无沙箱�
 
 ## 当前范围
 
-已提供独立 Desktop Web Host、共享 Cordis Client、终端标签、安装包构建与 GitHub Releases 更新。菜单“帮助 → 检查更新”可手动检查；下载完成后确认重启才会关闭 SSH 并安装，开发版不联网检查。安装、签名与发布配置见[发布说明](../../docs/desktop-release_zh.md)。当前不提供端口转发、用户账号或多用户隔离。历史整改与测试说明见[上一轮方案](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation_zh.md)，其中旧路径与通过次数按当时基线理解。
+已提供独立 Desktop Web Host、共享 Cordis Client、终端标签、安装包构建与 GitHub Releases 更新。每个数据目录由一个 Desktop 档案独占，带着活动或状态未知的 SSH 工作退出时先询问且可取消，Host 故障给出明确的重启或退出选择且不恢复会话。菜单“帮助 → 检查更新”可手动检查；下载完成后确认重启才会关闭 SSH 并安装，且安装等待的是干净的 Host 退出而不是强杀。开发版不联网检查。安装、签名与发布配置见[发布说明](../../docs/desktop-release_zh.md)。当前不提供端口转发、用户账号或多用户隔离。历史整改与测试说明见[上一轮方案](../../docs/superpowers/plans/2026-09-16-desktop-layout-remediation_zh.md)，其中旧路径与通过次数按当时基线理解。

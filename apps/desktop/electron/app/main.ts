@@ -2,13 +2,15 @@ import { app, dialog, ipcMain, protocol, safeStorage, session, type BrowserWindo
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import { DESKTOP_CHANNELS, HostError, toWireError, type PickedPrivateKey, type RendererReadyPayload } from '@pureterm/protocol'
+import { DESKTOP_CHANNELS, HostError, toWireError, type PickedPrivateKey, type RendererReadyPayload, type ShutdownDecision } from '@pureterm/protocol'
 import { isLocale, setLocale, t } from '@pureterm/i18n'
 import type { CredentialProvider } from '@pureterm/host'
 import { createBootCheck } from '../diagnostics/boot-check.js'
 import { normalizeReadyPayload } from '@pureterm/transport/readiness'
 import { authorizeDesktopSocket, DESKTOP_PAGE, serveWebDocument } from '../runtime/web-document.js'
-import { startHostProcess, type DesktopHostProcess } from '../runtime/host-process.js'
+import { startHostProcess, HostStartupError, type DesktopHostProcess, type HostProcessFailure } from '../runtime/host-process.js'
+import { writeHostCrashReport, type HostFailurePhase, type HostFailureReport } from '../runtime/crash-report.js'
+import { createFatalRecoveryCoordinator, type FatalRecoveryCoordinator } from '../runtime/fatal-recovery.js'
 import { createDesktopUpdates } from './updates.js'
 import {
   LAUNCH_PROFILE_VERSION,
@@ -23,9 +25,13 @@ import {
 import { collectSwitches } from '../runtime/platform-plan.js'
 import { applyApplicationMenu, selectPlatformStrategy } from './platform.js'
 import { createReadinessGate } from '../runtime/readiness.js'
-import { relaunchSelf } from '../runtime/relaunch.js'
+import { relaunchSelf, waitForHandoff, RELAUNCH_HANDOFF_ENV } from '../runtime/relaunch.js'
 import { createShellGeneration, LOAD_WATCHDOG_MS, type ElectronShellGeneration } from './shell.js'
 import { resolveDesktopPaths } from '../runtime/paths.js'
+import { claimDesktopSingleInstance } from '../runtime/single-instance.js'
+import { bindDesktopProfile, DesktopProfileError, sameDesktopProfilePath } from '../runtime/desktop-profile.js'
+import { createShutdownCoordinator, type ShutdownConfirmation } from '../runtime/shutdown.js'
+import { installDesktopShortcuts, narrowShortcutContext } from './shortcuts.js'
 
 /*
  * Electron 入口拥有窗口、平台能力、资源协议和更新协调。
@@ -51,6 +57,75 @@ if ((bootCheckEnabled || process.env.SSH_CORDIS_SMOKE) && process.env.SSH_CORDIS
     window.hide()
     window.on('show', () => window.hide())
   })
+}
+
+// ─────────────────────────── 单实例与数据目录归属（必须早于档案/凭据/Host/窗口） ───────────────────────────
+
+/*
+ * 交棒重启：旧进程可能还握着单实例锁。任何「先 spawn 新进程、再退出旧进程」的重启都会
+ * 撞上这一点——新进程抢锁必然被拒，被当成普通第二实例静默让位，用户面前什么都没剩下。
+ * 旧进程把 pid 留在环境里，所以这里先等它退出，再去拿锁（见 relaunch.ts）。
+ * 读走就删，免得它被这一代再传给下一代。
+ */
+const handoffFrom = Number(process.env[RELAUNCH_HANDOFF_ENV])
+if (Number.isInteger(handoffFrom) && handoffFrom > 0) {
+  delete process.env[RELAUNCH_HANDOFF_ENV]
+  waitForHandoff(handoffFrom, { log: message => console.log(`[main] ${message}`) })
+}
+
+/**
+ * 第二个实例要么聚焦既有窗口，要么被告知它请求的是另一个数据目录。
+ * 它**绝不**切换正在运行的 Host——两个 Desktop 进程同时写一份 SSH 目录是数据损坏，
+ * 而「切换」在语义上等于把正在跑的会话连同归属一起换掉。
+ */
+let pendingFocus = false
+function focusOwnerWindow(): void {
+  const window = currentWindow()
+  if (!window) {
+    // 启动还没走到窗口那一步：记下来，等窗口建好再聚焦（见 startGeneration）。
+    pendingFocus = true
+    return
+  }
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+}
+function handleSecondInstance(requestedDataDir: string): void {
+  if (!sameDesktopProfilePath(requestedDataDir, dataDir)) {
+    dialog.showErrorBox(
+      t('desktop.second-instance.title'),
+      t('desktop.second-instance.other-dir', { dataDir: requestedDataDir }),
+    )
+    return
+  }
+  focusOwnerWindow()
+}
+
+const ownsInstance = claimDesktopSingleInstance(app, dataDir, handleSecondInstance)
+let startupAllowed = ownsInstance
+
+if (!ownsInstance) {
+  console.log('[main] another PureTerm instance already owns this profile; this launch exits without starting a Host.')
+}
+
+/*
+ * 绑定要在读档案、建凭据、开 Host、建窗口**之前**做完，而且必须失败即停：
+ * 归属记录一旦与当前 userData 不符，继续启动就是两个进程写同一份 store。
+ */
+if (ownsInstance) {
+  try {
+    bindDesktopProfile(dataDir, app.getPath('userData'))
+  } catch (error) {
+    const code = error instanceof DesktopProfileError ? error.code : 'profile-io'
+    const detail = error instanceof Error ? error.message : String(error)
+    const body = code === 'profile-mismatch'
+      ? t('desktop.profile.mismatch.body', { dataDir, detail })
+      : t('desktop.profile.invalid.body', { dataDir, detail })
+    console.error(`[main] refusing to start: ${detail}`)
+    dialog.showErrorBox(t('desktop.profile.title'), body)
+    app.quit()
+    startupAllowed = false
+  }
 }
 
 // ─────────────────────────── 启动决策（必须早于任何窗口创建） ───────────────────────────
@@ -98,9 +173,197 @@ let shell: ElectronShellGeneration | null = null
 let host: DesktopHostProcess | null = null
 let hostStarting: Promise<DesktopHostProcess> | undefined
 let disposing = false
+let bridgeInstalled = false
 let shutdownTask: Promise<void> | undefined
 let updates: ReturnType<typeof createDesktopUpdates> | undefined
 let sandboxFallbackTried = false
+// 当前这一代窗口的原生快捷键适配器；跨 generation 不许复用。
+let desktopShortcuts: ReturnType<typeof installDesktopShortcuts> | undefined
+// 一次被批准的退出：允许随后的 app.quit() 直接通过，不再重复问用户。
+let quitCommitted = false
+// 正在进行的受保护退出。同一个请求只问一次、只停一次 Host。
+let quitTask: Promise<void> | undefined
+
+/**
+ * 退出前的唯一确认点。原生对话框的文字来自目录（主进程知道当前语言），
+ * Cancel 是默认且取消按钮——「继续退出」必须是用户主动选的那一个。
+ *
+ * 隔离的 Electron 验收用一个环境变量回答，免得隐藏窗口里弹出一个没人点的原生框。
+ * 它只在测试启动器里设置，正常启动永不设置。
+ */
+async function confirmShutdown(request: ShutdownConfirmation): Promise<boolean> {
+  const override = process.env.SSH_CORDIS_QUIT_CONFIRM
+  if (override === 'accept') return true
+  if (override === 'cancel') return false
+  const window = currentWindow()
+  // 没有窗口可挂对话框：这是无人值守的退出（渲染进程崩溃、启动失败、诊断运行）。
+  // 此时做有界清理就好，绝不弹一个没人能点的原生模态框。
+  if (!window) return true
+  const title = request.intent === 'update'
+    ? t('desktop.shutdown.update-title', { version: request.version ?? '' })
+    : t('desktop.shutdown.title')
+  const body = request.phase === 'unknown'
+    ? t('desktop.shutdown.unknown')
+    : t('desktop.shutdown.body', {
+        sessions: String(request.activity?.activeSessions ?? 0),
+        connections: String(request.activity?.pendingConnections ?? 0),
+        files: String(request.activity?.pendingFileOperations ?? 0),
+        changes: String(request.activity?.pendingMutations ?? 0),
+      })
+  const options: Electron.MessageBoxOptions = {
+    type: 'warning',
+    title,
+    message: title,
+    detail: body,
+    buttons: [t('desktop.shutdown.cancel'), request.phase === 'force' ? t('desktop.shutdown.force-confirm') : t('desktop.shutdown.confirm')],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  }
+  const result = await dialog.showMessageBox(window, options)
+  return result.response === 1
+}
+
+const shutdownCoordinator = createShutdownCoordinator({
+  getHost: () => host ?? undefined,
+  getGeneration: () => shell?.id,
+  confirm: confirmShutdown,
+  onFailure: (error, phase) => {
+    console.error(`[main] shutdown preparation failed during ${phase}:`, error)
+  },
+})
+
+/** 把子进程的进程事实补齐成一份可落盘的诊断记录：版本、时间、平台、阶段。 */
+function hostFailureReport(phase: HostFailurePhase, failure: HostProcessFailure): HostFailureReport {
+  return {
+    version: 1,
+    timestamp: new Date().toISOString(),
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    architecture: process.arch,
+    phase,
+    reason: failure.reason,
+    ...(failure.pid === undefined ? {} : { pid: failure.pid }),
+    exitCode: failure.exitCode,
+    signal: failure.signal,
+  }
+}
+
+/**
+ * Host 故障之后的唯一恢复点。
+ *
+ * 隔离验收用 `SSH_CORDIS_RECOVERY_CHOICE` 回答，和退出确认同一个套路：隐藏窗口里
+ * 不该弹出一个没人能点的原生模态框。正常启动永不设置它。
+ *
+ * 清理走的就是普通退出那条 shutdown()：它停 Host、摘监听、释放这一代，因此重启
+ * 起来的新进程面对的是一个干净的数据目录。清理**先于**重启/退出，顺序由协调器保证。
+ */
+const fatalRecovery: FatalRecoveryCoordinator = createFatalRecoveryCoordinator({
+  record: report => writeHostCrashReport(join(app.getPath('userData'), 'diagnostics', 'host'), report),
+  choose: (report, reportPath) => {
+    const override = process.env.SSH_CORDIS_RECOVERY_CHOICE
+    if (override === 'restart') return Promise.resolve('restart')
+    if (override === 'quit') return Promise.resolve('quit')
+    // 无人值守的收尾（诊断运行、启动检查、渲染进程崩溃后的清理）不弹框。
+    if (disposing || bootCheckEnabled || process.env.SSH_CORDIS_SMOKE) return Promise.resolve('quit')
+    const window = currentWindow()
+    if (!window) return Promise.resolve('quit')
+    const title = t('desktop.host-stopped.title')
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'error',
+      title,
+      message: title,
+      detail: [
+        t('desktop.host-stopped.body'),
+        reportPath ? t('desktop.host-stopped.report', { path: reportPath }) : t('desktop.host-stopped.no-report'),
+        t('desktop.host-stopped.detail', { reason: report.reason, exit: report.signal ?? String(report.exitCode) }),
+      ].join('\n\n'),
+      buttons: [t('desktop.host-stopped.quit'), t('desktop.host-stopped.restart')],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    return Promise.resolve(choice === 1 ? 'restart' : 'quit')
+  },
+  cleanup: () => shutdown(),
+  /*
+   * 交棒重启走 relaunchSelf，而不是 app.relaunch()：新进程继承 stdio（重启之后的日志
+   * 还在同一个终端 / 管道里），而且只有它确实活着才退当前进程。交棒标记让新进程等我们
+   * 退出后再拿单实例锁——否则它会输给自己的上一个进程，用户面前什么都不剩。
+   */
+  relaunch: () => {
+    console.log('[main] restarting after a Host failure')
+    relaunchSelf({
+      switches: [],
+      env: { ...process.env, [RELAUNCH_HANDOFF_ENV]: String(process.pid) },
+      onSuccess: (child) => {
+        child.unref()
+        app.exit(0)
+      },
+      onFailure: (error) => {
+        // Host 已经停了、窗口也没了，留在原地只会是一个看不见的僵尸进程。
+        console.error(`[main] restart failed; exiting instead: ${error.message}`)
+        app.exit(1)
+      },
+    })
+  },
+  exit: code => app.exit(code),
+})
+
+/**
+ * 一次 Host 故障的入口。三条路（exit/disconnect/close）会各报一次，协调器只认第一次。
+ * 在它做任何决定之前，先把在途的退出准备和这一代的快捷键适配器作废：这一代已经完了，
+ * 不能再让它替我们停 Host 或执行命令。
+ */
+function handleHostFailure(phase: HostFailurePhase, failure: HostProcessFailure): void {
+  shutdownCoordinator.dispose()
+  desktopShortcuts?.dispose()
+  desktopShortcuts = undefined
+  void fatalRecovery.handle(hostFailureReport(phase, failure))
+}
+
+/**
+ * 受保护的普通退出。关窗、菜单退出、Cmd+Q 都走这里：
+ * 先让协调器检查活动、必要时问用户、停 Host，得到 ready 才提交 app.quit()。
+ * 取消或失败则什么都不做——窗口、WebSocket、会话原样留着。
+ */
+function requestOrdinaryQuit(): Promise<void> {
+  if (quitTask) return quitTask
+  quitTask = shutdownCoordinator.prepare('quit').then(async (decision) => {
+    if (decision.status === 'ready') {
+      // 清理放在这里而不是交给 will-quit：一次 preventDefault 后只再 app.quit() 一次，
+      // 避免 before-quit 和 will-quit 各自 preventDefault 造成「退不出去」的嵌套。
+      await shutdown()
+      quitCommitted = true
+      app.quit()
+      return
+    }
+    // 取消 / busy / 失败：留着窗口，下一次关闭再问。
+    quitTask = undefined
+    console.log(`[main] ordinary quit not committed (${decision.status}); the application stays open.`)
+  }).catch((error: unknown) => {
+    quitTask = undefined
+    console.error('[main] ordinary quit preparation threw:', error)
+  })
+  return quitTask
+}
+
+/**
+ * 更新安装前的准备：走和普通退出**同一条**协调器，只是 intent 是 'update'。
+ * 只有 graceful 停稳（ready）才提交清理并关掉普通退出守卫，随后由更新协调器调用
+ * quitAndInstall。取消 / busy / 失败一律保留下载、保持当前 Host 可用。
+ */
+async function prepareInstall(version: string): Promise<ShutdownDecision> {
+  const decision = await shutdownCoordinator.prepare('update', version)
+  if (decision.status === 'ready') {
+    // 保留 updater（quitAndInstall 还要用它），提交其余清理并让后续 app.quit() 直接通过。
+    await shutdown(true)
+    quitCommitted = true
+  } else {
+    console.log(`[main] update install not prepared (${decision.status}); keeping the download and the running Host.`)
+  }
+  return decision
+}
 
 /**
  * 菜单里「检查更新…」的动作。
@@ -199,9 +462,28 @@ function startGeneration(): ElectronShellGeneration {
     autoHideMenuBar: platform.autoHideMenuBar,
     search: process.env.SSH_CORDIS_SMOKE ? 'smoke=1' : '',
     onLoadFailure: (reason) => fallbackToNoSandbox(reason),
+    /*
+     * Windows/Linux：关最后一个窗口等于退出应用，所以先接管这次关闭，走受保护的退出。
+     * macOS：关窗只释放这一代（页面及其 WebSocket 会话随之断开），Host 继续活着，
+     * 所以直接放行——Cmd+Q / 菜单退出另有应用级守卫。
+     */
+    onCloseRequested: () => {
+      if (platform.quitOnAllWindowsClosed === false) return true
+      if (quitCommitted || disposing) return true
+      void requestOrdinaryQuit()
+      return false
+    },
+    onRelease: () => { desktopShortcuts?.dispose(); desktopShortcuts = undefined },
   })
   shell = generation
+  // 原生快捷键适配器绑定这一代窗口；上一代已在 release() 里摘掉，不会跨代残留。
+  desktopShortcuts = installDesktopShortcuts(generation.window, platform.platform === 'darwin' ? 'mac' : 'other')
   console.log(`[main] created shell generation #${generation.id}`)
+  // 第二次启动可能在窗口存在之前就到了；那时 focusOwnerWindow 只记了标记。
+  if (pendingFocus) {
+    pendingFocus = false
+    focusOwnerWindow()
+  }
   return generation
 }
 
@@ -372,6 +654,7 @@ function assertApplicationSender(event: IpcMainEvent | IpcMainInvokeEvent): void
 
 /** Only bootstrap and readiness cross renderer IPC; business traffic uses the shared Web Host. */
 function installDesktopBridge(): void {
+  bridgeInstalled = true
   protocol.handle('pureterm-app', request => serveWebDocument(request, rendererDir))
   ipcMain.handle(DESKTOP_CHANNELS.bootstrap, async event => {
     assertApplicationSender(event)
@@ -389,6 +672,15 @@ function installDesktopBridge(): void {
   ipcMain.on(DESKTOP_CHANNELS.locale, (event, locale: unknown) => {
     try { assertApplicationSender(event); applyLocale(locale) }
     catch (error) { console.error('[main] rejected locale report:', error instanceof Error ? error.message : String(error)) }
+  })
+  // 快捷键上下文来自渲染层，但只有**当前窗口的主 frame** 报的才算数：一个浏览器标签页
+  // 或别的 frame 不该决定桌面应用哪些快捷键可用。形状不合法就整份丢弃。
+  ipcMain.on(DESKTOP_CHANNELS.shortcutContext, (event, context: unknown) => {
+    try {
+      assertApplicationSender(event)
+      const narrowed = narrowShortcutContext(context)
+      if (narrowed) desktopShortcuts?.reportContext(narrowed)
+    } catch (error) { console.error('[main] rejected shortcut context report:', error instanceof Error ? error.message : String(error)) }
   })
   // The top bar draws its own minimize/maximize/close, so these three are the
   // only window commands in the app. Each one re-reads currentWindow() rather
@@ -422,6 +714,10 @@ function installDesktopBridge(): void {
 // ─────────────────────────── 启动 / 退出 ───────────────────────────
 
 async function bootstrap(): Promise<void> {
+  // 丢锁的实例、或归属校验失败的实例：绝不建 Host、绝不建窗口。
+  // `claimDesktopSingleInstance` 在 ready 之前就调了 `app.quit()`，那一次可能不生效；
+  // 到这里必须真的退出，否则一个没有窗口的进程会一直挂着。
+  if (!startupAllowed) { app.exit(0); return }
   installDesktopBridge()
   hostStarting = startHostProcess({
     entry: hostEntry,
@@ -429,21 +725,29 @@ async function bootstrap(): Promise<void> {
     credentials: createCredentials(),
     pickPrivateKey,
     browserAccess: !webCarrierDisabled,
-    onExit: error => {
+    onExit: (error, failure) => {
       console.error('[main] Host child exited unexpectedly:', error)
-      if (!disposing && !bootCheckEnabled && !process.env.SSH_CORDIS_SMOKE) {
-        dialog.showErrorBox(t('desktop.host-stopped.title'), t('desktop.host-stopped.body'))
-      }
-      void exitApplication(1)
+      handleHostFailure('runtime', failure)
     },
   })
   const generation = startGeneration()
   bootCheck.arm()
-  host = await hostStarting
+  try {
+    host = await hostStarting
+  } catch (error) {
+    // 启动期失败发生在 onExit 生效之前，所以它只能靠抛出来。交给同一个恢复点，
+    // 而不是在这里直接退出：用户该有同样的「重启 / 退出」选择。
+    if (error instanceof HostStartupError) {
+      console.error('[main] Host failed to start:', error.message)
+      handleHostFailure('startup', error.failure)
+      return
+    }
+    throw error
+  }
   if (disposing) return
   if (webCarrierDisabled) console.log('[main] the plain-browser entry is disabled; Desktop uses its internal Web Host.')
   else console.log(`[main] carrier ready: web (browser entry ${host.url})`)
-  updates = createDesktopUpdates(() => shutdown(true), async () => {
+  updates = createDesktopUpdates(prepareInstall, async () => {
     // Some platforms report installation failures asynchronously after quitAndInstall.
     // Keep the updater alive until then and restart the current version after the error dialog.
     app.relaunch()
@@ -476,6 +780,17 @@ app.on('window-all-closed', () => {
   if (!disposing && platform.quitOnAllWindowsClosed) app.quit()
 })
 
+/*
+ * 应用级退出守卫。macOS 的 Cmd+Q / 菜单退出、以及任何 app.quit() 都会先到这里。
+ * 它和窗口关闭守卫共用同一个 requestOrdinaryQuit()，所以两条路只会问一次、停一次。
+ * `quitCommitted` 让被批准的那次 app.quit() 直接通过；`will-quit` 才是真正的清理。
+ */
+app.on('before-quit', (event) => {
+  if (quitCommitted || disposing) return
+  event.preventDefault()
+  void requestOrdinaryQuit()
+})
+
 // Release the page and bootstrap handlers, then stop the child Web Host before exiting.
 app.on('will-quit', (event) => {
   if (disposing && !host) return
@@ -483,21 +798,30 @@ app.on('will-quit', (event) => {
   void shutdown().catch(error => console.error('[main] shutdown cleanup failed:', error)).finally(() => app.quit())
 })
 
+// 真正退出之后，恢复协调器不再有下一句话可说。放在这里而不是 shutdown()：清理本身
+// 是恢复流程的一步，在它中途把协调器释放掉，重启那一步就会被自己取消。
+app.on('quit', () => fatalRecovery.dispose())
+
 function shutdown(preserveUpdater = false): Promise<void> {
   if (!preserveUpdater) updates?.dispose()
   if (shutdownTask) return shutdownTask
   disposing = true
+  // 提交退出决策：协调器不再保留「已 ready」的结果，也不再接受新的准备请求。
+  shutdownCoordinator.dispose()
   shutdownTask = Promise.resolve().then(async () => {
     shell?.release()
     shell = null
     bootCheck.cancel()
     ipcMain.removeHandler(DESKTOP_CHANNELS.bootstrap)
     ipcMain.removeAllListeners(DESKTOP_CHANNELS.ready)
-    for (const channel of [DESKTOP_CHANNELS.locale, DESKTOP_CHANNELS.windowMinimize, DESKTOP_CHANNELS.windowToggleMaximize, DESKTOP_CHANNELS.windowClose]) {
+    for (const channel of [DESKTOP_CHANNELS.locale, DESKTOP_CHANNELS.shortcutContext, DESKTOP_CHANNELS.windowMinimize, DESKTOP_CHANNELS.windowToggleMaximize, DESKTOP_CHANNELS.windowClose]) {
       ipcMain.removeAllListeners(channel)
     }
     session.defaultSession.webRequest.onBeforeSendHeaders(null)
-    protocol.unhandle('pureterm-app')
+    if (bridgeInstalled) {
+      bridgeInstalled = false
+      protocol.unhandle('pureterm-app')
+    }
     try {
       const pending = host ?? await hostStarting?.catch(() => undefined)
       await pending?.dispose()
@@ -507,6 +831,7 @@ function shutdown(preserveUpdater = false): Promise<void> {
     } finally {
       host = null
     }
+    console.log('[main] Host stopped; exiting.')
   })
   return shutdownTask
 }

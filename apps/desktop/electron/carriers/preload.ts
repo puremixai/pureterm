@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { DESKTOP_CHANNELS, type DesktopBridge } from '@pureterm/protocol'
+import { DESKTOP_CHANNELS, isShortcutCommand, type DesktopBridge } from '@pureterm/protocol'
 import { drawsOwnWindowControls } from '../runtime/platform-plan.js'
 
 declare const window: { location: { protocol: string; host: string; username: string; password: string } }
@@ -31,6 +31,20 @@ if (process.isMainFrame && window.location.protocol === 'pureterm-app:' && windo
         close: () => ipcRenderer.send(DESKTOP_CHANNELS.windowClose),
       },
     } : {}),
+    /*
+     * 工作区快捷键的原生一侧。主进程用 before-input-event 裁决按键、只发命令；
+     * 渲染层上报上下文、接收命令。命令先按白名单收窄：跨线的值来自外面，未知的
+     * 一律丢，别让一个拼错的字符串走到执行那一层。
+     */
+    shortcuts: {
+      platform: process.platform === 'darwin' ? 'mac' : 'other',
+      reportContext: context => ipcRenderer.send(DESKTOP_CHANNELS.shortcutContext, context),
+      onCommand: listener => {
+        const handler = (_event: unknown, command: unknown): void => { if (isShortcutCommand(command)) listener(command) }
+        ipcRenderer.on(DESKTOP_CHANNELS.shortcutCommand, handler)
+        return () => { ipcRenderer.removeListener(DESKTOP_CHANNELS.shortcutCommand, handler) }
+      },
+    },
   }
   contextBridge.exposeInMainWorld('puretermDesktop', bridge)
 }
