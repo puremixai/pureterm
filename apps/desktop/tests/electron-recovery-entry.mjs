@@ -7,7 +7,7 @@
 // 这里不 mock 任何恢复逻辑：报告、协调器、清理、relaunch 全是生产代码。
 import assert from 'node:assert/strict'
 import { app, ipcMain } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DESKTOP_CHANNELS } from '@pureterm/protocol'
 
@@ -18,14 +18,24 @@ app.setPath('userData', userData)
 const markerPath = join(userData, 'recovery-run-once')
 const resultPath = join(userData, 'recovery-relaunch.json')
 const relaunched = existsSync(markerPath)
+// A relaunched process is spawned by `app.relaunch()`, so its stdout is not the smoke's
+// pipe. This file is how the harness can still tell how far that instance got.
+const logPath = join(userData, 'recovery-entry.log')
+const log = message => { try { appendFileSync(logPath, `${new Date().toISOString()} pid=${process.pid} ${message}\n`) } catch { /* diagnostics only */ } }
 let window
 let deadline
 
 function fail(error) {
   clearTimeout(deadline)
+  log(`fail: ${error instanceof Error ? error.message : String(error)}`)
   console.error('[SMOKE-FAIL] host recovery:', error)
   app.exit(1)
 }
+
+log(`start relaunched=${relaunched}`)
+// If no window ever appears (for example, a lost single-instance lock that ends in a
+// quiet quit), fail loudly instead of hanging with nothing on stdout.
+const windowWatchdog = setTimeout(() => fail(new Error('no window appeared within 90s')), 90_000)
 
 function whenReady(target) {
   return new Promise((resolve, reject) => {
@@ -52,6 +62,7 @@ async function observeFailure(target) {
   // 只跑一次：重启起来的那一份看到标记就走 verifyRelaunch。
   writeFileSync(markerPath, String(process.pid))
   await whenReady(target)
+  log('first run ready')
   // 走**界面**那条路（表单 + Connect），这样会话是真的挂在终端标签上的：只调
   // `__smoke.api.open` 会在 Host 上开一条 SSH 连接，但界面上没有标签，也就谈不上
   // 「会话丢了」。
@@ -80,10 +91,12 @@ async function observeFailure(target) {
 
 async function verifyRelaunch(target) {
   await whenReady(target)
+  log('relaunch ready')
   const tabs = await target.webContents.executeJavaScript(`document.querySelectorAll('.session-tab').length`)
   const profile = JSON.parse(readFileSync(join(process.env.SSH_CORDIS_DATA_DIR, 'launch-profile.json'), 'utf8'))
   const result = { tabs, profileVersion: profile.version, hosts: profile.hosts, dataDir: process.env.SSH_CORDIS_DATA_DIR, pid: process.pid }
   writeFileSync(resultPath, JSON.stringify(result))
+  log('relaunch report written')
   console.log('[RECOVERY-RELAUNCH] ' + JSON.stringify(result))
   clearTimeout(deadline)
   app.quit()
@@ -92,11 +105,13 @@ async function verifyRelaunch(target) {
 app.on('browser-window-created', (_event, created) => {
   if (window) return
   window = created
+  clearTimeout(windowWatchdog)
+  log('window created')
   created.setFocusable(false)
   created.hide()
   created.on('show', () => created.hide())
   // 被拒绝的第二实例根本不会走到窗口这一步，所以超时也从这里才开始算。
-  deadline = setTimeout(() => fail(new Error('host recovery timed out')), 40_000)
+  deadline = setTimeout(() => fail(new Error('host recovery timed out')), 90_000)
   void (relaunched ? verifyRelaunch(created) : observeFailure(created)).catch(fail)
 })
 

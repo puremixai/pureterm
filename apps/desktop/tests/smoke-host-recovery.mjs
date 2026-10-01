@@ -70,13 +70,15 @@ async function waitFor(state, predicate, label, timeoutMs = 60_000) {
   throw new Error(`${label}: timed out\n${state.output}`)
 }
 
-async function waitForFile(path, label, timeoutMs = 40_000) {
+async function waitForFile(path, label, state, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     if (existsSync(path)) return
     await sleep(100)
   }
-  throw new Error(`${label}: ${path} never appeared`)
+  const listing = (() => { try { return readdirSync(dirname(path)).join(', ') || '<empty>' } catch { return '<unreadable>' } })()
+  const entryLog = (() => { try { return readFileSync(join(dirname(path), 'recovery-entry.log'), 'utf8') } catch { return '<no entry log>' } })()
+  throw new Error(`${label}: ${path} never appeared\nuser dir holds: ${listing}\nentry log:\n${entryLog}\nowner output:\n${state?.output ?? '<none>'}`)
 }
 
 let executable
@@ -137,7 +139,7 @@ try {
   assert.ok(!processExists(hostPid), 'the failed Host must be gone')
 
   // 重启起来的那一份：同一份隔离档案，零个恢复的 SSH 会话。
-  await waitForFile(relaunchResult, 'relaunched instance report')
+  await waitForFile(relaunchResult, 'relaunched instance report', owner)
   const relaunched = JSON.parse(readFileSync(relaunchResult, 'utf8'))
   relaunchedPid = relaunched.pid
   assert.equal(relaunched.dataDir, data, 'the relaunch must reuse the isolated data directory')

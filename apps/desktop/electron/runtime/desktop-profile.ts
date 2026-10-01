@@ -46,12 +46,19 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Absolute, symlink-resolved, existing directory. Created first if it does not exist yet. */
+/**
+ * Absolute, symlink-resolved, existing directory. Created first if it does not exist yet.
+ *
+ * `realpathSync.native` rather than `realpathSync`: on Windows the JavaScript walk keeps
+ * an 8.3 short name (`RUNNER~1`) exactly as it was spelled, while the native call resolves
+ * the directory's real long name (`runneradmin`) — the same answer `fs.promises.realpath`
+ * gives. Two launches that spell one directory differently must not read as two profiles.
+ */
 function canonicalDirectory(directory: string): string {
   const absolute = resolve(directory)
   try {
     if (!existsSync(absolute)) mkdirSync(absolute, { recursive: true, mode: 0o700 })
-    return realpathSync(absolute)
+    return realpathSync.native(absolute)
   } catch (error) {
     throw new DesktopProfileError('profile-io', `Cannot prepare the data directory ${absolute}: ${describe(error)}`, { cause: error })
   }
