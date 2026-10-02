@@ -19,7 +19,7 @@
 #toolbar { display: flex; width: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; padding: 0; border-left: 1px solid var(--line); background: var(--c-surface); }
 /* 原型 .ih：40px 高的一条，左边一个 --fs-micro 的标签，右边一个 26px 图标按钮。
    这里原来是 86px —— 17px 的标题加一行副标题再加 17/22px 的内边距。 */
-.toolbar-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); }
+.toolbar-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; min-height: 56px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--line); }
 .form-context { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
 /* 原型把这条写成 .micro：11px、500、.07em、大写、--tx-4。第四级按登记簿不能当正文
    （见 docs/design-system.md 的合法矩阵），所以取 --tx-2：在 --c-surface 上两个主题
@@ -29,10 +29,10 @@
 .drawer-subtitle { color: var(--tx-3); font-size: var(--fs-micro); white-space: nowrap; }
 .drawer-subtitle i { margin-left: 3px; color: var(--tx-3); font-size: 12px; vertical-align: -1px; }
 .toolbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; }
-.drawer-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px; scrollbar-color: var(--scroll-thumb-strong) transparent; scrollbar-width: thin; }
+.drawer-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 24px 20px; scrollbar-color: var(--scroll-thumb-strong) transparent; scrollbar-width: thin; }
 /* 原型 .sec：靠 margin-bottom 分开，标题是一条 --fs-micro 的微标签加一道细线，
    而不是 16px 的 h2。 */
-.drawer-section { padding: 0 0 16px; }
+.drawer-section { padding: 0 0 24px; }
 .drawer-section h2 { margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft); color: var(--tx-3); font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; }
 /* 地址和端口是同一个决定的两半 —— 连到哪。分成「Address」和「SSH on … port」两个
    区，等于让用户把一句话读两遍。端口框的 64px 和主机框的 mono 都照原型的 .row2 与
@@ -44,7 +44,7 @@
 /* 身份与凭据之间的那道线：上面是「连到哪」，下面是「你是谁」。原先它挂在那个装着
    端口框的 .ssh-section 上，端口并进 Address 之后，它跟着落到最后一个身份区下面，
    位置没变。 */
-.general-section { padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.general-section { padding-bottom: 24px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
 .address-hint { margin: 6px 0 0; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); overflow-wrap: anywhere; }
 .address-hint:empty { display: none; }
 /* 两选一的分段开关，照原型 .switch：--c-inset 底、--r-1、选项 26px 高。
@@ -62,12 +62,14 @@
 /* 原型 .in：28px 高、0 8px 内边距、--c-inset 底、--r-1。原来是 46px 高、0 13px
    内边距、--c-control 底、12px 圆角 —— 一个抽屉里放不下两个字段。 */
 input, select { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-1); outline: none; background: var(--c-inset); color: var(--tx-1); font-size: var(--fs-ui); transition: border-color var(--t-2) var(--ease), background-color var(--t-2) var(--ease), box-shadow var(--t-2) var(--ease); }
-input::placeholder { color: var(--tx-4); }
+input::placeholder { color: var(--tx-2); opacity: .8; }
 input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--line-strong); background: var(--c-raised); }
 /* :focus carries no ring of its own: base.css owns the keyboard ring and does
    it through :focus-visible, so repeating a ring here would double up on every
    pointer click instead. */
 input:focus, select:focus { border-color: var(--ac); background: var(--c-canvas); box-shadow: none; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+.search input:focus-visible { outline: none; }
 input:disabled, select:disabled { cursor: not-allowed; opacity: 0.5; }
 #key-path { color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-meta); text-overflow: ellipsis; }
 .credential-row { display: grid; grid-template-columns: minmax(220px, 1fr); margin-top: 2px; }
@@ -83,16 +85,17 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: 0.5; }
 /* 原型 .lock 是一条 11px 的灰字加一把锁。这里保留了一圈边框：私钥不落明文是用户
    无法从界面推断出来的那句话（密钥库那边为同一条理由用了横幅），在 322px 的抽屉里
    一行 11px 的灰字会被直接读过去。 */
-.credential-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--c-inset); color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.5; }
+.credential-note { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--c-inset); color: var(--tx-2); font-size: var(--fs-micro); line-height: 1.6; }
 .credential-note i { flex: 0 0 auto; font-size: 14px; }
 #credential-hint { max-width: 80ch; margin: 8px 0 0; color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.5; }
 /* 原型 .if：一行 —— 删除在左，保存与连接在右。原型的按钮之间有一个 .sp，这里用
    margin-left 顶开同一个位置，省掉那个只用来撑开的节点。#status 是这一屏自己的
    实时区域，占满第二行，所以它是 flex: 1 1 100% 而不是一个绝对定位的浮层。 */
-.drawer-footer { display: flex; flex-wrap: wrap; align-items: center; flex: 0 0 auto; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--c-chrome); }
+.drawer-footer { display: flex; flex-wrap: wrap; align-items: center; flex: 0 0 auto; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--line); background: var(--c-chrome); }
 #host-save { margin-left: auto; }
 .drawer-connect { min-height: 28px; border-radius: var(--r-1); font-size: var(--fs-ui); }
-#status { flex: 1 1 100%; min-height: 18px; color: var(--tx-3); font-size: var(--fs-meta); line-height: 1.5; overflow-wrap: anywhere; }
+#status { flex: 1 1 100%; min-height: 18px; color: var(--tx-2); font-size: var(--fs-meta); line-height: 1.5; overflow-wrap: anywhere; }
+.drawer-footer button.ghost:not(.danger) { color: var(--tx-2); }
 #status.ok { color: var(--ok); }
 #status.err { color: var(--err); }
 #status.pending { color: var(--ac); }
@@ -106,8 +109,12 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: 0.5; }
   #main,
   .app-shell.inspector-open #main { grid-template-columns: minmax(0, 1fr); }
   .connection-workspace { position: absolute; inset: 0; z-index: 6; }
+  .app-shell.inspector-open #hosts-panel { visibility: hidden; }
 }
 @media (max-width: 620px) {
+  .drawer-scroll input:not([type="checkbox"]), .drawer-scroll select { height: 40px; }
+  .switch-option { min-height: 38px; }
+  .drawer-footer button { min-height: 36px; }
   .credential-row { display: flex; align-items: stretch; }
   .credential-row .field { flex: 1 1 100%; }
   .key-row > button { flex: 1 1 120px; align-self: end; }

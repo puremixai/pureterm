@@ -85,9 +85,14 @@ button.small { min-height: 24px; padding: 0 9px; border-radius: var(--r-1); font
    保留 resize: vertical —— 原型那个 .ta 是个展示框（resize: none），这里的每一个
    都是真输入框，不能拖大是退步。 */
 textarea { width: 100%; min-width: 0; min-height: 62px; padding: 7px 8px; resize: vertical; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--c-inset); color: var(--tx-1); font-family: var(--font-mono); font-size: var(--fs-micro); line-height: 1.55; }
-textarea::placeholder { color: var(--tx-4); }
+textarea::placeholder { color: var(--tx-2); opacity: .8; }
 textarea:disabled { opacity: .6; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

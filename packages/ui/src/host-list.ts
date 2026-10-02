@@ -19,7 +19,7 @@ export interface HostListHandlers {
   onSelect(record: HostRecord): void
   /** 按「编辑」：把这条记录装进表单 */
   onEdit(record: HostRecord): void
-  /** 双击行：直接用这条记录连接 */
+  /** 按「连接」或双击行：直接用这条记录连接 */
   onConnect(record: HostRecord): void
   /** 按「删除」 */
   onDelete(record: HostRecord): void
@@ -118,7 +118,7 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   main.type = 'button'
   main.className = 'host-main'
   const endpoint = `${record.username}@${record.host}:${record.port}`
-  main.title = t('hosts.row.title')
+  main.title = `${endpoint}\n${t('hosts.row.title')}`
   main.setAttribute('aria-label', t('hosts.row.aria', { label: record.label, endpoint }))
 
   const avatar = span('host-avatar', initialsOf(record.label || record.host))
@@ -129,12 +129,15 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
   // 直接塞进 .host-content 会让徽标落到名称下面，卡片上就变成三行。
   const top = document.createElement('span')
   top.className = 'host-top'
-  top.append(span('host-label', record.label))
+  const label = span('host-label', record.label)
+  label.title = record.label
+  top.append(label)
   // 卡片里的地址是名称下面那一行，所以它挂在 .host-content 上，而不是借表格的
   // .host-cell.mono —— 那一格是行网格的一行，只能落在头像底下，和名称差着一个
   // 头像加一道间距的左边缘。连接串带上用户名：卡片没有「用户」那一列，地址得自己
   // 说全。表格视图把它藏起来，地址由表格自己那一列负责。
   const address = span('host-card-address', endpoint)
+  address.title = endpoint
   main.append(avatar, content)
 
   listeners.add(main, 'click', () => handlers.onSelect(record))
@@ -146,26 +149,32 @@ function buildRow(record: HostRecord, handlers: HostListHandlers, listeners: Dom
 
   const actions = document.createElement('span')
   actions.className = 'host-actions'
-  actions.append(miniButton(t('common.edit'), 'edit', false, () => handlers.onEdit(record), listeners))
-  actions.append(miniButton(t('common.delete'), 'delete', true, () => handlers.onDelete(record), listeners))
+  actions.append(miniButton(t('host.connect'), 'connect', 'terminal-2', false, () => handlers.onConnect(record), listeners))
+  actions.append(miniButton(t('common.edit'), 'edit', 'pencil', false, () => handlers.onEdit(record), listeners))
+  actions.append(miniButton(t('common.delete'), 'delete', 'trash', true, () => handlers.onDelete(record), listeners))
 
   if (saved) top.append(saved)
   content.append(top, address)
   item.append(main,
-    cell('mono', `${record.host}:${record.port}`),
-    cell('', record.username),
-    cell(`auth auth-${auth.kind}`, auth.text),
+    cell('mono', `${record.host}:${record.port}`, endpoint),
+    cell('', record.username, record.username),
+    cell(`auth auth-${auth.kind}`, auth.text, auth.text),
     cell('when', relative(record.updatedAt)),
     actions)
   return item
 }
 
-function miniButton(label: string, action: string, danger: boolean, onClick: () => void, listeners: DomListeners): HTMLButtonElement {
+function miniButton(label: string, action: string, icon: string, danger: boolean, onClick: () => void, listeners: DomListeners): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = danger ? 'mini danger' : 'mini'
   button.dataset.act = action
-  button.textContent = label
+  button.title = label
+  button.setAttribute('aria-label', label)
+  const glyph = document.createElement('i')
+  glyph.className = `ti ti-${icon}`
+  glyph.setAttribute('aria-hidden', 'true')
+  button.append(glyph)
   listeners.add(button, 'click', (event) => {
     // 行上的动作按钮必须把事件截住：不然「删除」会先冒泡成一次选中，
     // 表单被装进一条马上要删掉的记录，状态就乱了。
@@ -181,7 +190,11 @@ export function createHostList(container: HTMLElement, handlers: HostListHandler
   const rows = new Map<string, HTMLLIElement>()
 
   const applySelected = (selectedId: string | null): void => {
-    for (const [id, item] of rows) item.classList.toggle('active', id === selectedId)
+    for (const [id, item] of rows) {
+      const selected = id === selectedId
+      item.classList.toggle('active', selected)
+      item.querySelector('.host-main')!.setAttribute('aria-pressed', String(selected))
+    }
   }
 
   return {

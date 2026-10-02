@@ -60,14 +60,20 @@ export class ClientHosts extends Service {
     this.scope.listen(view.element('toolbar'), 'submit', event => { event.preventDefault(); void this.connect() })
     this.scope.listen(view.element('connect'), 'click', () => void this.connect())
     for (const id of ['host-new', 'hosts-empty-new']) this.scope.listen(view.element(id), 'click', () => this.startNew())
+    this.scope.listen(view.element('hosts-clear-search'), 'click', () => {
+      this.input('host-search').value = ''
+      this.query = ''
+      this.renderHostList()
+      this.input('host-search').focus()
+    })
     this.scope.listen(view.element('hosts-retry'), 'click', () => { void this.refresh().catch(() => {}) })
     this.scope.listen(view.element('connection-close'), 'click', () => this.closeWorkspace())
     for (const id of ['workspace-home', 'nav-hosts']) this.scope.listen(view.element(id), 'click', () => { ctx.clientTerminal.select(null); this.closeWorkspace() })
     this.scope.listen(view.element('host-view-toggle'), 'click', () => {
       // The class and the reported state are derived from one value, so they
       // cannot disagree the way a separate boolean field could.
-      const cards = view.element('host-list').classList.toggle('card-view')
-      view.element('host-view-toggle').setAttribute('aria-pressed', String(cards))
+      view.element('host-list').classList.toggle('card-view')
+      this.renderViewToggle()
     })
     const shortcuts = view.element<HTMLDialogElement>('shortcuts-dialog')
     // 只有导航轨道上那一个入口。工具栏里原来还有一个「快捷键」图标钮，原型那一行
@@ -146,6 +152,7 @@ export class ClientHosts extends Service {
       this.renderAddressHint()
       if (this.loaded) this.renderHostList()
       this.renderShortcuts()
+      this.renderViewToggle()
     })
     this.renderShortcuts()
     this.clearForm()
@@ -311,16 +318,30 @@ export class ClientHosts extends Service {
     return this.hosts.filter(record => `${record.label} ${record.host} ${record.username}:${record.port}`.toLocaleLowerCase().includes(this.query))
   }
 
+  private renderViewToggle(): void {
+    const cards = this.ctx.clientView.element('host-list').classList.contains('card-view')
+    const button = this.ctx.clientView.element('host-view-toggle')
+    const key = cards ? 'hosts.view-toggle-list' : 'hosts.view-toggle'
+    const label = t(key)
+    button.dataset.i18nAttr = `aria-label:${key};title:${key}`
+    button.setAttribute('aria-pressed', String(cards))
+    button.setAttribute('aria-label', label)
+    button.title = label
+    button.firstElementChild!.className = `ti ${cards ? 'ti-list' : 'ti-layout-grid'}`
+  }
+
   private renderHostList(): void {
     const visible = this.visibleHosts()
     const empty = this.ctx.clientView.element('hosts-empty')
     empty.hidden = visible.length > 0
     const filtered = this.hosts.length > 0 && visible.length === 0
+    empty.classList.toggle('is-filtered', filtered)
     this.ctx.clientView.element('hosts-empty-text').innerHTML = filtered
       ? t('hosts.empty.filtered')
       : t('hosts.empty.none')
     // 筛不中的时候「新建主机」是个错的动作：用户要的是清掉关键词，不是再加一条。
     this.ctx.clientView.element('hosts-empty-new').hidden = filtered
+    this.ctx.clientView.element('hosts-clear-search').hidden = !filtered
     this.renderCount(visible.length)
     this.list.render(visible, this.selectedId, this.ctx.clientKeychain.records)
   }

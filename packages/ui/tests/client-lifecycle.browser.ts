@@ -10,6 +10,8 @@ import { ClientShortcuts } from '../src/services/shortcuts.js'
 
 import { VERSION } from '../src/lib/version.js'
 
+import { setLocale } from '@pureterm/i18n'
+
 import { HostError, type HostRecord, type HostSaveRequest, type KeyRecord, type KeySaveRequest, type MonitorSnapshot, type SftpDir, type TerminalOpenResult, type TerminalOpenRequest } from '@pureterm/protocol'
 
 import { deferred, fixture, wire } from './client-test-fixture.js'
@@ -190,11 +192,19 @@ async function runChecks() {
 
     assert(input('keychain-list').classList.contains('card-view'), 'key list toggle must update layout')
 
+    assert(input('keychain-view').getAttribute('aria-label') === 'Switch to list view' && input('keychain-view').title === 'Switch to list view',
+      'the key view toggle must describe the next view when cards are shown')
+
     // 与主机卡片同一条形状：指纹是名称栏的一行，不是表格那一格。
     assert(document.querySelector('.keychain-card .host-content > .keychain-card-fingerprint')!.textContent === 'fixture',
       'the key card\'s fingerprint must be a line of the name column, not the table\'s address cell')
 
-    click('keychain-view'); click('nav-hosts'); click('host-new'); fill()
+    click('keychain-view')
+
+    assert(input('keychain-view').getAttribute('aria-label') === 'Switch to card view',
+      'returning to the key list must offer card view again')
+
+    click('nav-hosts'); click('host-new'); fill()
 
     input('auth').value = 'privateKey'; input('auth').dispatchEvent(new Event('change'))
 
@@ -392,19 +402,50 @@ async function runChecks() {
 
     gestures.hosts[0]!.hasSecret = true
 
+    gestures.hosts.push({ ...gestures.hosts[0]!, id: 'fixture-secondary', label: 'Second host' })
+
     gestures.api.getCapabilities = async () => ({ credentialPersistence: 'encrypted', privateKeyPicker: 'native' })
 
     client = createClient({ api: gestures.api, terminalFactory: gestures.terminalFactory })
 
     assert((await client.ready).ok, 'host-gesture client failed readiness')
 
+    change('host-search', 'missing-host-search-result')
+
+    assert(!document.querySelector('.host-row') && !input('hosts-empty').hidden,
+      'an unmatched search must show the empty result state')
+
+    assert(!input('hosts-clear-search').hidden && input('hosts-empty-new').hidden,
+      'the empty result state must offer Clear search')
+
+    click('hosts-clear-search')
+
+    assert(input('host-search').value === '' && document.activeElement === input('host-search'),
+      'Clear search must empty the query and return focus to the search field')
+
+    assert(document.querySelectorAll('.host-row').length === 2 && input('hosts-empty').hidden,
+      'Clear search must restore every saved host')
+
     const host = document.querySelector<HTMLButtonElement>('.host-main')!
+
+    assert(host.getAttribute('aria-pressed') === 'false', 'a host starts with an unselected accessible state')
 
     host.click()
 
     assert(input('connection-workspace').hidden, 'single-clicking a host must only select its card, not open the editor')
 
     assert(document.querySelector('.host-row')?.classList.contains('active'), 'single-clicking a host must visibly select its card')
+
+    assert(host.getAttribute('aria-pressed') === 'true', 'selecting a host must report its pressed state to assistive technology')
+
+    const otherHost = document.querySelector<HTMLButtonElement>('.host-row[data-id="fixture-secondary"] .host-main')!
+
+    otherHost.click()
+
+    assert(host.getAttribute('aria-pressed') === 'false' && otherHost.getAttribute('aria-pressed') === 'true',
+      'moving selection must clear the previous accessible state without rebuilding the buttons')
+
+    host.click()
 
     assert(gestures.stats.opens === 0, 'single-clicking a host must not open an SSH session')
 
@@ -444,9 +485,23 @@ async function runChecks() {
 
     assert(input('status-size').textContent === '132×41', 'the status bar must follow the active terminal size')
 
+    click('workspace-home')
+
+    const connectHost = document.querySelector<HTMLButtonElement>('.host-row[data-id="fixture"] [data-act="connect"]')!
+
+    assert(connectHost.getAttribute('aria-label') === 'Connect' && connectHost.title === 'Connect',
+      'the icon-only Connect action must expose an accessible name and tooltip')
+
+    connectHost.click()
+
+    await tick()
+
+    assert(gestures.stats.opens === 2 && document.querySelectorAll('[role="tab"]').length === 2,
+      'one explicit Connect click must open exactly one additional SSH session and terminal tab')
+
     await client.dispose()
 
-    checks.push('single-click selects, Edit opens the editor, and double-click connects in a new tab')
+    checks.push('Clear search restores hosts and focus; selection has an accessible state, Edit opens the editor, and double-click or Connect each opens one terminal tab')
 
 
 
@@ -530,6 +585,18 @@ async function runChecks() {
     assert(document.querySelector('.host-row .host-cell.auth')!.textContent === 'Password',
       'and so does the sentence the host list composes itself')
 
+    click('host-view-toggle'); click('keychain-view')
+
+    for (const preference of ['theme-toggle', 'density-toggle']) {
+      for (let toggle = 0; toggle < 2; toggle += 1) {
+        click(preference); await tick()
+        for (const id of ['host-view-toggle', 'keychain-view']) {
+          assert(input(id).getAttribute('aria-label') === 'Switch to list view' && input(id).title === 'Switch to list view',
+            `${preference} must preserve the card view toggle's next action`)
+        }
+      }
+    }
+
     click('locale-toggle'); await tick()
 
     assert(shell.dataset.locale === 'zh' && shell.lang === 'zh-CN', 'the switch writes the locale and the lang attribute')
@@ -542,14 +609,36 @@ async function runChecks() {
     assert(document.querySelector('.host-row .host-cell.when')!.textContent === '从未',
       'including the date column, which is a key rather than a cached sentence')
 
+    for (const id of ['host-view-toggle', 'keychain-view']) {
+      assert(input(id).getAttribute('aria-label') === '切换到列表视图' && input(id).title === '切换到列表视图',
+        'a language change must preserve the view toggle\'s next action while translating its label')
+    }
+
+    click('host-view-toggle'); click('keychain-view')
+
     const localePrefs = JSON.parse(window.localStorage.getItem('pureterm.chrome') ?? '{}')
     assert(localePrefs.locale === 'zh', 'the choice persists under the same one chrome key')
 
     await client.dispose()
+    // A fresh page starts with the English module default, even when storage
+    // remembers Chinese. Reset it so the prior mount cannot hide startup ordering bugs.
+    setLocale('en')
+    delete shell.dataset.locale
+    shell.lang = 'en'
     client = createClient({ api: chrome.api, terminalFactory: chrome.terminalFactory })
     assert((await client.ready).ok, 'restored locale client failed readiness')
     assert(shell.dataset.locale === 'zh' && input('nav-hosts').getAttribute('aria-label') === '主机',
       'a remount restores the remembered language before the first paint of the list')
+
+    for (const [id, label, title] of [
+      ['theme-toggle', '切换到浅色主题', '主题'],
+      ['density-toggle', '切换到紧凑行高', '行高密度'],
+      ['host-view-toggle', '切换到卡片视图', '切换到卡片视图'],
+      ['keychain-view', '切换到卡片视图', '切换到卡片视图'],
+    ] as const) {
+      assert(input(id).getAttribute('aria-label') === label && input(id).title === title,
+        `a persisted Chinese locale must translate #${id}'s initial accessible name and tooltip`)
+    }
 
     window.localStorage.removeItem('pureterm.chrome')
     delete shell.dataset.locale
@@ -634,9 +723,15 @@ async function runChecks() {
 
     assert(input('host-list').classList.contains('card-view') && input('host-view-toggle').getAttribute('aria-pressed') === 'true', 'the toggle must move the hosts list to card view and report it')
 
+    assert(input('host-view-toggle').getAttribute('aria-label') === 'Switch to list view' && input('host-view-toggle').title === 'Switch to list view',
+      'the host view toggle must describe the next view when cards are shown')
+
     click('host-view-toggle')
 
     assert(!input('host-list').classList.contains('card-view') && input('host-view-toggle').getAttribute('aria-pressed') === 'false', 'and return the list to the table')
+
+    assert(input('host-view-toggle').getAttribute('aria-label') === 'Switch to card view',
+      'returning to the host list must offer card view again')
 
     // The table is the whole point of the screen, so its shape is asserted rather
 
@@ -2332,13 +2427,49 @@ async function runChecks() {
      */
     const toolRemoval = fixture()
 
-    client = createClient({ api: toolRemoval.api, terminalFactory: toolRemoval.terminalFactory })
-
-    assert((await client.ready).ok, 'tool-removal client failed readiness')
+    // Keep the real MediaQueryLists returned during construction so a native
+    // change event can exercise the exact targets the service subscribed to.
+    const originalMatchMedia = window.matchMedia
+    const toolMedia: MediaQueryList[] = []
+    window.matchMedia = query => {
+      const media = originalMatchMedia.call(window, query)
+      if (query === '(max-width: 820px)') toolMedia.push(media)
+      return media
+    }
+    try {
+      client = createClient({ api: toolRemoval.api, terminalFactory: toolRemoval.terminalFactory })
+      assert((await client.ready).ok, 'tool-removal client failed readiness')
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
 
     fill(); click('connect'); await tick(); click('sftp-toggle'); await tick()
 
     assert(document.querySelectorAll('#session-tools .session-tool').length === 2, 'both tools are on the rail before the shared unload')
+
+    const removedGrip = input('session-grip')
+    const removedContent = input('session-content')
+    removedGrip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true }))
+    const rememberedSplit = client.context.clientTerminal.active!.split
+    assert(rememberedSplit !== null && (removedContent.style.gridTemplateColumns !== '' || removedContent.style.gridTemplateRows !== ''),
+      'the service has a custom split and painted tracks before cleanup is tested')
+
+    click('sftp-toggle'); click('locale-toggle'); await tick()
+    assert(input('session-tool-panel').hidden && removedContent.style.gridTemplateColumns === '' && removedContent.style.gridTemplateRows === '',
+      'changing language while collapsed must leave both inline grid axes empty')
+    assert(client.context.clientTerminal.active!.split === rememberedSplit, 'collapsing preserves the tab\'s custom ratio')
+    click('locale-toggle'); click('sftp-toggle'); await tick()
+    assert(removedContent.style.gridTemplateColumns !== '' || removedContent.style.gridTemplateRows !== '',
+      'reopening restores the remembered custom tracks before disposal')
+
+    const notifyToolMedia = (): void => {
+      for (const media of toolMedia) media.dispatchEvent(new MediaQueryListEvent('change', { matches: media.matches, media: media.media }))
+    }
+    assert(toolMedia.length > 0, 'the tool service observes the breakpoint through a real MediaQueryList')
+    removedGrip.setAttribute('aria-orientation', 'pending-breakpoint')
+    notifyToolMedia()
+    assert(removedGrip.getAttribute('aria-orientation') === (window.innerWidth <= 820 ? 'horizontal' : 'vertical'),
+      'a live breakpoint notification refreshes separator orientation')
 
     await client.scopes.sessionTools.dispose()
 
@@ -2349,6 +2480,15 @@ async function runChecks() {
     assert(input('session-grip').hidden, 'and hides the splitter')
 
     assert(document.querySelectorAll('.session-grip').length === 1, 'without leaving a second splitter behind')
+
+    assert(removedContent.style.gridTemplateColumns === '' && removedContent.style.gridTemplateRows === '',
+      'disposing a custom split clears both inline grid axes')
+    assert(client.context.clientTerminal.active!.split === rememberedSplit, 'tool disposal preserves the surviving terminal tab\'s ratio')
+    removedGrip.setAttribute('aria-orientation', 'disposed-breakpoint')
+    notifyToolMedia()
+    assert(removedGrip.getAttribute('aria-orientation') === 'disposed-breakpoint' &&
+      removedContent.style.gridTemplateColumns === '' && removedContent.style.gridTemplateRows === '',
+    'the disposed breakpoint listener cannot repaint separator attributes or tracks')
 
     // 分隔条的键盘监听属于被释放的那个 scope；它若没跟着走，这一下就会改动比例。
     const splitBefore = client.context.clientTerminal.active?.split ?? null
@@ -2369,7 +2509,17 @@ async function runChecks() {
 
     assert(document.querySelectorAll('.session-grip').length === 1, 'and exactly one splitter')
 
-    checks.push('disposing and remounting the shared tool service leaves one rail and one splitter')
+    assert(input('session-tool-panel').hidden && removedContent.style.gridTemplateColumns === '' && removedContent.style.gridTemplateRows === '',
+      'remounting starts collapsed without restoring hidden split tracks')
+    assert(client.context.clientTerminal.active!.split === rememberedSplit, 'remounting keeps the surviving tab\'s custom ratio')
+    click('sftp-toggle'); await tick()
+    assert(!input('session-tool-panel').hidden &&
+      (removedContent.style.gridTemplateColumns !== '' || removedContent.style.gridTemplateRows !== ''),
+    'the remounted service restores the remembered tracks when a tool opens')
+    assert(Number(removedGrip.getAttribute('aria-valuenow')) === Math.round(rememberedSplit! * 100),
+      'the remounted splitter reports the surviving tab\'s custom ratio')
+
+    checks.push('custom splits survive collapse, locale changes and tool remount; disposal clears tracks and removes keyboard and breakpoint listeners')
 
     await client.dispose()
 

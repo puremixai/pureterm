@@ -1,157 +1,101 @@
-/* Hosts dashboard — the page header, search row, dashboard toolbar, and the
-   card and list shapes a saved host renders in. */
-/* One column template, shared by the header and the rows, so the two can never
-   drift apart by a fourth value nobody noticed. */
-.host-columns,
-.host-row { display: grid; grid-template-columns: minmax(0,1.5fr) 1.2fr .9fr 1fr 1fr 24px; align-items: center; gap: 12px; padding: 0 10px; }
-/* The transparent side borders make the header's border box the same width as a
-   row's, so the fr units resolve identically and the labels sit over their
-   columns instead of drifting a few pixels along the line. */
-/* --tx-3, not --tx-4: the fourth rung is 2.25:1 to 2.92:1 and is only ever
-   allowed on placeholders. A column header is real text a user has to read. */
-.host-columns { height: 26px; border: 1px solid transparent; border-bottom-color: var(--line-soft); color: var(--tx-3); font-size: var(--fs-micro); letter-spacing: .06em; text-transform: uppercase; }
-/* A header over an empty table frames nothing, so the header leaves with the
-   rows. Both screens already toggle the empty element's hidden attribute during
-   render, which makes it the state rather than a second copy of the count. */
-#hosts-body:has(#hosts-empty:not([hidden])) #host-columns,
-.keychain-content:has(#keychain-empty:not([hidden])) #keychain-columns { display: none; }
-/* A card grid has no columns, so the header above it labels nothing. The card
-   state is the class the view toggle writes, so the header follows that rather
-   than a second copy of it — the same reading the rule above takes of the empty
-   element. */
-#hosts-body:has(#host-list.card-view) #host-columns,
-.keychain-content:has(.keychain-list.card-view) #keychain-columns { display: none; }
-/* 表格里的数据格一律 --tx-3（原型的 .num）：它们是可比较的值，不是要读的正文，
-   所以比名称低一级。身份那一格反过来是 --tx-2，对应原型的 .tag.k。 */
-.host-cell { min-width: 0; overflow: hidden; color: var(--tx-3); font-size: var(--fs-meta); text-overflow: ellipsis; white-space: nowrap; }
-.host-cell.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.auth-keychain { color: var(--tx-2); }
-.auth-file { color: var(--tx-3); }
-.auth-password { color: var(--tx-3); }
-#host-view-toggle[aria-pressed="true"] { background: var(--c-control); }
-
-/* Hosts dashboard */
-/* The workspace column is the grid that docks the editor: every library page,
-   the connection form included, is a child of #main, so #main is the only
-   element that can give the editor a track. An override on .app-body would add
-   a third empty column and leave the form below the fold inside the second. */
+/* Library layout. Container queries use the space left beside an open editor,
+   so the table never relies on the window width to decide what fits. */
 #main { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--c-canvas); }
 .app-shell.inspector-open #main { grid-template-columns: minmax(0, 1fr) var(--insp-w); }
-/* 一屏只留一处横向内边距。原来是 #hosts-panel 12px 加 #hosts-body 12px，于是
-   直接挂在 panel 上的降级横幅比列表里的空状态少缩进一半。原型也是把 16px 留在
-   列表容器上（.tbl），.ph 的左右内边距同样是 16px。 */
-#hosts-panel { display: flex; min-width: 0; min-height: 0; height: 100%; flex-direction: column; overflow: auto; padding: 0 16px 14px; background: var(--c-canvas); scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
-/* 原型 .ph：一行装完标题、计数、搜索、主按钮和视图开关。margin-left: auto 挂在
-   .search 上，就是原型那个 .sp 撑开的位置 —— 不必为它多写一个节点。 */
-.page-head { display: flex; align-items: center; gap: 10px; padding: 14px 0 12px; }
-.page-head h1 { margin: 0; color: var(--tx-1); font-size: var(--fs-h1); font-weight: 600; letter-spacing: -0.02em; }
-.host-count { color: var(--tx-3); font-size: var(--fs-meta); white-space: nowrap; }
-/* 原型 .search 是 210×28，边框取 --line-strong 而不是它的 --line：--line 在
-   --c-control 上量得 1.069:1（深色）/ 1.078:1（浅色），低于
-   stylesheet-contract.test.mjs 给每道细线定的 1.1:1 下限，而 --line-strong 是
-   1.473 / 1.352。 */
-.search { display: flex; align-items: center; gap: 7px; width: 210px; margin-left: auto; height: 28px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); }
-.search > i { flex: 0 0 auto; font-size: 12px; }
-/* 搜索框本身不是表单字段：它没有自己的边框和底色，整个 .search 才是那个框。
-   #host-search 和 #keychain-search 共用这一条，所以选择器按类走而不是按 id。 */
+#hosts-panel { display: flex; min-width: 0; min-height: 0; height: 100%; flex-direction: column; overflow: auto; padding: 0 clamp(16px, 3vw, 48px) 24px; background: var(--c-canvas); scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; container: hosts / inline-size; }
+.page-head { display: flex; flex: 0 0 auto; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 104px; padding: 26px 0; }
+.page-head h1 { margin: 0; color: var(--tx-1); font-size: 28px; line-height: 1.15; font-weight: 600; letter-spacing: -0.045em; }
+.host-count { color: var(--tx-2); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.page-head > .primary { flex: 0 0 auto; min-height: 34px; padding: 0 14px; border-radius: var(--r-2); }
+.search { display: flex; align-items: center; flex: 0 1 260px; gap: 8px; width: 260px; margin-left: auto; height: 34px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--c-surface); color: var(--tx-3); transition: border-color var(--t-2) var(--ease), box-shadow var(--t-2) var(--ease); }
+.search > i { flex: 0 0 auto; font-size: 14px; }
+.search:focus-within { border-color: var(--ac); box-shadow: 0 0 0 3px var(--ac-bg); }
 .search input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--tx-1); font-size: var(--fs-meta); }
-.search input:hover:not(:disabled) { border: 0; background: transparent; }
-.search input:focus { border: 0; background: transparent; box-shadow: none; }
-/* 键帽在搜索框里是平的：原型 .search kbd 只有 1px 的底边，2px 那条底边是它给
-   对话框里的 .kbd 的。全局元素规则在 states.css，这里只收尺寸。 */
+.search input:hover:not(:disabled), .search input:focus { border: 0; background: transparent; box-shadow: none; }
 .search kbd { margin-left: auto; padding: 1px 4px; border-bottom-width: 1px; font-size: 10px; }
-
-/* 原型 .ib：26px 的图标钮，安静到近乎透明 —— 它是列表的工具，不是这一屏的主按钮。 */
-.tool-icon { display: grid; min-width: 26px; min-height: 26px; padding: 0; place-items: center; border-color: transparent; border-radius: var(--r-1); background: transparent; color: var(--tx-3); font-size: 15px; }
-.tool-icon:hover:not(:disabled), .tool-icon.active { border-color: transparent; background: var(--c-raised); color: var(--tx-1); }
+.tool-icon { display: grid; flex: 0 0 auto; min-width: 34px; min-height: 34px; padding: 0; place-items: center; border-color: var(--line); border-radius: var(--r-2); background: var(--c-surface); color: var(--tx-2); font-size: 16px; }
+.tool-icon:hover:not(:disabled), .tool-icon.active { border-color: var(--line-strong); background: var(--c-raised); color: var(--tx-1); }
+#host-view-toggle[aria-pressed="true"] { background: var(--ac-bg); color: var(--ac); border-color: var(--ac-line); }
 #hosts-body { flex: 1 1 auto; min-height: 0; }
-#host-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; margin: 0; padding: 0; list-style: none; }
-/* A card keeps the address: the columns are gone, but a name with no target
-   under it is not a card, it is a label. The track count is the panel's, not a
-   literal: three fixed columns left a lone card a third of the width and two
-   thirds of empty space. `min(200px, 100%)` is what stops the floor from
-   overflowing a panel narrower than one card. */
-#host-list.card-view { grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 16px; }
-#host-list.card-view .host-row { grid-template-columns: minmax(0, 1fr); align-items: flex-start; min-height: 91px; padding: 0; }
-#host-list.card-view .host-main { padding: 15px 12px 15px 16px; border-radius: var(--r-3); }
-#host-list.card-view .host-row .host-cell { display: none; }
-/* 卡片保留地址，但不用表格的地址格：那一格是卡片网格的一行，只能落在头像底下 ——
-   距它所属的名称 72px —— 而 .host-content 里的第二行天然落在名称的左边线上，不必
-   把头像的宽度和间距再抄一份，也就不会各自漂移。表格那一格仍在，所以这个节点在
-   表格视图里是关着的。 */
-.host-card-address { display: none; }
-#host-list.card-view .host-card-address { display: block; min-width: 0; overflow: hidden; color: var(--tx-3); font-family: var(--font-mono); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-/* 卡片视图是这一版自己的形状，原型里没有。58px 的方块取 --r-3 而不是列表小块的
-   --r-1：原型没有画过这么大的方块，但它的圆角是跟着方框长大的（20px→--r-1，
-   34px→--r-2），58px 落到 --r-3 正好接上那条线。密钥库卡片用同一个角。 */
-#host-list.card-view .host-avatar { width: 58px; height: 58px; border-radius: var(--r-3); font-size: var(--fs-h2); }
-/* 5px 是卡片里两行文字的行距（密钥卡片也是 5px），不是表格的 6px：名称与地址要读成
-   一栏，而不是两个各自成行的格子。 */
-#host-list.card-view .host-content { gap: 5px; }
-
-/* Dark separates with hairlines, not elevation, so the row's only rest-state
-   signal is its border and the one-step surface raise. The old hover also
-   lifted the card by 1px, which reads as a glitch with no shadow under it. */
+.host-columns, .host-row { display: grid; grid-template-columns: minmax(120px, 1.4fr) minmax(100px, 1.3fr) minmax(60px, .7fr) minmax(75px, .85fr) minmax(65px, .7fr) 92px; align-items: center; gap: 16px; padding: 0 14px; }
+.host-columns { height: 36px; border: 1px solid transparent; border-bottom-color: var(--line); color: var(--tx-2); font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+#hosts-body:has(#hosts-empty:not([hidden])) #host-columns,
+.keychain-content:has(#keychain-empty:not([hidden])) #keychain-columns,
+#hosts-body:has(#host-list.card-view) #host-columns,
+.keychain-content:has(.keychain-list.card-view) #keychain-columns { display: none; }
+#host-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.host-cell { min-width: 0; overflow: hidden; color: var(--tx-2); font-size: var(--fs-meta); text-overflow: ellipsis; white-space: nowrap; }
+.host-cell.mono { font-family: var(--font-mono); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.auth-keychain { color: var(--tx-2); }
+.auth-file, .auth-password { color: var(--tx-2); }
 .host-row { position: relative; min-width: 0; min-height: var(--row-h); border: 1px solid var(--line-soft); border-radius: var(--r-2); background: var(--c-surface); transition: background-color var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
 .host-row:hover { border-color: var(--line-strong); background: var(--c-raised); }
 .host-row.active { border-color: var(--ac-line); background: var(--ac-bg); }
-/* 选中标记是贴在左边缘的一道 2px 强调条（原型的 .tr.sel::before）。上下各让开
-   7px，好让它读成「这一段被选中」而不是「左边框变粗了」。 */
-.host-row.active::before { content: ''; position: absolute; top: 7px; bottom: 7px; left: 0; width: 2px; border-radius: 1px; background: var(--ac); }
-.host-main { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 14px; padding: 0; border: 0; border-radius: var(--r-2); background: transparent; color: var(--tx-2); cursor: pointer; text-align: left; user-select: none; }
+.host-row.active::before { content: ''; position: absolute; top: 9px; bottom: 9px; left: 0; width: 2px; border-radius: 1px; background: var(--ac); }
+.host-main { display: flex; align-items: center; justify-content: flex-start; min-width: 0; flex: 1 1 auto; gap: 12px; padding: 0; border: 0; border-radius: var(--r-2); background: transparent; color: var(--tx-2); cursor: pointer; text-align: left; user-select: none; }
 .host-main:hover:not(:disabled) { border-color: transparent; background: transparent; }
-/* In a table the row's box owns the height, not the button inside it: base.css
-   floors every button at 28px, which is under --row-h, so the compact density
-   only moves the token — but this override stays because
-   visual-contract.test.mjs asserts it by name. */
 #host-list:not(.card-view) .host-main { min-height: 0; }
-/* 9px 而不是 --fs-micro：块里现在是两个字母，不是三个。11px 的两个大写字母在
-   20px 的方框里只剩不到 2px 的余量，而「MW」这种宽字母对会贴边。原型也是 8.5px。
-   letter-spacing 取负值，同样是给这一对字母留地方。底色和文字都取 --c-control /
-   --tx-3 —— 原型的 .av 是个安静的灰块，只有选中行里才升到强调色。 */
-.host-avatar { display: grid; flex: 0 0 auto; width: 20px; height: 20px; place-items: center; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: 9px; font-weight: 700; letter-spacing: -0.02em; }
+.host-avatar { display: grid; flex: 0 0 auto; width: 26px; height: 26px; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--c-control); color: var(--tx-2); font-size: 9px; font-weight: 600; letter-spacing: -0.02em; transition: background-color var(--t-2) var(--ease), color var(--t-2) var(--ease); }
 .host-row.active .host-avatar { border-color: transparent; background: var(--ac); color: var(--ac-fg); }
 .host-content { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 6px; }
 .host-top { display: flex; align-items: center; min-width: 0; max-width: 100%; gap: 6px; }
 .host-label { overflow: hidden; color: var(--tx-1); font-size: var(--fs-ui); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-/* 原型的两种徽标是两件东西，这里原来是同一个类在兼两职。
-   .tag 是纯文字标签：没有边框、没有底色、没有内边距，只在 .tag.k 上比正文亮一级。
-   .chip 是带底色的徽标：1px 边框 + 一点点内边距，四种色调各说一件事。 */
+.host-card-address { display: none; }
 .tag { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.1; white-space: nowrap; }
 .tag.k { color: var(--tx-2); }
-.chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: var(--r-1); color: var(--tx-3); font-size: 10.5px; line-height: 1.35; white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: var(--r-1); color: var(--tx-2); font-size: 10.5px; line-height: 1.35; white-space: nowrap; }
 .chip.ok { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
 .chip.err { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
 .chip.warn { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn); }
 .chip.ac { border-color: var(--ac-line); background: var(--ac-bg); color: var(--ac); }
-.host-actions, .file-actions { position: absolute; top: 9px; right: 9px; display: flex; gap: 2px; padding: 0; opacity: 0; transition: opacity var(--t-2) var(--ease); }
-.host-row:hover .host-actions, .host-row.active .host-actions, .file-row:hover .file-actions { opacity: 1; }
-.host-row:focus-within .host-actions, .file-row:focus-within .file-actions { opacity: 1; }
-button.mini { min-height: 22px; padding: 0 6px; border-color: transparent; border-radius: var(--r-1); background: var(--c-control); color: var(--tx-3); font-size: var(--fs-micro); font-weight: 600; }
-button.mini:hover:not(:disabled) { border-color: var(--line); background: var(--c-surface); color: var(--tx-1); }
-button.mini.danger { color: var(--err); }
+/* Actions own a column; revealing them never covers the updated date. */
+.host-actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+.host-actions button { opacity: .65; }
+.host-row:hover .host-actions button, .host-row:focus-within .host-actions button, .host-row.active .host-actions button { opacity: 1; }
+button.mini { min-width: 28px; min-height: 28px; padding: 0 6px; border-color: transparent; border-radius: var(--r-1); background: transparent; color: var(--tx-2); font-size: var(--fs-micro); font-weight: 500; }
+.host-actions .mini { padding: 0; font-size: 15px; }
+button.mini:hover:not(:disabled) { border-color: var(--line-strong); background: var(--c-control); color: var(--tx-1); }
+button.mini.danger { color: var(--tx-2); }
 button.mini.danger:hover:not(:disabled) { border-color: var(--err-line); background: var(--err-bg); color: var(--err); }
-
-@media (max-width: 820px) {
-  .host-columns,
-  #host-list:not(.card-view) .host-row { grid-template-columns: minmax(0,1.6fr) 1fr 24px; }
-  /* Row children are main, address, user, auth, updated, actions — so the two
-     that go are nth-child(3) and (4), and the header drops its third and fourth
-     spans to match. Name, address and the actions stay. The :not(.card-view) is
-     load-bearing: a card grid must keep the shape the card rules gave it. */
+.host-actions [data-act="connect"] { color: var(--ac); opacity: 1; }
+.file-actions { display: flex; justify-content: flex-end; gap: 2px; padding: 0; opacity: 1; }
+.file-row:hover .file-actions, .file-row:focus-within .file-actions { opacity: 1; }
+#host-list.card-view { grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 16px; margin-top: 0; }
+#host-list.card-view .host-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; min-height: 164px; padding: 0; border-radius: var(--r-3); }
+#host-list.card-view .host-main { align-items: flex-start; padding: 22px 20px 18px; border-radius: var(--r-3); }
+#host-list.card-view .host-row .host-cell { display: none; }
+#host-list.card-view .host-card-address { display: block; min-width: 0; overflow: hidden; color: var(--tx-2); font-family: var(--font-mono); font-size: var(--fs-micro); text-overflow: ellipsis; white-space: nowrap; }
+#host-list.card-view .host-avatar { width: 40px; height: 40px; border-radius: var(--r-3); font-size: var(--fs-meta); }
+#host-list.card-view .host-content { gap: 8px; padding-top: 2px; }
+#host-list.card-view .host-actions { align-self: end; padding: 8px 14px; border-top: 1px solid var(--line); background: var(--overlay-soft); }
+@container hosts (max-width: 900px) {
+  .page-head { gap: 10px; }
+  .host-columns, #host-list:not(.card-view) .host-row { grid-template-columns: minmax(100px, 1.2fr) minmax(100px, 1fr) minmax(65px, .7fr) 92px; gap: 12px; }
   #host-list:not(.card-view) .host-row .host-cell:nth-child(3),
   #host-list:not(.card-view) .host-row .host-cell:nth-child(4),
-  .host-columns span:nth-child(3), .host-columns span:nth-child(4) { display: none; }
+  #host-columns span:nth-child(3), #host-columns span:nth-child(4) { display: none; }
 }
-
+@container hosts (max-width: 660px) {
+  .page-head { padding: 24px 0 18px; }
+  .search { order: 2; flex: 1 0 100%; width: 100%; margin-left: 0; }
+  #host-new { margin-left: auto; }
+  .host-columns, #host-list:not(.card-view) .host-row { grid-template-columns: minmax(0, 1fr) 92px; gap: 8px; }
+  #host-list:not(.card-view) .host-row { min-height: max(var(--row-h), 60px); }
+  #host-list:not(.card-view) .host-row .host-cell, #host-columns span:not(:first-child) { display: none; }
+  #host-list:not(.card-view) .host-card-address { display: block; overflow: hidden; color: var(--tx-2); font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .host-content { gap: 4px; }
+}
 @media (max-width: 620px) {
   #main { min-height: 0; overflow: hidden; }
-  #hosts-panel { height: 100%; min-height: 0; overflow: auto; padding: 0 10px 24px; }
-  /* 窄屏上 210px 的搜索框和标题挤不进一行：让它整行折下去（order: 2），而不是
-     把「Hosts」压成省略号。margin-left: auto 从搜索框挪到主按钮上，好让第一行
-     仍是「标题 + 计数 ……… 按钮」。 */
-  .page-head { flex-wrap: wrap; padding: 12px 0 10px; }
-  .search { order: 2; width: 100%; margin-left: 0; }
-  #host-new { margin-left: auto; }
-  #host-list.card-view { gap: 11px; }
+  #hosts-panel { padding: 0 16px 24px; }
+  .page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto 34px; gap: 6px 10px; }
+  .page-head h1 { font-size: 24px; }
+  .page-head h1, .page-head .host-count { grid-column: 1; }
+  .page-head .host-count { grid-row: 2; font-size: 10px; }
+  .page-head > .primary { grid-column: 2; grid-row: 1 / 3; }
+  .page-head > .tool-icon { grid-column: 3; grid-row: 1 / 3; }
+  .page-head .search { grid-column: 1 / -1; grid-row: 3; width: 100%; margin-top: 8px; }
+  #host-list.card-view { gap: 12px; }
+  .host-actions .mini { min-width: 30px; min-height: 38px; }
 }
+@media (hover: none) { .host-actions button, .file-actions { opacity: 1; } }
