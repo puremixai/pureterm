@@ -369,23 +369,46 @@ async function startSessionToolsLiveResizeChecks(): Promise<string[]> {
         const primary = element('session-primary')
         // Do not call settleLayout here: this check must observe automatic
         // ResizeObserver fitting and must not move focus into the terminal itself.
-        await until(() => {
+        const readGeometry = () => {
           const grid = getComputedStyle(content)
-          return grip.getAttribute('aria-orientation') === (narrow ? 'horizontal' : 'vertical') &&
-            tracks(grid.gridTemplateColumns) === (narrow ? 1 : 3) && tracks(grid.gridTemplateRows) === (narrow ? 3 : 1)
-        }, `live ${where} to update the grid axis and separator orientation`)
+          const columns = grid.gridTemplateColumns
+          const rows = grid.gridTemplateRows
+          const box = primary.getBoundingClientRect()
+          const contentBox = content.getBoundingClientRect()
+          const gripBox = grip.getBoundingClientRect()
+          return {
+            columns, rows, box, contentBox, gripBox, panelBox: element('sftp').getBoundingClientRect(),
+            inlineColumns: content.style.gridTemplateColumns, inlineRows: content.style.gridTemplateRows,
+            orientation: grip.getAttribute('aria-orientation'),
+            actualRatio: narrow ? box.height / (contentBox.height - gripBox.height) : box.width / (contentBox.width - gripBox.width),
+          }
+        }
+        let geometry = readGeometry()
+        try {
+          // The CSS default and remembered split both have three tracks. Wait
+          // for the numeric geometry too, rather than accepting the default layout.
+          geometry = await until(() => {
+            geometry = readGeometry()
+            return geometry.orientation === (narrow ? 'horizontal' : 'vertical') &&
+              tracks(geometry.columns) === (narrow ? 1 : 3) && tracks(geometry.rows) === (narrow ? 3 : 1) &&
+              Math.abs(geometry.actualRatio - ratio) < 0.015 ? geometry : null
+          }, `live ${where} to draw the remembered split on the current grid axis`)
+        } catch (error) {
+          throw new Error(`${error instanceof Error ? error.message : String(error)}; ${JSON.stringify({
+            ...geometry, expectedRatio: ratio, storedRatio: connected.split, value: grip.getAttribute('aria-valuenow'),
+            viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio },
+            narrow: window.matchMedia('(max-width: 820px)').matches, tool: client.context.clientSessionTools.activeTool,
+            panelHidden: element('session-tool-panel').hidden, focus: document.activeElement?.id,
+            terminal: { cols: terminalView.cols, rows: terminalView.rows, resizes: app.stats.resizes.length, latest: app.stats.resizes.at(-1) },
+          })}`)
+        }
         assert((narrow ? content.style.gridTemplateColumns : content.style.gridTemplateRows) === '',
           `live ${where} clears the stale inline grid axis`)
         assert(terminal.active === connected && connected.sessionId === sessionId && connected.terminal === terminalView && app.stats.opens === 1,
           `live ${where} preserves the tab, SSH session and xterm instance`)
         assert(connected.split === ratio && grip.getAttribute('aria-valuenow') === String(Math.round(ratio * 100)),
           `live ${where} preserves the user-selected split ratio`)
-        const box = primary.getBoundingClientRect()
-        const contentBox = content.getBoundingClientRect()
-        const gripBox = grip.getBoundingClientRect()
-        const actualRatio = narrow ? box.height / (contentBox.height - gripBox.height) : box.width / (contentBox.width - gripBox.width)
-        assert(Math.abs(actualRatio - ratio) < 0.015, `live ${where} draws the remembered ratio (${actualRatio.toFixed(3)} vs ${ratio.toFixed(3)})`)
-        const panelBox = element('sftp').getBoundingClientRect()
+        const { box, contentBox, panelBox } = geometry
         assert(panelBox.left >= contentBox.left - 1 && panelBox.top >= contentBox.top - 1 &&
           panelBox.right <= contentBox.right + 1 && panelBox.bottom <= contentBox.bottom + 1,
         `live ${where} keeps Files inside the split content`)
