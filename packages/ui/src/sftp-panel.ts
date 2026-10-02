@@ -146,9 +146,7 @@ export function createSftpPanel(root: HTMLElement, handlers: SftpHandlers): Sftp
   const columns = document.createElement('div')
   columns.id = 'sftp-columns'
   columns.className = 'file-columns'
-  // 列标题只是给眼睛对齐用的；每一行自己带完整语义，所以这里不重复播报。
-  // 五个空格子对应「名称 / 大小 / 模式 / 修改时间 / 动作」那五列 —— 标题本身不画，
-  // 所以这里没有文字可翻。
+  // Visible headings explain the numeric fields; rows carry their own semantics.
   columns.setAttribute('aria-hidden', 'true')
   for (let column = 0; column < 5; column += 1) columns.append(document.createElement('span'))
 
@@ -362,6 +360,9 @@ const buildCrumbs = (path: string): HTMLElement[] => {
   function paintChrome(): void {
     title.textContent = t('sftp.title')
     pathInput.placeholder = t('sftp.path.placeholder')
+    pathInput.setAttribute('aria-label', t('sftp.crumbs'))
+    const headings = [t('sftp.column.name'), t('sftp.column.size'), t('sftp.column.mode'), t('sftp.column.time'), '']
+    for (const [index, heading] of headings.entries()) columns.children[index]!.textContent = heading
     upButton.textContent = t('sftp.up')
     refreshButton.textContent = t('common.refresh')
     mkdirButton.textContent = t('sftp.mkdir')

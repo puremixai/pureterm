@@ -88,6 +88,93 @@ export async function runSessionToolsLayoutChecks(options: SessionToolsLayoutOpt
     assert(document.documentElement.dataset.theme === options.theme, say('the requested theme is on the root'))
     assert(document.documentElement.dataset.locale === options.locale, say('the requested locale is on the root'))
 
+    const assertNoDocumentOverflow = (state: string): void => {
+      const root = document.documentElement
+      assert(root.scrollWidth <= window.innerWidth + 1 && root.scrollHeight <= window.innerHeight + 1,
+        say(`${state} keeps scrolling inside the workspace (${layoutContext()})`))
+    }
+    const inside = (box: DOMRect, bounds: DOMRect): boolean =>
+      box.width > 0 && box.height > 0 && box.left >= bounds.left - 1 && box.top >= bounds.top - 1 &&
+      box.right <= bounds.right + 1 && box.bottom <= bounds.bottom + 1
+    const assertReachable = (control: HTMLElement, state: string): void => {
+      const box = control.getBoundingClientRect()
+      assert(box.width > 0 && box.height > 0 && box.left >= 0 && box.top >= 0 &&
+        box.right <= window.innerWidth + 1 && box.bottom <= window.innerHeight + 1,
+      say(`${state} keeps #${control.id} inside the viewport (${formatBox(box)})`))
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      assert(!!hit && control.contains(hit), say(`${state} leaves #${control.id} uncovered and reachable`))
+    }
+    const assertPreferences = (state: string): void => {
+      for (const id of ['theme-toggle', 'density-toggle', 'locale-toggle']) {
+        const control = element<HTMLButtonElement>(id)
+        assertReachable(control, state)
+        control.focus()
+        assert(document.activeElement === control, say(`${state} allows keyboard focus on #${id}`))
+      }
+    }
+    const assertHostColumns = (state: string): void => {
+      const columns = element('host-columns')
+      const row = document.querySelector<HTMLElement>('.host-row')!
+      assert(!!row && getComputedStyle(columns).display !== 'none', say(`${state} has a saved host table`))
+      const rowBox = row.getBoundingClientRect()
+      const rowCenter = rowBox.top + rowBox.height / 2
+      const headerCenter = columns.getBoundingClientRect().top + columns.getBoundingClientRect().height / 2
+      for (let index = 0; index < 5; index += 1) {
+        const header = columns.children[index] as HTMLElement
+        const cell = row.children[index] as HTMLElement
+        const headerVisible = getComputedStyle(header).display !== 'none'
+        const cellVisible = getComputedStyle(cell).display !== 'none'
+        assert(headerVisible === cellVisible, say(`${state} hides column ${index + 1} together with its heading`))
+        if (!headerVisible) continue
+        const headerBox = header.getBoundingClientRect()
+        const cellBox = cell.getBoundingClientRect()
+        assert(Math.abs(headerBox.left - cellBox.left) <= 1 && Math.abs(headerBox.width - cellBox.width) <= 1,
+          say(`${state} aligns column ${index + 1} (${formatBox(headerBox)} / ${formatBox(cellBox)})`))
+        assert(Math.abs(headerBox.top + headerBox.height / 2 - headerCenter) <= 1 &&
+          Math.abs(cellBox.top + cellBox.height / 2 - rowCenter) <= 1,
+        say(`${state} keeps column ${index + 1} on the same row instead of an implicit extra grid row`))
+        assert(inside(cellBox, rowBox), say(`${state} keeps column ${index + 1} inside its saved host row`))
+      }
+      for (const action of row.querySelectorAll<HTMLElement>('[data-act]')) {
+        assert(inside(action.getBoundingClientRect(), rowBox), say(`${state} keeps ${action.dataset.act} inside its action column`))
+      }
+    }
+
+    const mainBox = element('main').getBoundingClientRect()
+    assert(mainBox.height > window.innerHeight / 2 && mainBox.width > 0,
+      say(`the workspace has a definite usable size (${formatBox(mainBox)})`))
+    assert(inside(element('hosts-panel').getBoundingClientRect(), mainBox), say('the host library fits the workspace'))
+    assertPreferences('host library')
+    assertHostColumns('host library')
+    assertNoDocumentOverflow('host library')
+    checks.push('saved host headings and rows align without implicit columns or document overflow; preferences remain reachable')
+
+    element('host-new').click()
+    const editor = element('connection-workspace')
+    // Measure the resting layout after the entry motion finishes.
+    await Promise.all(editor.getAnimations().map(animation => animation.finished.catch(() => {})))
+    const editorBox = editor.getBoundingClientRect()
+    assert(inside(editorBox, element('main').getBoundingClientRect()) && editorBox.height >= mainBox.height - 1,
+      say(`the editor occupies the workspace height and stays inside its bounds (${formatBox(editorBox)} within ${formatBox(element('main').getBoundingClientRect())})`))
+    for (const id of ['connection-close', 'host-save', 'connect']) assertReachable(element(id), 'host editor')
+    const fields = editor.querySelector<HTMLElement>('.drawer-scroll')!
+    const footer = editor.querySelector<HTMLElement>('.drawer-footer')!
+    const fieldsBox = fields.getBoundingClientRect()
+    assert(fieldsBox.height > 0 && fieldsBox.bottom <= footer.getBoundingClientRect().top + 1,
+      say('scrollable host fields leave the editor footer reachable'))
+    assert(getComputedStyle(fields).overflowY === 'auto', say('host fields own their vertical scroll'))
+    fields.scrollTop = fields.scrollHeight
+    if (fields.scrollHeight > fields.clientHeight + 1) {
+      assert(fields.scrollTop > 0, say('overflowing host fields can be scrolled inside the editor'))
+    }
+    assertPreferences('host editor')
+    if (window.innerWidth > 900) assertHostColumns('docked host editor')
+    assertNoDocumentOverflow('host editor')
+    element('connection-close').click()
+    assert(editor.hidden, say('the visible editor close action returns to the host library'))
+    assert(sameBox(mainBox, element('main').getBoundingClientRect()), say('closing the editor preserves the workspace bounds'))
+    checks.push('the host editor has bounded height, scrollable fields, reachable footer and close controls')
+
     // 工作区在有会话之前是 hidden 的，量到的会是一个 0×0 的盒子，所以先连上再量。
     fill()
     element('connect').click()
@@ -95,6 +182,8 @@ export async function runSessionToolsLayoutChecks(options: SessionToolsLayoutOpt
     await terminal.settleLayout()
 
     const connected = terminal.active!
+    assertPreferences('terminal session')
+    assertNoDocumentOverflow('terminal session')
     assert(connected.terminal.cols > 0 && connected.terminal.rows > 0,
       say(`the real terminal reports a positive size, got ${connected.terminal.cols}x${connected.terminal.rows}`))
     checks.push('a real xterm reports positive columns and rows')
@@ -119,6 +208,8 @@ export async function runSessionToolsLayoutChecks(options: SessionToolsLayoutOpt
     element('sftp-toggle').click()
     await terminal.settleLayout()
     assert(!element('sftp').hidden, say('Files opens into the shared slot'))
+    assert(inside(element('sftp').getBoundingClientRect(), workspace.getBoundingClientRect()),
+      say(`Files stays inside the terminal workspace (${formatBox(element('sftp').getBoundingClientRect())} within ${formatBox(workspace.getBoundingClientRect())})`))
     assert(grip.getAttribute('aria-orientation') === (narrow ? 'horizontal' : 'vertical'), say('the grip follows the active axis'))
     const grid = getComputedStyle(content)
     const columnTracks = tracks(grid.gridTemplateColumns)
@@ -137,23 +228,33 @@ export async function runSessionToolsLayoutChecks(options: SessionToolsLayoutOpt
     element('monitor-toggle').click()
     await terminal.settleLayout()
     assert(!element('session-monitor').hidden && element('sftp').hidden, say('Monitor replaces Files in the one slot'))
+    assert(inside(element('session-monitor').getBoundingClientRect(), workspace.getBoundingClientRect()),
+      say(`Monitor stays inside the terminal workspace (${formatBox(element('session-monitor').getBoundingClientRect())} within ${formatBox(workspace.getBoundingClientRect())})`))
     assert(sameBox(collapsedRail, rail.getBoundingClientRect()),
       say(`the rail does not move when the tool switches (${formatBox(collapsedRail)} -> ${formatBox(rail.getBoundingClientRect())}; ${layoutContext()})`))
     assert(getComputedStyle(element('monitor-body')).overflowY === 'auto', say('the monitor body owns its own scroll'))
     checks.push('switching to Monitor keeps the rail in place and scrolls inside its own body')
 
+    grip.dispatchEvent(new KeyboardEvent('keydown', { key: narrow ? 'ArrowUp' : 'ArrowLeft', shiftKey: true, bubbles: true, cancelable: true }))
+    await terminal.settleLayout()
+    assert(grip.getAttribute('aria-valuenow') === '47', say('the keyboard splitter moves the user ratio away from its default'))
+
     element('monitor-toggle').click()
     await terminal.settleLayout()
     assert(element('session-tool-panel').hidden && grip.hidden, say('collapsing hides the slot and the grip'))
     assert(sameBox(collapsedPrimary, primary.getBoundingClientRect()),
-      say(`collapsing restores the terminal box (${formatBox(collapsedPrimary)} -> ${formatBox(primary.getBoundingClientRect())}; ${layoutContext()})`))
-    checks.push('collapsing restores the terminal box and hides the slot and grip')
+      say(`collapsing a user-adjusted split restores the terminal box (${formatBox(collapsedPrimary)} -> ${formatBox(primary.getBoundingClientRect())}; ${layoutContext()})`))
+    assert(content.style.gridTemplateColumns === '' && content.style.gridTemplateRows === '',
+      say('collapsing clears both inline grid axes'))
+    assert(connected.split !== null, say('collapsing retains the tab\'s user ratio for reopening'))
+    checks.push('collapsing a user-adjusted split restores the full terminal box and hides the slot and grip')
 
     // 展开／收起只是重新适配同一块 xterm，不能开第二条 SSH，也不能换终端对象。
     const sessionId = connected.sessionId
     const terminalView = connected.terminal
     element('sftp-toggle').click()
     await terminal.settleLayout()
+    assert(grip.getAttribute('aria-valuenow') === '47', say('reopening restores the tab\'s user-adjusted ratio'))
     assert(connected.sessionId === sessionId && connected.terminal === terminalView,
       say('opening a tool preserves the session and the xterm'))
     assert(app.stats.opens === 1, say(`no tool switch opens another SSH session (opens=${app.stats.opens})`))
@@ -199,4 +300,168 @@ export async function runSessionToolsLayoutChecks(options: SessionToolsLayoutOpt
   }
 }
 
-Object.assign(window, { runSessionToolsLayoutChecks })
+type DragCheck = 'captured' | 'cancelled' | 'moved'
+let liveResize: {
+  check(): Promise<string[]>
+  dragTarget(): { x: number; y: number }
+  checkDrag(stage: DragCheck): Promise<string[]>
+  dispose(): Promise<void>
+} | null = null
+
+/** Electron changes the viewport between checks while this Client stays mounted. */
+async function startSessionToolsLiveResizeChecks(): Promise<string[]> {
+  assert(liveResize === null, 'the live-resize fixture must start unmounted')
+  localStorage.setItem('pureterm.chrome', JSON.stringify({ theme: 'dark', locale: 'en' }))
+  const app = fixture()
+  const client = createClient({ api: app.api })
+  try {
+    assert((await client.ready).ok, 'the live-resize client reached readiness')
+    await document.fonts.ready
+    fill()
+    element('connect').click()
+    const terminal = client.context.clientTerminal
+    await until(() => terminal.active?.state === 'connected', 'the live-resize session to connect')
+    await terminal.settleLayout()
+    const connected = terminal.active!
+    const sessionId = connected.sessionId
+    const terminalView = connected.terminal
+    element('sftp-toggle').click()
+    await terminal.settleLayout()
+    const grip = element('session-grip')
+    grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true, cancelable: true }))
+    await terminal.settleLayout()
+    let ratio = connected.split!
+    const focused = await until(() => document.getElementById('sftp-refresh'), 'the Files refresh control')
+    focused.focus()
+    assert(document.activeElement === focused, 'the Files control starts with keyboard focus')
+    let previous: { box: DOMRect; cols: number; rows: number; resizes: number } | null = null
+    let pointerId: number | null = null
+    let dragStartRatio = ratio
+    liveResize = {
+      dispose: () => client.dispose(),
+      dragTarget() {
+        pointerId = null
+        dragStartRatio = connected.split!
+        grip.addEventListener('pointerdown', event => { pointerId = event.pointerId }, { once: true })
+        const box = grip.getBoundingClientRect()
+        return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) }
+      },
+      async checkDrag(stage) {
+        if (stage === 'captured') {
+          await until(() => pointerId !== null && grip.hasPointerCapture(pointerId), 'a real pointer drag to capture the splitter')
+          return ['a real pointer drag captures the splitter']
+        }
+        assert(pointerId !== null, 'the pointer check follows a real pointerdown')
+        await until(() => !grip.hasPointerCapture(pointerId!), 'the splitter to release pointer capture')
+        if (stage === 'cancelled') {
+          assert(connected.split === dragStartRatio, 'crossing the breakpoint cancels the old-axis drag before later pointer movement')
+          return ['crossing the breakpoint releases capture and ignores movement from the old-axis drag']
+        }
+        await until(() => connected.split !== null && connected.split > dragStartRatio + 0.025,
+          'a fresh pointer drag to move the separator on its new axis')
+        ratio = connected.split!
+        return ['a fresh drag on the new axis adjusts the split and releases capture on pointerup']
+      },
+      async check() {
+        const where = `${window.innerWidth}x${window.innerHeight}`
+        const narrow = window.innerWidth <= 820
+        const content = element('session-content')
+        const primary = element('session-primary')
+        // Do not call settleLayout here: this check must observe automatic
+        // ResizeObserver fitting and must not move focus into the terminal itself.
+        const readGeometry = () => {
+          const grid = getComputedStyle(content)
+          const columns = grid.gridTemplateColumns
+          const rows = grid.gridTemplateRows
+          const box = primary.getBoundingClientRect()
+          const contentBox = content.getBoundingClientRect()
+          const gripBox = grip.getBoundingClientRect()
+          return {
+            columns, rows, box, contentBox, gripBox, panelBox: element('sftp').getBoundingClientRect(),
+            inlineColumns: content.style.gridTemplateColumns, inlineRows: content.style.gridTemplateRows,
+            orientation: grip.getAttribute('aria-orientation'),
+            actualRatio: narrow ? box.height / (contentBox.height - gripBox.height) : box.width / (contentBox.width - gripBox.width),
+          }
+        }
+        let geometry = readGeometry()
+        try {
+          // The CSS default and remembered split both have three tracks. Wait
+          // for the numeric geometry too, rather than accepting the default layout.
+          geometry = await until(() => {
+            geometry = readGeometry()
+            return geometry.orientation === (narrow ? 'horizontal' : 'vertical') &&
+              tracks(geometry.columns) === (narrow ? 1 : 3) && tracks(geometry.rows) === (narrow ? 3 : 1) &&
+              Math.abs(geometry.actualRatio - ratio) < 0.015 ? geometry : null
+          }, `live ${where} to draw the remembered split on the current grid axis`)
+        } catch (error) {
+          throw new Error(`${error instanceof Error ? error.message : String(error)}; ${JSON.stringify({
+            ...geometry, expectedRatio: ratio, storedRatio: connected.split, value: grip.getAttribute('aria-valuenow'),
+            viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio },
+            narrow: window.matchMedia('(max-width: 820px)').matches, tool: client.context.clientSessionTools.activeTool,
+            panelHidden: element('session-tool-panel').hidden, focus: document.activeElement?.id,
+            terminal: { cols: terminalView.cols, rows: terminalView.rows, resizes: app.stats.resizes.length, latest: app.stats.resizes.at(-1) },
+          })}`)
+        }
+        assert((narrow ? content.style.gridTemplateColumns : content.style.gridTemplateRows) === '',
+          `live ${where} clears the stale inline grid axis`)
+        assert(terminal.active === connected && connected.sessionId === sessionId && connected.terminal === terminalView && app.stats.opens === 1,
+          `live ${where} preserves the tab, SSH session and xterm instance`)
+        assert(connected.split === ratio && grip.getAttribute('aria-valuenow') === String(Math.round(ratio * 100)),
+          `live ${where} preserves the user-selected split ratio`)
+        const { box, contentBox, panelBox } = geometry
+        assert(panelBox.left >= contentBox.left - 1 && panelBox.top >= contentBox.top - 1 &&
+          panelBox.right <= contentBox.right + 1 && panelBox.bottom <= contentBox.bottom + 1,
+        `live ${where} keeps Files inside the split content`)
+        if (previous) {
+          const before = previous
+          await until(() => app.stats.resizes.length > before.resizes &&
+            (Math.abs(box.width - before.box.width) < 1 || (box.width > before.box.width ? terminalView.cols > before.cols : terminalView.cols < before.cols)) &&
+            (Math.abs(box.height - before.box.height) < 1 || (box.height > before.box.height ? terminalView.rows > before.rows : terminalView.rows < before.rows)),
+          `live ${where} to automatically fit xterm to its changed width and height`)
+        }
+        assert(terminalView.cols > 0 && terminalView.rows > 0, `live ${where} has a positive terminal size`)
+        const latest = app.stats.resizes.at(-1)!
+        assert(latest.sessionId === sessionId && latest.cols === terminalView.cols && latest.rows === terminalView.rows,
+          `live ${where} reports the fitted dimensions to the same SSH session`)
+        // Include the existing 250ms layout fallback window when checking focus.
+        await new Promise(resolve => setTimeout(resolve, 300))
+        assert(document.activeElement === focused, `live ${where} keeps keyboard focus in Files after resize work settles`)
+        assert(document.documentElement.scrollWidth <= window.innerWidth + 1 && document.documentElement.scrollHeight <= window.innerHeight + 1,
+          `live ${where} has no document overflow`)
+        previous = { box, cols: terminalView.cols, rows: terminalView.rows, resizes: app.stats.resizes.length }
+        return [`live ${where} preserves the adjusted split, session and focus while switching grid axes and automatically fitting xterm`]
+      },
+    }
+    return await liveResize.check()
+  } catch (error) {
+    liveResize = null
+    await client.dispose()
+    throw error
+  }
+}
+
+async function checkSessionToolsLiveResize(): Promise<string[]> {
+  assert(liveResize !== null, 'the live-resize fixture must be mounted')
+  return liveResize!.check()
+}
+
+async function disposeSessionToolsLiveResize(): Promise<void> {
+  const active = liveResize
+  liveResize = null
+  await active?.dispose()
+}
+
+function sessionToolsLiveDragTarget(): { x: number; y: number } {
+  assert(liveResize !== null, 'the live-resize fixture must be mounted')
+  return liveResize!.dragTarget()
+}
+
+async function checkSessionToolsLiveDrag(stage: DragCheck): Promise<string[]> {
+  assert(liveResize !== null, 'the live-resize fixture must be mounted')
+  return liveResize!.checkDrag(stage)
+}
+
+Object.assign(window, {
+  runSessionToolsLayoutChecks, startSessionToolsLiveResizeChecks, checkSessionToolsLiveResize,
+  disposeSessionToolsLiveResize, sessionToolsLiveDragTarget, checkSessionToolsLiveDrag,
+})

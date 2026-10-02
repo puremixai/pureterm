@@ -58,13 +58,14 @@ export class ClientKeychain extends Service {
       this.renderEditor()
       this.paintNotice()
       this.render()
+      this.renderViewToggle()
     })
     this.scope.listen(this.el('keychain-new'), 'click', () => this.edit())
     this.scope.listen(this.el('keychain-close'), 'click', () => this.close())
     this.scope.listen(this.el('keychain-search'), 'input', () => this.render())
     this.scope.listen(this.el('keychain-view'), 'click', () => {
-      const cards = this.el('keychain-list').classList.toggle('card-view')
-      this.el('keychain-view').setAttribute('aria-pressed', String(cards))
+      this.el('keychain-list').classList.toggle('card-view')
+      this.renderViewToggle()
     })
     this.scope.listen(this.el('keychain-editor'), 'submit', event => { event.preventDefault(); void this.save() })
     this.scope.listen(this.el('keychain-delete'), 'click', () => void this.remove())
@@ -191,6 +192,18 @@ export class ClientKeychain extends Service {
       this.ctx.emit('client/keychain-change')
     } catch (error) { if (this.scope.alive && revision === this.listRevision) this.notice(errorMessage(error), true) }
     finally { if (this.scope.alive && revision === this.listRevision) this.el('keychain-list').setAttribute('aria-busy', 'false') }
+  }
+
+  private renderViewToggle(): void {
+    const cards = this.el('keychain-list').classList.contains('card-view')
+    const button = this.el('keychain-view')
+    const key = cards ? 'keys.view-toggle-list' : 'keys.view-toggle'
+    const label = t(key)
+    button.dataset.i18nAttr = `aria-label:${key};title:${key}`
+    button.setAttribute('aria-pressed', String(cards))
+    button.setAttribute('aria-label', label)
+    button.title = label
+    button.firstElementChild!.className = `ti ${cards ? 'ti-list' : 'ti-layout-grid'}`
   }
 
   private render(): void {

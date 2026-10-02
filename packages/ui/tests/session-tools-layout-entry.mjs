@@ -23,9 +23,11 @@ const VIEWPORTS = [
   { width: 820, height: 600 },
   { width: 800, height: 600 },
   { width: 640, height: 480 },
+  { width: 620, height: 760 },
+  { width: 390, height: 844 },
+  { width: 360, height: 800 },
 ]
-// 每个视口都跑一遍深色英文；宽屏和窄屏各再补齐另一种主题与语言。这样规定的视口、
-// 两种主题和两种语言都覆盖到了，又不用把 6×2×2 的组合全部重挂一遍。
+// 每个视口都跑一遍深色英文；移动端补齐浅色，宽屏和窄屏再补齐另一种语言。
 const CASES = [
   ...VIEWPORTS.map(viewport => ({ ...viewport, theme: 'dark', locale: 'en' })),
   { width: 1280, height: 800, theme: 'light', locale: 'en' },
@@ -33,9 +35,39 @@ const CASES = [
   { width: 1280, height: 800, theme: 'light', locale: 'zh' },
   { width: 800, height: 600, theme: 'light', locale: 'en' },
   { width: 800, height: 600, theme: 'dark', locale: 'zh' },
+  { width: 820, height: 600, theme: 'light', locale: 'en' },
+  { width: 620, height: 760, theme: 'light', locale: 'en' },
+  { width: 390, height: 844, theme: 'light', locale: 'en' },
+  { width: 360, height: 800, theme: 'light', locale: 'en' },
 ]
 
 let window
+async function resizeViewport(width, height, { settle = true } = {}) {
+  window.setContentSize(width, height)
+  const sized = await window.webContents.executeJavaScript(`(async () => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (window.innerWidth === ${width} && window.innerHeight === ${height}) return { ok: true };
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    return { ok: false, width: window.innerWidth, height: window.innerHeight };
+  })()`)
+  if (!sized.ok) throw new Error(`content viewport never reached ${width}x${height}, stayed at ${sized.width}x${sized.height}`)
+  if (settle) {
+    // innerWidth/innerHeight can update before CSS viewport units and layout.
+    // Static geometry cases begin after two renderer frames have completed.
+    await window.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+      let frame;
+      const timeout = setTimeout(() => {
+        cancelAnimationFrame(frame);
+        reject(new Error('renderer frames did not settle the ${width}x${height} viewport'));
+      }, 5000);
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => { clearTimeout(timeout); resolve(); });
+      });
+    })`)
+  }
+}
+
 async function main() {
   try {
     await app.whenReady()
@@ -43,26 +75,57 @@ async function main() {
       webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } })
     window.webContents.on('console-message', event => console.log('[SESSION-TOOLS-RENDERER] ' + event.message))
     let total = 0
+    // The same document and connected Client cross the breakpoint twice.
+    // Reloading for each size cannot expose stale inline split tracks or focus loss.
+    await window.loadFile(process.env.PURETERM_LAYOUT_TEST_HTML)
+    await resizeViewport(1280, 800)
+    try {
+      const record = checks => {
+        for (const check of checks) {
+          console.log(`[SESSION-TOOLS-LAYOUT] ${check}`)
+          total += 1
+        }
+      }
+      const pointerDown = async () => {
+        const point = await window.webContents.executeJavaScript('window.sessionToolsLiveDragTarget()')
+        window.webContents.sendInputEvent({ type: 'mouseMove', ...point })
+        window.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...point })
+        record(await window.webContents.executeJavaScript("window.checkSessionToolsLiveDrag('captured')"))
+        return point
+      }
+      record(await window.webContents.executeJavaScript('window.startSessionToolsLiveResizeChecks()'))
+      const oldAxis = await pointerDown()
+      // Keep the live path unsynchronized so old-axis input can arrive before
+      // the media-query change callback and exercise the production guard.
+      await resizeViewport(800, 600, { settle: false })
+      const staleMove = { x: oldAxis.x + 80, y: oldAxis.y }
+      window.webContents.sendInputEvent({ type: 'mouseMove', modifiers: ['leftbuttondown'], ...staleMove })
+      record(await window.webContents.executeJavaScript("window.checkSessionToolsLiveDrag('cancelled')"))
+      window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...staleMove })
+      record(await window.webContents.executeJavaScript('window.checkSessionToolsLiveResize()'))
+      const newAxis = await pointerDown()
+      const freshMove = { x: newAxis.x, y: newAxis.y + 40 }
+      window.webContents.sendInputEvent({ type: 'mouseMove', modifiers: ['leftbuttondown'], ...freshMove })
+      window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...freshMove })
+      record(await window.webContents.executeJavaScript("window.checkSessionToolsLiveDrag('moved')"))
+      record(await window.webContents.executeJavaScript('window.checkSessionToolsLiveResize()'))
+      await resizeViewport(1280, 800, { settle: false })
+      record(await window.webContents.executeJavaScript('window.checkSessionToolsLiveResize()'))
+    } finally {
+      await window.webContents.executeJavaScript('window.disposeSessionToolsLiveResize()')
+    }
     for (const testCase of CASES) {
-      // 每个用例都重新加载一次页面。夹具是按 id 找元素的，一个文档里连着挂十一个客户端
+      // 每个用例都重新加载一次页面。夹具是按 id 找元素的，一个文档里连着挂多个客户端
       // 会把上一个用例留下的类名、失败文案和焦点带进下一个用例 —— 本地字宽下看不出来，
       // 换一套字体度量就会让几何断言在第二个用例上翻车。真实应用每次都是从空文档启动的。
       await window.loadFile(process.env.PURETERM_LAYOUT_TEST_HTML)
-      window.setContentSize(testCase.width, testCase.height)
-      const sized = await window.webContents.executeJavaScript(`(async () => {
-        for (let attempt = 0; attempt < 200; attempt += 1) {
-          if (window.innerWidth === ${testCase.width} && window.innerHeight === ${testCase.height}) return { ok: true };
-          await new Promise(resolve => setTimeout(resolve, 10));
-        }
-        return { ok: false, width: window.innerWidth, height: window.innerHeight };
-      })()`)
-      if (!sized.ok) throw new Error(`content viewport never reached ${testCase.width}x${testCase.height}, stayed at ${sized.width}x${sized.height}`)
+      await resizeViewport(testCase.width, testCase.height)
       const checks = await window.webContents.executeJavaScript(
         `window.runSessionToolsLayoutChecks(${JSON.stringify({ theme: testCase.theme, locale: testCase.locale })})`)
       for (const check of checks) console.log(`[SESSION-TOOLS-LAYOUT] ${testCase.width}x${testCase.height} ${testCase.theme}/${testCase.locale} ${check}`)
       total += checks.length
     }
-    console.log(`[SESSION-TOOLS-LAYOUT] ${total} measurements across ${CASES.length} viewport, theme and language cases`)
+    console.log(`[SESSION-TOOLS-LAYOUT] ${total} measurements across ${CASES.length} viewport, theme and language cases plus one live resize sequence`)
     console.log('[SMOKE-OK] styled terminal tools layout')
     window.destroy()
     app.exit(0)

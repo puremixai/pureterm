@@ -43,10 +43,39 @@ kbd { flex: 0 0 auto; padding: 2px 5px; border: 1px solid var(--line-strong); bo
 .empty p { margin: 0; }
 /* 结论在上、说明在下、动作最后 —— 原型的 .es 就是这个顺序，而「下一步按哪个键」
    必须留在这块里，用户不该回到工具栏去找它。 */
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 118px; padding: 16px; border: 1px dashed var(--line-strong); border-radius: var(--r-2); color: var(--tx-3); text-align: center; }
-.empty-state p { display: flex; flex-direction: column; gap: 2px; margin: 0; }
-.empty-state b { color: var(--tx-2); font-size: var(--fs-meta); font-weight: 500; }
-.empty-state span { color: var(--tx-3); font-size: var(--fs-micro); line-height: 1.5; }
+.empty-state { display: flex; align-items: center; justify-content: center; gap: clamp(24px, 5vw, 80px); min-height: min(440px, 60vh); padding: 48px 24px; color: var(--tx-2); }
+.empty-copy { flex: 0 1 360px; min-width: 0; }
+.empty-symbol { display: inline-grid; place-items: center; width: 38px; height: 38px; margin-bottom: 24px; border: 1px solid var(--ac-line); border-radius: var(--r-3); background: var(--ac-bg); color: var(--ac); font-size: 20px; }
+.empty-state p { display: flex; flex-direction: column; gap: 14px; margin: 0; }
+.empty-state b { max-width: 20ch; color: var(--tx-1); font-size: clamp(24px, 2.5vw, 32px); line-height: 1.2; letter-spacing: -.035em; font-weight: 500; text-wrap: balance; }
+.empty-state p span { max-width: 38ch; color: var(--tx-2); font-size: var(--fs-ui); line-height: 1.8; }
+.empty-copy > button { min-height: 36px; margin-top: 24px; padding: 0 16px; border-radius: var(--r-2); }
+.connection-art { flex: 0 1 360px; width: 40%; max-width: 360px; overflow: visible; animation: workspace-enter 600ms var(--ease) both; }
+.art-guide { stroke: var(--line-soft); stroke-width: .7; stroke-dasharray: 2 6; }
+.art-route { stroke: var(--ac-line); stroke-width: 1.5; }
+.art-machine { stroke: var(--line-strong); fill: var(--c-surface); }
+.art-prompt { stroke: var(--ac); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.art-base { stroke: var(--line-strong); stroke-width: 1.5; stroke-linecap: round; }
+.art-server { stroke: var(--line-strong); fill: var(--c-surface); }
+.art-port { fill: var(--ac); }
+.art-junction { fill: var(--c-canvas); stroke: var(--ac); stroke-width: 1.5; }
+.empty-state.is-filtered { text-align: center; }
+.is-filtered .empty-copy { flex-basis: 400px; }
+.is-filtered p { align-items: center; }
+.is-filtered .connection-art { display: none; }
+@keyframes workspace-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.connection-workspace:not([hidden]), .keychain-editor:not([hidden]) { animation: inspector-enter var(--t-3) var(--ease); }
+.shortcuts-dialog[open] { animation: workspace-enter var(--t-2) var(--ease); }
+@keyframes inspector-enter { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+@container hosts (max-width: 660px) {
+  .empty-state { flex-direction: column-reverse; gap: 28px; min-height: 0; padding: 28px 0; text-align: center; }
+  .empty-copy { flex: 0 1 auto; }
+  .empty-symbol { display: none; }
+  .empty-state p { align-items: center; }
+  .connection-art { flex: 0 1 auto; width: 240px; max-width: 80%; }
+  .empty-state b { font-size: 26px; }
+  .is-filtered .empty-copy { flex-basis: auto; }
+}
 /* 骨架行的高就是真行的高（--row-h 跟着密度走），所以数据到了以后没有一行会跳。
    条子 22px，剩下的空隙是行自己的。 */
 .skeleton-row { display: flex; min-height: var(--row-h); align-items: center; padding: 0 10px; border: 1px solid var(--line-soft); border-radius: var(--r-2); background: var(--c-surface); }
@@ -57,8 +86,8 @@ kbd { flex: 0 0 auto; padding: 2px 5px; border: 1px solid var(--line-strong); bo
 @keyframes skeleton-shimmer { to { background-position: -200% 0; } }
 /* 两种底色两种恢复：--err 说「这个没成，再试一次」，--warn 说「这部分功能是关着的，
    剩下的没在骗你」。 */
-.list-error { display: flex; gap: 8px; align-items: flex-start; margin: 0 12px 14px; padding: 9px 11px; border: 1px solid var(--err-line); border-radius: var(--r-2); background: var(--err-bg); }
-.list-error.is-warn { border-color: var(--warn-line); background: var(--warn-bg); }
+.list-error { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 20px; padding: 10px 12px; border: 1px solid var(--err-line); border-radius: var(--r-2); background: var(--err-bg); line-height: 1.65; }
+.list-error.is-warn { border-color: var(--line); border-left: 2px solid var(--warn); background: var(--c-surface); color: var(--tx-2); font-size: var(--fs-meta); }
 .list-error-title { display: block; color: var(--tx-1); font-size: var(--fs-meta); font-weight: 500; }
 .list-error-detail { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--tx-2); font-family: var(--font-mono); font-size: var(--fs-micro); }
 .list-error button { flex: 0 0 auto; }

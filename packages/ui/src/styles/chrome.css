@@ -87,14 +87,15 @@
 .workspace-mark {
   display: grid;
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   place-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-1);
-  background: var(--c-control);
+  border: 1px solid var(--ac-line);
+  border-radius: var(--r-2);
+  background: var(--ac-bg);
   color: var(--ac);
 }
+.workspace-mark svg { width: 13px; height: 13px; }
 
 /* 原型 .brand 是一行：[mark] PureTerm / Vault —— 品牌名和它的分区名并排，不是
    上下两行。原来那套 column + gap 1px 是 Plan 1 的「标题 + 副标题」语言留下的，
@@ -156,13 +157,6 @@
   .app-topbar { padding-left: 10px; }
 }
 
-@media (max-width: 620px) {
-  body { overflow: auto; }
-  #app { height: auto; min-height: 100dvh; overflow: visible; }
-  .app-topbar { min-height: 66px; }
-  .app-body { display: flex; min-height: calc(100dvh - 66px); flex-direction: column; overflow: visible; }
-}
-
 /* Persistent workspace tabs and independent terminal pages. */
 .topbar-leading { flex: 1 1 auto; overflow: hidden; }
 .topbar-actions { flex: 0 0 auto; margin-left: 14px; }
@@ -186,18 +180,29 @@
 .tab-close { flex: 0 0 auto; display: grid; place-items: center; min-width: 22px; min-height: 22px; margin-right: 3px; padding: 0; border: 0; border-radius: var(--r-1); color: var(--tx-3); background: transparent; font-size: 14px; }
 
 @media (max-width: 820px) {
-  /* 藏的是那两个应用开关，不是整个动作区：窗口按钮是桌面端的关窗入口，而它们本来也
-     不在这个级联里，不会被这条规则碰到。 */
-  .topbar-actions > .icon-button { display: none; }
-  .workspace-switcher { min-width: 44px; width: 44px; padding: 0 10px; }
+  /* Preferences stay reachable at every width. The brand yields its text and
+     session tabs scroll inside their own track to make room for the controls. */
+  .topbar-leading { gap: 4px; }
+  .topbar-actions { margin-left: 6px; gap: 2px; }
+  .workspace-switcher { min-width: 34px; width: 34px; padding: 0 6px; }
   .workspace-copy { display: none; }
 }
 
 @media (max-width: 620px) {
-  body { overflow: hidden; }
-  #app { height: 100dvh; min-height: 0; grid-template-rows: 66px minmax(0, 1fr); overflow: hidden; }
-  .app-body { min-height: 0; overflow: hidden; }
-  .session-tab { width: 154px; }
+  /* Keep the workspace in a definite grid track: absolute terminal panes and
+     editors must resolve against the available height, not an empty flex item. */
+  #app { grid-template-rows: 48px minmax(0, 1fr) var(--status-h); }
+  .app-topbar { height: 48px; padding: 0 6px 0 10px; }
+  .app-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px minmax(0, 1fr); }
+  .primary-nav { flex-direction: row; gap: 4px; padding: 0 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .nav-item { width: 44px; min-height: 44px; height: 44px; }
+  .nav-item.active::before { top: auto; bottom: 0; left: 13px; width: 18px; height: 2px; }
+  .nav-divider { width: 1px; height: 18px; margin: 0 5px; }
+  .workspace-switcher { min-width: 38px; width: 38px; min-height: 44px; }
+  .topbar-actions { margin-left: 4px; gap: 0; }
+  .topbar-actions > .icon-button { min-width: 44px; min-height: 44px; }
+  .session-tab { width: 144px; }
+  .session-tab .app-tab { min-height: 32px; }
 }
 
 /* Status bar. Every field here is a value the renderer already owns; the
@@ -208,6 +213,8 @@
   align-items: center;
   gap: 8px;
   height: var(--status-h);
+  min-width: 0;
+  overflow: hidden;
   padding: 0 10px;
   background: var(--c-chrome);
   border-top: 1px solid var(--line);
@@ -219,6 +226,9 @@
 }
 
 .status-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.status-item:first-child { flex: 0 0 auto; }
+#status-endpoint { display: block; max-width: min(28vw, 300px); overflow: hidden; text-overflow: ellipsis; }
+.status-sep { flex: 0 0 auto; }
 /* Tabular figures, because the size field changes width as you resize. */
 .status-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .status-fill { flex: 1 1 auto; }
@@ -231,3 +241,39 @@
 .status-dot[data-state="connecting"] { background: var(--warn); }
 .status-dot[data-state="failed"],
 .status-dot[data-state="disconnected"] { background: var(--err); }
+
+/* Library pages have no negotiated session facts. Empty separators should not
+   imply that a connection is missing or broken. */
+#app:has(#session-workspace[hidden]) #status-endpoint,
+#app:has(#session-workspace[hidden]) #status-endpoint + .status-sep,
+#app:has(#session-workspace[hidden]) #status-cipher,
+#app:has(#session-workspace[hidden]) #status-cipher + .status-sep,
+#app:has(#session-workspace[hidden]) #status-key,
+#app:has(#session-workspace[hidden]) #status-key + .status-sep,
+#app:has(#session-workspace[hidden]) #status-size { display: none; }
+
+@media (max-width: 820px) {
+  .topbar-leading:not(:has(.session-tab)) .workspace-switcher { width: auto; padding: 0 6px; }
+  .topbar-leading:not(:has(.session-tab)) .workspace-copy { display: flex; }
+  .workspace-copy small { display: none; }
+}
+
+/* Keep connection identity and state first. Secondary transport details yield
+   progressively instead of forcing the whole application wider than its window. */
+@media (max-width: 1100px) {
+  #status-hint, #status-workspace, #status-workspace + .status-sep { display: none; }
+}
+
+@media (max-width: 820px) {
+  #status-cipher, #status-cipher + .status-sep,
+  #status-key, #status-key + .status-sep,
+  #status-version { display: none; }
+  #status-endpoint { max-width: none; flex: 1 1 auto; }
+  .status-fill { display: none; }
+}
+
+@media (max-width: 620px) {
+  .status-bar { gap: 6px; padding: 0 10px; }
+  #status-size, #status-session + .status-sep { display: none; }
+  #status-session { flex: 0 0 auto; }
+}

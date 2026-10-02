@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!--
       Desktop 从 pureterm-app://app/ 加载打包资源，独立 Web 从回环 HTTP 加载。
       两个入口均连接随机回环端口的 WebSocket；桌面认证由主进程注入。
@@ -86,7 +87,7 @@
                 <kbd aria-hidden="true">Ctrl K</kbd>
               </label>
               <button type="button" id="host-new" class="primary"><i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="hosts.new">New Host</span></button>
-              <button type="button" id="host-view-toggle" class="tool-icon" aria-label="Switch to card view" aria-pressed="false" title="Switch to card view" data-i18n-attr="aria-label:hosts.view-toggle;title:hosts.view-toggle"><i class="ti ti-list" aria-hidden="true"></i></button>
+              <button type="button" id="host-view-toggle" class="tool-icon" data-i18n-attr="aria-label:hosts.view-toggle;title:hosts.view-toggle" aria-label="Switch to card view" aria-pressed="false" title="Switch to card view"><i class="ti ti-layout-grid" aria-hidden="true"></i></button>
             </div>
 
             <p id="hosts-error" class="list-error" role="alert" hidden><span class="list-error-title"></span><span class="list-error-detail"></span><button type="button" id="hosts-retry" class="ghost small" data-i18n="common.reload">Reload</button></p>
@@ -100,8 +101,25 @@
                    两个节点：筛选没有命中时按钮要退场（用户已经有主机了），而那段文字
                    是 renderHostList 用 innerHTML 写的，写在一起会把按钮一起冲掉。 -->
               <div id="hosts-empty" class="empty-state">
-                <p id="hosts-empty-text"></p>
-                <button type="button" id="hosts-empty-new" class="primary small" data-i18n="hosts.new">New Host</button>
+                <div class="empty-copy">
+                  <span class="empty-symbol" aria-hidden="true"><i class="ti ti-terminal-2"></i></span>
+                  <p id="hosts-empty-text"></p>
+                  <button type="button" id="hosts-empty-new" class="primary" data-i18n="hosts.new">New Host</button>
+                  <button type="button" id="hosts-clear-search" class="ghost" hidden data-i18n="hosts.clear-search">Clear search</button>
+                </div>
+                <svg class="connection-art" viewBox="0 0 360 240" fill="none" aria-hidden="true">
+                  <path class="art-guide" d="M0 60H360M0 120H360M0 180H360M60 0V240M120 0V240M180 0V240M240 0V240M300 0V240" />
+                  <path class="art-route" d="M140 120H214Q230 120 230 104V72Q230 56 246 56H270M230 104V168Q230 184 246 184H270" />
+                  <rect class="art-machine" x="36" y="80" width="108" height="80" rx="8" />
+                  <path class="art-prompt" d="M58 103L72 116L58 129M83 131H108" />
+                  <path class="art-base" d="M61 174H119M90 160V174" />
+                  <rect class="art-server" x="270" y="34" width="60" height="44" rx="5" />
+                  <rect class="art-server" x="270" y="98" width="60" height="44" rx="5" />
+                  <rect class="art-server" x="270" y="162" width="60" height="44" rx="5" />
+                  <path class="art-base" d="M230 120H270M282 48H305M282 60H299M282 112H305M282 124H299M282 176H305M282 188H299" />
+                  <circle class="art-port" cx="318" cy="61" r="2" /><circle class="art-port" cx="318" cy="125" r="2" /><circle class="art-port" cx="318" cy="189" r="2" />
+                  <circle class="art-junction" cx="230" cy="120" r="4" />
+                </svg>
               </div>
             </div>
           </section>
@@ -116,7 +134,7 @@
                 <span id="keychain-count" class="host-count"></span>
                 <label class="search keychain-search"><i class="ti ti-search" aria-hidden="true"></i><input id="keychain-search" type="search" placeholder="Search keys…" aria-label="Search keys" data-i18n-attr="placeholder:keys.search.placeholder;aria-label:keys.search" /></label>
                 <button type="button" id="keychain-new" class="primary" disabled><i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="keys.new">New Key</span></button>
-                <button type="button" id="keychain-view" class="tool-icon" aria-label="Switch to card view" aria-pressed="false" title="Switch to card view" data-i18n-attr="aria-label:keys.view-toggle;title:keys.view-toggle"><i class="ti ti-list" aria-hidden="true"></i></button>
+                <button type="button" id="keychain-view" class="tool-icon" data-i18n-attr="aria-label:keys.view-toggle;title:keys.view-toggle" aria-label="Switch to card view" aria-pressed="false" title="Switch to card view"><i class="ti ti-layout-grid" aria-hidden="true"></i></button>
               </div>
               <div class="keychain-content">
                 <p id="keychain-policy" class="keychain-policy"></p>
@@ -182,7 +200,7 @@
                        主机框只剩 64px，「singapore-edge.example.com」只看得见四个字母。
                        方块是纯装饰，原型这一行也没有它。 -->
                   <div class="address-row">
-                    <input id="host" class="address-host" placeholder="IP or hostname" data-i18n-attr="placeholder:host.placeholder.host" spellcheck="false" />
+                    <input id="host" class="address-host" placeholder="IP or hostname" aria-label="IP or hostname" data-i18n-attr="placeholder:host.placeholder.host;aria-label:host.placeholder.host" spellcheck="false" />
                     <input id="port" class="port-control" value="22" inputmode="numeric" spellcheck="false" aria-label="Port" data-i18n-attr="aria-label:host.port" />
                   </div>
                   <!-- 原型在这行写的是「ssh deploy@10.2.1.8:22 · 已解析」。「已解析」页面说不了：

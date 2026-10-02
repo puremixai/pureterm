@@ -76,6 +76,8 @@ export class ClientChrome extends Service {
     const density = view.element<HTMLButtonElement>('density-toggle')
     const locale = view.element<HTMLButtonElement>('locale-toggle')
     const apply = (): void => {
+      const current: Locale = prefs.locale ?? 'en'
+      setLocale(current)
       if (prefs.theme) html.dataset.theme = prefs.theme
       if (prefs.density) html.dataset.density = prefs.density
       theme.setAttribute('aria-pressed', String(prefs.theme === 'light'))
@@ -87,8 +89,6 @@ export class ClientChrome extends Service {
       density.title = t('chrome.density.title')
       density.firstElementChild!.className = `ti ${prefs.density === 'compact' ? 'ti-arrows-maximize' : 'ti-arrows-minimize'}`
       // 语言必须先落到 t() 上、再翻译文档，反过来会把上一门语言又写回去。
-      const current: Locale = prefs.locale ?? 'en'
-      setLocale(current)
       html.lang = current === 'zh' ? 'zh-CN' : 'en'
       html.dataset.locale = current
       locale.setAttribute('aria-pressed', String(current === 'zh'))

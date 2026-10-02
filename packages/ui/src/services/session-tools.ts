@@ -61,6 +61,7 @@ interface Registration {
 export class ClientSessionTools extends Service {
   static inject = ['clientView', 'clientTerminal']
   private readonly scope: ClientScope
+  private readonly narrowViewport: MediaQueryList
   private readonly registrations = new Map<SessionToolId, Registration>()
   /** 每个终端标签记一个选择，键是 TerminalTab.id —— 不写 localStorage，也不写主机记录。 */
   private readonly remembered = new Map<string, SessionToolId>()
@@ -70,6 +71,7 @@ export class ClientSessionTools extends Service {
   constructor(ctx: Context) {
     super(ctx, 'clientSessionTools')
     this.scope = new ClientScope(ctx)
+    this.narrowViewport = ctx.clientView.window.matchMedia(NARROW)
     ctx.on('client/session-change', () => this.sync())
     ctx.on('client/connection-change', () => this.sync())
     ctx.on('client/tab-closed', tabId => { this.remembered.delete(tabId); this.sync() })
@@ -85,6 +87,9 @@ export class ClientSessionTools extends Service {
       view.element('session-tool-panel').hidden = true
       view.element('session-grip').hidden = true
       view.element('session-workspace').classList.remove('files-open', 'monitor-open')
+      const content = view.element('session-content')
+      content.style.gridTemplateColumns = ''
+      content.style.gridTemplateRows = ''
     })
     this.installGrip()
     this.sync()
@@ -232,13 +237,27 @@ export class ClientSessionTools extends Service {
     const view = this.ctx.clientView
     const grip = view.element('session-grip')
     const content = view.element('session-content')
-    let drag: { start: number; ratio: number; span: number; vertical: boolean } | null = null
-    const narrow = (): boolean => view.window.matchMedia(NARROW).matches
+    let drag: { pointerId: number; start: number; ratio: number; span: number; vertical: boolean } | null = null
+    const release = (): void => {
+      if (!drag) return
+      const { pointerId } = drag
+      drag = null
+      if (grip.hasPointerCapture(pointerId)) grip.releasePointerCapture(pointerId)
+    }
+    // 断点切换必须重画内联网格和可访问方向；旧轴上的拖动也同时结束。
+    this.scope.listen(this.narrowViewport, 'change', () => {
+      release()
+      this.paintSplit()
+    })
+    this.ctx.on('client/session-tools-change', release)
+    this.scope.onDispose(release)
     this.scope.listen(grip, 'pointerdown', event => {
       const pointer = event as PointerEvent
-      const vertical = narrow()
+      if (this.active === null || drag || pointer.button !== 0) return
+      const vertical = this.narrowViewport.matches
       const box = content.getBoundingClientRect()
       drag = {
+        pointerId: pointer.pointerId,
         start: vertical ? pointer.clientY : pointer.clientX,
         ratio: this.currentRatio(),
         span: (vertical ? box.height : box.width) || 1,
@@ -248,19 +267,20 @@ export class ClientSessionTools extends Service {
       event.preventDefault()
     })
     this.scope.listen(grip, 'pointermove', event => {
-      if (!drag) return
       const pointer = event as PointerEvent
+      if (!drag || pointer.pointerId !== drag.pointerId) return
+      // 输入可能先于媒体查询的 change 回调到达，不能再用旧轴计算位移。
+      if (drag.vertical !== this.narrowViewport.matches) { release(); return }
       const moved = (drag.vertical ? pointer.clientY - drag.start : pointer.clientX - drag.start) / drag.span
       this.ctx.clientTerminal.setSplit(this.clamp(drag.ratio + moved))
       this.paintSplit()
     })
-    const release = (event: Event): void => {
-      if (!drag) return
-      drag = null
-      grip.releasePointerCapture((event as PointerEvent).pointerId)
+    const finish = (event: Event): void => {
+      if (drag?.pointerId === (event as PointerEvent).pointerId) release()
     }
-    this.scope.listen(grip, 'pointerup', release)
-    this.scope.listen(grip, 'pointercancel', release)
+    this.scope.listen(grip, 'pointerup', finish)
+    this.scope.listen(grip, 'pointercancel', finish)
+    this.scope.listen(grip, 'lostpointercapture', finish)
     // 只有鼠标能拖的分隔条，对键盘用户等于不存在。步长 2%，Shift 10%，Home 回默认。
     this.scope.listen(grip, 'keydown', event => {
       const key = event as KeyboardEvent
@@ -283,7 +303,7 @@ export class ClientSessionTools extends Service {
     const view = this.ctx.clientView
     const grip = view.element('session-grip')
     const content = view.element('session-content')
-    const narrow = view.window.matchMedia(NARROW).matches
+    const narrow = this.narrowViewport.matches
     const stored = this.ctx.clientTerminal.active?.split ?? null
     const ratio = this.clamp(stored ?? DEFAULT_SPLIT)
     const percent = Math.round(ratio * 100)
@@ -294,6 +314,12 @@ export class ClientSessionTools extends Service {
     grip.setAttribute('aria-valuemin', String(Math.round(MIN_TERMINAL * 100)))
     grip.setAttribute('aria-valuemax', String(Math.round(MAX_TERMINAL * 100)))
     grip.setAttribute('aria-valuetext', t('session.tools.grip.value', { percent }))
+    // 收起时两条轴都交回 CSS；tab 上保留比例，重新展开时再应用。
+    if (this.active === null) {
+      content.style.gridTemplateColumns = ''
+      content.style.gridTemplateRows = ''
+      return
+    }
     // 跨断点时清掉不再使用的那条内联网格轴，否则收起的槽位会留下一段空的轨道。
     if (narrow) {
       content.style.gridTemplateColumns = ''

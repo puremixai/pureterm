@@ -81,8 +81,8 @@
   --s-4: 16px;
   --s-5: 24px;
   --s-6: 32px;
-  --row-h: 38px;
-  --row-h-compact: 30px;
+  --row-h: 48px;
+  --row-h-compact: 34px;
   --z-drawer: 20;
   --z-popover: 30;
   --z-toast: 40;
@@ -101,7 +101,7 @@
   --chrome-h: 40px;
   --rail-w: 52px;
   --status-h: 24px;
-  --insp-w: 322px;
+  --insp-w: 360px;
   --grip-w: 5px;
 
   --font-ui: Inter, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;

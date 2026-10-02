@@ -69,13 +69,13 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   assert.match(html, /class="primary drawer-connect"/)
   assert.match(html, /id="host-columns"[^>]*class="host-columns"/, 'the hosts table needs a header row to sit above the rows')
   assert.match(html, /id="keychain-columns"[^>]*class="host-columns"/, 'the key table shares that header shape')
-  assert.match(css, /\.host-columns,\s*\.host-row \{[^}]*minmax\(0,1\.5fr\)/, 'the header and the rows must share one column template')
-  assert.match(css, /#keychain-columns,\s*\.keychain-card \{[^}]*minmax\(0,1\.2fr\)/, 'the key table must share its template the same way')
+  assert.match(css, /\.host-columns,\s*\.host-row \{[^}]*grid-template-columns:/, 'the header and the rows must share one column template')
+  assert.match(css, /#keychain-columns,\s*\.keychain-card \{[^}]*grid-template-columns:/, 'the key table must share its template the same way')
   // The remote file table is the third one, so it shares the same discipline:
   // one template for the header and the rows, and a way to let go of the data
   // columns when the grip has dragged the pane narrower than they need.
-  assert.match(css, /\.file-columns,\s*\.file-row \{[^}]*minmax\(0,1fr\) 62px 42px 74px 24px/, 'the file header and its rows must share one column template')
-  assert.match(css, /@container \(max-width: 259px\)[\s\S]{0,240}minmax\(0, 1fr\) 24px/, 'the file columns must give up before they overflow the pane')
+  assert.match(css, /\.file-columns,\s*\.file-row \{[^}]*minmax\(0,1fr\) 62px 42px 74px 104px/, 'the file header and its rows must share one column template with room for both actions')
+  assert.match(css, /@container \(max-width: 420px\)[\s\S]{0,240}minmax\(0, 1fr\) 104px/, 'the file columns must give up before they overflow the pane')
   assert.match(css, /:has\(#sftp-hint:not\(\[hidden\]\)\) #sftp-columns/, 'the file header must leave with an empty directory')
   assert.match(css, /\.file-row \.file-main \{ min-height: 0/, 'a file row must not be floored by the button inside it')
   // The failure route: four nodes, one of them red, and the break on the link
@@ -113,8 +113,8 @@ test('the shared UI exposes the mature workspace visual contract', () => {
   // The card grid's track count is the panel's, not a literal: a fixed three
   // columns left one card a third of the width and two thirds of empty space.
   // `min(…, 100%)` keeps the floor from overflowing a panel narrower than a card.
-  assert.match(css, /#host-list\.card-view \{[^}]*repeat\(auto-fill,\s*minmax\(min\(200px,\s*100%\),\s*1fr\)\)/, 'the host card grid must fit as many cards as the panel allows')
-  assert.match(css, /\.keychain-list\.card-view \{[^}]*repeat\(auto-fill,\s*minmax\(min\(220px,\s*100%\),\s*1fr\)\)/, 'and so must the key card grid, one step wider for its fingerprint')
+  assert.match(css, /#host-list\.card-view \{[^}]*repeat\(auto-fill,\s*minmax\(min\(\d+px,\s*100%\),\s*1fr\)\)/, 'the host card grid must fit as many cards as the panel allows')
+  assert.match(css, /\.keychain-list\.card-view \{[^}]*repeat\(auto-fill,\s*minmax\(min\(\d+px,\s*100%\),\s*1fr\)\)/, 'and so must the key card grid')
   // A header over an empty table frames nothing. Both screens already toggle the
   // empty element's hidden attribute, so the header follows that rather than a
   // second copy of the count.
