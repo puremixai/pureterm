@@ -42,7 +42,7 @@ const CASES = [
 ]
 
 let window
-async function resizeViewport(width, height) {
+async function resizeViewport(width, height, { settle = true } = {}) {
   window.setContentSize(width, height)
   const sized = await window.webContents.executeJavaScript(`(async () => {
     for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -52,6 +52,20 @@ async function resizeViewport(width, height) {
     return { ok: false, width: window.innerWidth, height: window.innerHeight };
   })()`)
   if (!sized.ok) throw new Error(`content viewport never reached ${width}x${height}, stayed at ${sized.width}x${sized.height}`)
+  if (settle) {
+    // innerWidth/innerHeight can update before CSS viewport units and layout.
+    // Static geometry cases begin after two renderer frames have completed.
+    await window.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+      let frame;
+      const timeout = setTimeout(() => {
+        cancelAnimationFrame(frame);
+        reject(new Error('renderer frames did not settle the ${width}x${height} viewport'));
+      }, 5000);
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => { clearTimeout(timeout); resolve(); });
+      });
+    })`)
+  }
 }
 
 async function main() {
@@ -81,7 +95,9 @@ async function main() {
       }
       record(await window.webContents.executeJavaScript('window.startSessionToolsLiveResizeChecks()'))
       const oldAxis = await pointerDown()
-      await resizeViewport(800, 600)
+      // Keep the live path unsynchronized so old-axis input can arrive before
+      // the media-query change callback and exercise the production guard.
+      await resizeViewport(800, 600, { settle: false })
       const staleMove = { x: oldAxis.x + 80, y: oldAxis.y }
       window.webContents.sendInputEvent({ type: 'mouseMove', modifiers: ['leftbuttondown'], ...staleMove })
       record(await window.webContents.executeJavaScript("window.checkSessionToolsLiveDrag('cancelled')"))
@@ -93,7 +109,7 @@ async function main() {
       window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...freshMove })
       record(await window.webContents.executeJavaScript("window.checkSessionToolsLiveDrag('moved')"))
       record(await window.webContents.executeJavaScript('window.checkSessionToolsLiveResize()'))
-      await resizeViewport(1280, 800)
+      await resizeViewport(1280, 800, { settle: false })
       record(await window.webContents.executeJavaScript('window.checkSessionToolsLiveResize()'))
     } finally {
       await window.webContents.executeJavaScript('window.disposeSessionToolsLiveResize()')
